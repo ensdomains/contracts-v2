@@ -9,11 +9,9 @@
 import { Command } from "commander";
 import {
   createWalletClient,
-  encodeAbiParameters,
   getAddress,
   http,
   keccak256,
-  namehash,
   stringToHex,
   zeroAddress,
   zeroHash,
@@ -21,7 +19,7 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -66,7 +64,6 @@ import {
 import {
   planSetupSteps,
   recordRefusal,
-  tokenIdOf,
   type PlanContext,
   type PlannedCall,
 } from "./fixture/plan.js";
@@ -94,6 +91,7 @@ import {
   type FixtureActor,
   type RecordSpec,
 } from "./fixture/types.js";
+import { idFromLabel, namehash } from "../../test/utils/utils.ts";
 
 /// The registrar-ownership surface the v1 controller check walks.
 const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
@@ -815,7 +813,7 @@ export async function v1Holder(
       address: addresses.baseRegistrar,
       abi: BaseRegistrar.ownerOf,
       functionName: "ownerOf",
-      args: [tokenIdOf(label)],
+      args: [idFromLabel(label)],
     })) as Address,
   );
   if (!sameAddress(registrant, addresses.wrapper)) return registrant;
@@ -948,7 +946,7 @@ export async function seedV1(
 
   for (const run of pending) {
     const row = rowById.get(run.fixtureId)!;
-    const tokenId = tokenIdOf(run.label);
+    const tokenId = idFromLabel(run.label);
     const expiry = (await client.readContract({
       address: v1.base.address,
       abi: v1.base.abi,

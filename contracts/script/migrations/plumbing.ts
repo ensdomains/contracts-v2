@@ -20,7 +20,6 @@ import {
   type Address,
   type Chain,
 } from "viem";
-import { keccak256, stringToHex } from "viem";
 import { mainnet, sepolia } from "viem/chains";
 
 import { SEC_PER_DAY } from "../deploy-constants.js";
@@ -308,10 +307,6 @@ export function parseMigrationNetwork(
 export const V1_REGISTRATION_DURATION = 365n * SEC_PER_DAY;
 export const V2_REGISTRATION_DURATION = 28n * SEC_PER_DAY;
 export const V1_BASE_REGISTRAR_NAME = "BaseRegistrarImplementation";
-
-export function labelId(label: string): bigint {
-  return BigInt(keccak256(stringToHex(label)));
-}
 
 export function requireRpcUrl(
   opts: { rpcUrl?: string },

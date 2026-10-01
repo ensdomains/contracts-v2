@@ -2,11 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { type Address, encodeAbiParameters, type Hex } from "viem";
 
 import { selectResolvableNames } from "../../script/migrate.js";
-import {
-  type JsonDeployment,
-  labelId,
-} from "../../script/migrations/plumbing.js";
-import { dnsEncodeName } from "../utils/utils.js";
+import type { JsonDeployment } from "../../script/migrations/plumbing.js";
+import { dnsEncodeName, idFromLabel } from "../utils/utils.js";
 import { V1_GRACE_PERIOD_SECONDS } from "../../script/preMigration.js";
 
 // `addr(bytes32)`. The stubbed resolver answers this one call and refuses the rest,
@@ -39,7 +36,7 @@ function stubClients(candidates: Record<string, Candidate>) {
 
   for (const [name, candidate] of Object.entries(candidates)) {
     const label = name.replace(/\.eth$/, "");
-    expiryByLabelId.set(labelId(label).toString(), candidate.expiry);
+    expiryByLabelId.set(idFromLabel(label).toString(), candidate.expiry);
     if (candidate.resolves) resolvingNames.add(dnsEncodeName(name));
   }
 

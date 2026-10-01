@@ -1,10 +1,4 @@
-import {
-  getAddress,
-  namehash,
-  zeroAddress,
-  type Address,
-  type Hex,
-} from "viem";
+import { zeroAddress, type Address, type Hex } from "viem";
 
 import {
   isChild,
@@ -16,7 +10,7 @@ import {
   v1Form,
   type RefContext,
 } from "./scenario.js";
-import { labelhashOf, recordValue, tokenIdOf } from "./plan.js";
+import { recordValue } from "./plan.js";
 import { sameAddress } from "../plumbing.js";
 import {
   FUSES,
@@ -32,6 +26,7 @@ import {
   NameWrapper,
   PublicResolver,
 } from "../abis.js";
+import { idFromLabel, namehash } from "../../../test/utils/utils.js";
 
 /// The v1 surfaces this verification reads, each as narrow as the reads it
 /// makes: these go out in multicall batches, where a wide ABI costs the type
@@ -213,8 +208,8 @@ export function buildV1Checks(
   const wrapped = isWrapped(form);
   const child = isChild(form);
   const locked = isLocked(form);
-  const node = namehash(scenario.name) as Hex;
-  const topTokenId = tokenIdOf(scenario.top_level_label);
+  const node = namehash(scenario.name);
+  const topTokenId = idFromLabel(scenario.top_level_label);
   const base = { fixtureId: row.fixture_id, name: scenario.name, form };
   const checks: Check[] = [];
 

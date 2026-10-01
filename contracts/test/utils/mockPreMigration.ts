@@ -7,16 +7,15 @@ import {
   type Address,
   encodeAbiParameters,
   type Hex,
-  namehash,
   zeroAddress,
 } from "viem";
 import { DEPLOYMENT_ROLES, FUSES } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migrate.js";
 import { V1_GRACE_PERIOD_SECONDS } from "../../script/preMigration.js";
 import { buildMainArgs as buildDevnetMainArgs } from "../../script/preMigrationUtils.js";
 import type { DevnetEnvironment } from "../../script/setup.js";
-import { dnsEncodeName, idFromLabel } from "./utils.js";
+import { dnsEncodeName, namehash, idFromLabel } from "./utils.js";
 import { waitForSuccessfulTransactionReceipt } from "./waitForSuccessfulTransactionReceipt.js";
+import { encodeMigrationData } from "./migrationData.js";
 
 // Pre-migration helpers shared with the devnet runner live in script/ so
 // production code doesn't import from test/. Re-exported here for tests.
@@ -155,13 +154,6 @@ export async function wrapV1Name(
   );
 }
 
-function migrationData(label: string, owner: Address): Hex {
-  return encodeAbiParameters(
-    [{ type: "tuple", components: migrationDataComponents }],
-    [{ label, owner, subregistry: zeroAddress, resolver: zeroAddress }],
-  );
-}
-
 /// Migrates a reserved, unwrapped v1 name through `UnlockedMigrationController`.
 export async function migrateUnwrapped(
   env: DevnetEnvironment,
@@ -173,7 +165,12 @@ export async function migrateUnwrapped(
       owner.address,
       env.v2.UnlockedMigrationController.address,
       idFromLabel(label),
-      migrationData(label, owner.address),
+      encodeMigrationData({
+        label,
+        owner: owner.address,
+        subregistry: zeroAddress,
+        resolver: zeroAddress,
+      }),
     ],
     { account: owner },
   );
@@ -193,7 +190,12 @@ export async function migrateLocked(
       env.v2.LockedMigrationController.address,
       BigInt(namehash(`${label}.eth`)),
       1n,
-      migrationData(label, owner.address),
+      encodeMigrationData({
+        label,
+        owner: owner.address,
+        subregistry: zeroAddress,
+        resolver: zeroAddress,
+      }),
     ],
     { account: owner },
   );

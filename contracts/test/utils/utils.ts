@@ -11,10 +11,15 @@ export function labelhash(label: string): Hex {
   return keccak256(stringToBytes(label));
 }
 
-// NameCoder.namehash()
+// NameCoder.namehash(bytes32,bytes32)
+export function namehashFromParts(parentHash: Hex, childHash: Hex): Hex {
+  return keccak256(concat([parentHash, childHash]));
+}
+
+// NameCoder.namehash(bytes)
 export function namehash(name: string): Hex {
   return splitName(name).reduceRight<Hex>(
-    (a, x) => keccak256(concat([a, labelhash(x)])),
+    (a, x) => namehashFromParts(a, labelhash(x)),
     zeroHash,
   );
 }

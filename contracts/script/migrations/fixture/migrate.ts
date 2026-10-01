@@ -1,5 +1,3 @@
-import { namehash, type Address } from "viem";
-
 import {
   isChild,
   isLocked,
@@ -11,16 +9,8 @@ import {
   v1Form,
   type RefContext,
 } from "./scenario.js";
-import { labelhashOf, tokenIdOf } from "./plan.js";
 import type { FixtureEnvelope, Route, V1Form } from "./types.js";
-
-/// `LibMigration.Data` as the controllers and MigrationHelper expect it.
-export type MigrationData = {
-  label: string;
-  owner: Address;
-  subregistry: Address;
-  resolver: Address;
-};
+import type { MigrationData } from "../../../test/utils/migrationData.js";
 
 export type MigrationTarget = {
   row: FixtureEnvelope;

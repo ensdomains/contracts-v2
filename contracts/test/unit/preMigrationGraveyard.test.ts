@@ -11,8 +11,6 @@ import {
   encodeFunctionData,
   getAddress,
   type Hex,
-  labelhash,
-  namehash,
   zeroAddress,
 } from "viem";
 
@@ -30,6 +28,7 @@ import {
   V1_GRACE_PERIOD_SECONDS,
   v1Eligibility,
 } from "../../script/preMigration.js";
+import { labelhash, namehash } from "../utils/utils.js";
 
 const NOW = 1_800_000_000n;
 const GRAVEYARD = getAddress("0x950b93885b33ce4c7e8571be2c88a1aa93d82f49");
