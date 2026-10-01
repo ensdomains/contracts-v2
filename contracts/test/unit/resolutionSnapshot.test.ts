@@ -3,6 +3,7 @@ import { encodeAbiParameters, zeroAddress, type Hex } from "viem";
 
 import {
   diffResolutionSnapshots,
+  isRegression,
   queriesFromSnapshot,
   recordIsEmpty,
   recordQueries,
@@ -118,7 +119,9 @@ describe("diffResolutionSnapshots", () => {
       record: "addr",
       before: ADDR_A,
       after: ADDR_B,
+      kind: "changed",
     });
+    expect(isRegression(differences[0])).toBe(true);
   });
 
   it("catches a record that stopped resolving", () => {
@@ -129,9 +132,13 @@ describe("diffResolutionSnapshots", () => {
 
     expect(differences).toHaveLength(1);
     expect(differences[0].after).toBe("(reverted)");
+    expect(differences[0].kind).toBe("lost");
+    expect(isRegression(differences[0])).toBe(true);
   });
 
-  it("catches a record that started resolving", () => {
+  // A name the old resolver path could not see starts answering at the cutover.
+  // It is reported, but it broke nothing.
+  it("reports a record that started resolving without counting it as a regression", () => {
     const differences = diffResolutionSnapshots(
       snapshot([{ name: "a.eth", records: { contenthash: null } }]),
       snapshot([{ name: "a.eth", records: { contenthash: ADDR_A } }]),
@@ -139,6 +146,8 @@ describe("diffResolutionSnapshots", () => {
 
     expect(differences).toHaveLength(1);
     expect(differences[0].before).toBe("(reverted)");
+    expect(differences[0].kind).toBe("gained");
+    expect(isRegression(differences[0])).toBe(false);
   });
 
   it("ignores a record that never resolved either side", () => {
@@ -157,6 +166,8 @@ describe("diffResolutionSnapshots", () => {
 
     expect(differences).toHaveLength(1);
     expect(differences[0].record).toBe("(whole name)");
+    expect(differences[0].kind).toBe("missing");
+    expect(isRegression(differences[0])).toBe(true);
   });
 
   it("reports every changed record, not just the first", () => {

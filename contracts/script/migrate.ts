@@ -206,6 +206,7 @@ import {
 import {
   describeDifference,
   diffResolutionSnapshots,
+  isRegression,
   queriesFromSnapshot,
   recordQueries,
   snapshotCarriesRecords,
@@ -3616,16 +3617,26 @@ export async function verifyResolution(opts: {
     return differences;
   }
 
-  for (const difference of differences.slice(0, 40)) {
+  // Records that only start resolving are reported but do not fail the check: a name
+  // the old resolver path could not see answers once the cutover points at it.
+  const gained = differences.filter((difference) => !isRegression(difference));
+  if (gained.length > 0) {
+    const names = [...new Set(gained.map((difference) => difference.name))];
+    console.log(
+      `now resolving after the cutover: ${gained.length} record(s) on ${names.length} name(s): ${names.join(", ")}`,
+    );
+  }
+  const regressions = differences.filter(isRegression);
+  for (const difference of regressions) {
     console.error(describeDifference(difference));
   }
-  if (differences.length > 40) {
-    console.error(`...and ${differences.length - 40} more`);
-  }
-  if (!opts.reportOnly) {
+  if (regressions.length > 0 && !opts.reportOnly) {
     throw new Error(
-      `resolution changed across the cutover for ${differences.length} record(s)`,
+      `resolution changed across the cutover for ${regressions.length} record(s)`,
     );
+  }
+  if (regressions.length === 0) {
+    console.log("no record stopped resolving or changed across the cutover");
   }
   return differences;
 }
@@ -7290,14 +7301,16 @@ export async function runForkFull(opts: RunForkFullOptions) {
         `the phase 7 URP cutover, with resolution unchanged across it for ${resolutionNames.length} name(s)`,
       );
     } else {
+      const regressions = resolutionDifferences.filter(isRegression);
+      const gained = resolutionDifferences.length - regressions.length;
       console.log(
-        `resolution changed across the cutover for ${resolutionDifferences.length} record(s):`,
+        `resolution across the cutover: ${regressions.length} record(s) stopped resolving or changed, ${gained} started resolving`,
       );
-      for (const difference of resolutionDifferences.slice(0, 20)) {
+      for (const difference of regressions) {
         console.log(`  ${describeDifference(difference)}`);
       }
       coveredChecks.push(
-        `the phase 7 URP cutover, with ${resolutionDifferences.length} record(s) reported as changed across it`,
+        `the phase 7 URP cutover, with ${regressions.length} record(s) reported as stopped or changed and ${gained} as newly resolving across it`,
       );
     }
 
@@ -8560,7 +8573,7 @@ export async function main(argv = process.argv): Promise<void> {
     addNetworkOptions(
       new Command("verify-resolution")
         .description(
-          "Re-resolve a snapshot's names and fail on any record that changed",
+          "Re-resolve a snapshot's names and fail on any record that stopped resolving or changed",
         )
         .requiredOption(
           "--snapshot-file <path>",

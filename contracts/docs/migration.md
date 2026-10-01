@@ -463,9 +463,11 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 >
 > `snapshot-resolution` records the real answers first — `addr`, each coin type, each text key, and
 > contenthash — and `verify-resolution` re-asks exactly those questions afterwards and fails on any
-> record that changed, in either direction: a record that stops resolving, one that starts, and one
-> that returns something different are all differences. Include awkward cases in `--names`: a name
-> with no resolver, a wildcard/offchain name, and a DNS TLD mirror.
+> record that stopped resolving or returns something different, listing every one. A record that
+> only *starts* resolving is reported by name but does not fail the check: a name reserved only in the
+> new registry is invisible to the old resolver path and answers once the cutover points at it, as
+> freshly seeded fixture names do. Include awkward cases in `--names`: a name with no resolver, a
+> wildcard/offchain name, and a DNS TLD mirror.
 >
 > `fork full` does this automatically around phase 7 and prints any differences. Its sample is the
 > run's own smoke names plus names drawn from `--csv-file` that are confirmed to carry records before
@@ -1170,7 +1172,7 @@ and idempotency rules.
 | `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` — the resolution cutover |
 | `phase verify-urp` | Verify top and managed URP implementations |
 | `phase snapshot-resolution` | Record how names resolve before the cutover (`addr`, coin types, text keys, contenthash) |
-| `phase verify-resolution` | Re-resolve a snapshot's names and fail on any record that changed |
+| `phase verify-resolution` | Re-resolve a snapshot's names and fail on any record that stopped resolving or changed (records that start resolving are reported, not failed) |
 | `fork full` | Run the full phased migration rehearsal against an Anvil fork (or a Tenderly fork with `--direct`) |
 | `clean-testnet` | Deploy fresh testnet v1 contracts and run the full phased migration (sepolia only) |
 
