@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,9 +24,12 @@ import {
   zeroAddress,
 } from "viem";
 
+import { STATUS } from "../../script/deploy-constants.js";
 import { deploymentGraveyards } from "../../script/migrate.js";
 import { Graveyard } from "../../script/migrations/abis.js";
+import { FAILED_QUERY_LIMIT } from "../../script/migrations/queryRetry.js";
 import {
+  batchVerifyRegistrations,
   ethNameNode,
   graveyardSet,
   isClaimableOnV1,
@@ -321,6 +332,118 @@ describe("readV1Registrations", () => {
     const client = multicallClient([]);
     expect(await readV1Registrations(client, V1, [])).toEqual([]);
     expect(client.calls).toHaveLength(0);
+  });
+});
+
+describe("batchVerifyRegistrations", () => {
+  const REGISTRY_V2 = getAddress("0x00000000000000000000000000000000000000e0");
+  const ALPHA = { labelName: "alpha", lineNumber: 1 };
+  const RESERVED_STATE = {
+    status: STATUS.RESERVED,
+    latestOwner: zeroAddress,
+    expiry: NOW + 86_400n,
+  };
+  const TIMEOUT = new Error("The request took too long to respond.");
+
+  let previousCwd: string;
+  let workDir: string;
+
+  // Warnings are also written to log files in the working directory.
+  beforeAll(() => {
+    previousCwd = process.cwd();
+    workDir = mkdtempSync(join(tmpdir(), "premigration-batch-reads-"));
+    process.chdir(workDir);
+  });
+
+  afterAll(() => {
+    process.chdir(previousCwd);
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  // Stands in for a viem client whose answers are scripted per request: a multicall
+  // answer is either the outcomes it returns or an error it throws, and once the
+  // script runs out the last answer repeats. The block read can be made to fail first.
+  function scriptedClient(
+    answers: Array<Outcome[] | Error>,
+    blockFailures = 0,
+  ) {
+    let multicalls = 0;
+    let blocks = 0;
+    return {
+      get multicalls() {
+        return multicalls;
+      },
+      async multicall() {
+        const answer = answers[Math.min(multicalls++, answers.length - 1)];
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+      async getBlock() {
+        if (blocks++ < blockFailures) throw TIMEOUT;
+        return { timestamp: NOW };
+      },
+    };
+  }
+
+  const verify = (v2: unknown, v1: unknown) =>
+    batchVerifyRegistrations(
+      [ALPHA],
+      v2,
+      v1,
+      REGISTRY_V2,
+      [],
+      V1,
+      GRAVEYARDS,
+      0,
+    );
+
+  it("reads a batch again when a read in it failed", async () => {
+    const v2 = scriptedClient([[ok(RESERVED_STATE)]]);
+    const v1 = scriptedClient([reads({ expiry: failed(TIMEOUT) }), reads()]);
+
+    const [result] = await verify(v2, v1);
+
+    expect(result.error).toBeUndefined();
+    expect(result.v1Eligibility).toBe("claimable");
+    expect(result.v2Reserved).toBe(true);
+    expect(v1.multicalls).toBe(2);
+    expect(v2.multicalls).toBe(2);
+  });
+
+  it("reads a batch again when a whole request was refused", async () => {
+    const v2 = scriptedClient([TIMEOUT, [ok(RESERVED_STATE)]]);
+    const v1 = scriptedClient([reads()]);
+
+    const [result] = await verify(v2, v1);
+
+    expect(result.error).toBeUndefined();
+    expect(v2.multicalls).toBe(2);
+  });
+
+  it("reports the names failed once reads keep failing past the retry limit", async () => {
+    const v2 = scriptedClient([[ok(RESERVED_STATE)]]);
+    const v1 = scriptedClient([reads({ expiry: failed(TIMEOUT) })]);
+
+    const [result] = await verify(v2, v1);
+
+    expect(result.error).toContain("nameExpires");
+    expect(v1.multicalls).toBe(FAILED_QUERY_LIMIT + 1);
+  });
+
+  it("reads the chain time again when the read failed", async () => {
+    const v2 = scriptedClient([[ok(RESERVED_STATE)]], 2);
+    const v1 = scriptedClient([reads()]);
+
+    const [result] = await verify(v2, v1);
+
+    expect(result.error).toBeUndefined();
+  });
+
+  it("fails the run when the chain time cannot be read past the retry limit", async () => {
+    const v2 = scriptedClient([[ok(RESERVED_STATE)]], Infinity);
+    const v1 = scriptedClient([reads()]);
+
+    await expect(verify(v2, v1)).rejects.toThrow(TIMEOUT.message);
   });
 });
 
