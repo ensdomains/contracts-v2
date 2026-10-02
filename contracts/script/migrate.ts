@@ -6060,14 +6060,21 @@ function buildDeployV1RockethConfig(
 
 // Normalize the provider (RPC-compatibility shim, chain-id override) and resolve
 // the chain id and chain, shared by the v1 and v2 deploy entrypoints.
-async function resolveDeployProviderAndChain(opts: {
+//
+// A deploy given only an RPC URL still hands rocketh a provider of ours. Left to
+// itself, rocketh builds an `eip-1193-jsonrpc-provider`, which throws "No Result"
+// for any null result. Right after sending a transaction rocketh looks it up by
+// hash, and a node that has not seen it yet rightly answers null, so that provider
+// stopped a live deploy after its first transaction. Ours returns null as null and
+// throws only the errors a node sends.
+export async function resolveDeployProviderAndChain(opts: {
   network: MigrationNetwork;
   rpcUrl?: string;
   chainId?: string;
   provider?: RpcProvider;
   rpcCompatibility?: boolean;
   debugRpc?: boolean;
-}): Promise<{ provider?: RpcProvider; chainId: number; chain: Chain }> {
+}): Promise<{ provider: RpcProvider; chainId: number; chain: Chain }> {
   const network = NETWORKS[opts.network];
   if (!opts.rpcUrl && !opts.provider) {
     throw new Error("Missing rpcUrl or provider");
@@ -6089,7 +6096,11 @@ async function resolveDeployProviderAndChain(opts: {
     chainId,
     opts.rpcUrl ?? network.chain.rpcUrls.default.http[0],
   );
-  return { provider, chainId, chain };
+  return {
+    provider: provider ?? httpRpcProvider(opts.rpcUrl!),
+    chainId,
+    chain,
+  };
 }
 
 // Print each deployed contract's address, or a placeholder when the artifact is
@@ -6180,7 +6191,7 @@ export async function deployV2(opts: DeployV2Options) {
       network.defaultV1Owner,
       "v1Owner",
     );
-    await impersonate(impersonationProvider(opts) ?? provider!, v1Owner);
+    await impersonate(impersonationProvider(opts) ?? provider, v1Owner);
   }
 
   if (opts.fresh) {

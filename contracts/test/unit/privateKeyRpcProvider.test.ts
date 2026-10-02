@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { createRequire } from "node:module";
 import {
   keccak256,
   parseTransaction,
@@ -8,6 +9,7 @@ import {
 } from "viem";
 import { sepolia } from "viem/chains";
 
+import { resolveDeployProviderAndChain } from "../../script/migrate.js";
 import { privateKeyRpcProvider } from "../../script/migrations/rpc.js";
 
 const KEY =
@@ -155,5 +157,75 @@ describe("a deploy signer on a load-balanced endpoint", () => {
       stop();
     }
     expect(sent[0].gas).toBe((21_000n * 130n) / 100n);
+  });
+});
+
+describe("the provider a deploy given only an RPC URL runs through", () => {
+  // The provider rocketh would build for itself, loaded the way rocketh loads it.
+  const { JSONRPCHTTPProvider } = createRequire(
+    import.meta.resolve("rocketh"),
+  )("eip-1193-jsonrpc-provider");
+
+  // A node that gives every request the same JSON-RPC body.
+  async function withNode(
+    body: object,
+    run: (url: string) => Promise<void>,
+  ): Promise<void> {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const { id } = (await req.json()) as { id: number };
+        return Response.json({ jsonrpc: "2.0", id, ...body });
+      },
+    });
+    try {
+      await run(`http://127.0.0.1:${server.port}`);
+    } finally {
+      server.stop(true);
+    }
+  }
+
+  // rocketh looks a transaction up right after sending it, and stops on an error.
+  const lookup = (provider: { request: (args: any) => Promise<unknown> }) =>
+    provider.request({
+      method: "eth_getTransactionByHash",
+      params: [`0x${"ab".repeat(32)}`],
+    });
+  const deployProvider = async (url: string) =>
+    (await resolveDeployProviderAndChain({ network: "mainnet", rpcUrl: url }))
+      .provider;
+
+  it("is not rocketh's own, which reports a transaction the node has not seen yet as an error", async () => {
+    await withNode({ result: null }, async (url) => {
+      await expect(lookup(new JSONRPCHTTPProvider(url))).rejects.toEqual({
+        code: 5000,
+        message: "No Result",
+      });
+    });
+  });
+
+  it("returns null for a transaction the node has not seen yet", async () => {
+    await withNode({ result: null }, async (url) => {
+      expect(await lookup(await deployProvider(url))).toBeNull();
+    });
+  });
+
+  it("still throws the error a node returns", async () => {
+    await withNode(
+      { error: { code: -32000, message: "header not found" } },
+      async (url) => {
+        await expect(lookup(await deployProvider(url))).rejects.toThrow(
+          "header not found",
+        );
+      },
+    );
+  });
+
+  it("keeps the network's chain id without asking the node", async () => {
+    const { chainId } = await resolveDeployProviderAndChain({
+      network: "mainnet",
+      rpcUrl: "http://127.0.0.1:1",
+    });
+    expect(chainId).toBe(1);
   });
 });
