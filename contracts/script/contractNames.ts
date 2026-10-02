@@ -13,45 +13,46 @@ import { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.js";
 import { Abi_PermissionedResolver } from "generated/abis/PermissionedResolver.js";
 import { Abi_NameWrapper } from "generated/abis/NameWrapper.js";
 import { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImplementation.js";
+import { Abi_ReverseRegistrarAdapter } from "generated/abis/ReverseRegistrarAdapter.js";
+import { Abi_ENSRegistry } from "generated/abis/ENSRegistry.js";
 import { config as RockethConfig } from "../rocketh/config.js";
 import { computeOwnedResolverSalt } from "./salts.js";
 import { ROLES } from "./deploy-constants.js";
 import { computeVerifiableProxyAddress } from "../test/integration/fixtures/deployVerifiableProxy.js";
-import { labelhash, namehash } from "../test/utils/utils.js";
+import {
+  COIN_TYPE_ETH,
+  dnsEncodeName,
+  getReverseName,
+  labelhash,
+  namehash,
+} from "../test/utils/utils.js";
 import { encodeMigrationData } from "../test/utils/migrationData.js";
 
 // the profiles need stored in a resolver
 // in v1, the records were in the PublicResolver
 // in v2, we need a PermissionedResolver for "ens.eth"
-// added: deploy/02_ENSPermissionedResolver.ts
-// this requires custom rocketh stuff
-// instead do it via calldata
 
 // ens.eth should be migrated to v1
 // but the new resolver will work in either v1 or v2
-
-// all v1 contract primary names are already claimed by dao
-// eg. root.ens.eth => 0xaB52... => owner(ab52...addr.reverse) = dao
-// they need renamed to the legacy.ens.eth namespace
-// need to figure out which contracts are forward only (eg. ENSRegistry, Root)
-// and which are ReverseClaimer or Ownable (eg. Registrar, NameWrapper)
 
 // all v2 contract primary names are claimable via owner (dao)
 // so after new deployment, the first operation is for owner
 // to claim every contract and update the name and resolver
 
 const CLAIMS = [
+  "ReverseClaimer",
   "Ownable",
-  "DelegatedContractNamer",
   "IContractNamer",
-  "Constructor",
+  "DelegatedContractNamer",
 ] as const;
 
-export type ContractNameInfo = {
+export type ContractInfo = {
   deployment: string;
   name: string;
   claim?: (typeof CLAIMS)[number];
 };
+
+export type DeployedContractInfo = ContractInfo & { address: Address };
 
 export type Deployments = Record<string, Address>;
 
@@ -64,32 +65,49 @@ export type NamingInfo = {
   managers: Address[];
 };
 
-export async function getContractNames(): Promise<ContractNameInfo[]> {
-  return JSON.parse(
+export async function getContractNames() {
+  const unique = new Set<string>();
+  const names = JSON.parse(
     await readFile(new URL("../docs/contractNames.json", import.meta.url), {
       encoding: "utf8",
     }),
-  ).map((json: any) => {
-    try {
-      if (typeof json !== "object") {
-        throw new Error("not object");
-      } else if (typeof json.deployment !== "string") {
-        throw new Error("invalid deployment");
-      } else if (normalize(json.name) !== json.name) {
-        throw new Error("invalid name");
-      } else if (
-        typeof json.claim !== "undefined" &&
-        !CLAIMS.includes(json.claim)
-      ) {
-        throw new Error("invalid method");
+  );
+  if (!Array.isArray(names)) {
+    throw new Error("expected array");
+  }
+  return names
+    .map((json: ContractInfo) => {
+      try {
+        if (typeof json !== "object") {
+          throw new Error("not object");
+        } else if (typeof json.deployment !== "string") {
+          throw new Error("invalid deployment");
+        } else if (normalize(json.name) !== json.name) {
+          throw new Error("invalid name");
+        } else if (unique.has(json.name)) {
+          throw new Error("duplicate name");
+        } else if (unique.has(json.deployment)) {
+          throw new Error("duplicate deployment");
+        } else if (
+          typeof json.claim !== "undefined" &&
+          !CLAIMS.includes(json.claim)
+        ) {
+          throw new Error("invalid method");
+        }
+        unique.add(json.name);
+        unique.add(json.deployment);
+        return json;
+      } catch (cause) {
+        throw new Error(`invalid contract name: ${JSON.stringify(json)}`, {
+          cause,
+        });
       }
-      return json;
-    } catch (cause) {
-      throw new Error(`invalid contract name: ${JSON.stringify(json)}`, {
-        cause,
-      });
-    }
-  });
+    })
+    .sort((a, b) => {
+      let c = CLAIMS.indexOf(a.claim!) - CLAIMS.indexOf(b.claim!);
+      if (!c) c = a.deployment.localeCompare(b.deployment);
+      return c;
+    });
 }
 
 async function readChainId(dir: string): Promise<number> {
@@ -121,7 +139,7 @@ async function readDeployments(dir: string): Promise<Deployments> {
   );
 }
 
-export function createDeployResolverTx({
+export function createDeployResolverTransaction({
   info,
   v2,
 }: {
@@ -171,7 +189,7 @@ export function expectedResolverAddress({
   });
 }
 
-export function createMigrationTx({
+export function createMigrationTransaction({
   info,
   v1,
   v2,
@@ -217,8 +235,57 @@ export function createMigrationTx({
       };
 }
 
-export function createPopulateResolverTxs(): TransactionRequest[] {
-  return [];
+export function createClaimTransactions({
+  info,
+  v1,
+  v2,
+  names,
+}: {
+  info: NamingInfo;
+  v1: Deployments;
+  v2: Deployments;
+  names: DeployedContractInfo[];
+}): TransactionRequest[] {
+  const resolver = expectedResolverAddress({ info, v2 });
+  return names.flatMap((x) => {
+    if (!x.claim) return [];
+    if (x.claim === "ReverseClaimer") {
+      // the owner is already claimed
+      return {
+        to: v1.ENSRegistry,
+        data: encodeFunctionData({
+          abi: Abi_ENSRegistry,
+          functionName: "setResolver",
+          args: [namehash(getReverseName(x.address)), resolver],
+        }),
+      };
+    }
+    return {
+      to: v2.ReverseRegistrarAdapter,
+      data: encodeFunctionData({
+        abi: Abi_ReverseRegistrarAdapter,
+        functionName: "claim",
+        args: [x.address, resolver],
+      }),
+    };
+  });
+}
+
+export function createResolverCalls(names: DeployedContractInfo[]) {
+  return names.flatMap((x) => {
+    return [
+      encodeFunctionData({
+        abi: Abi_PermissionedResolver,
+        functionName: "setName",
+        args: [dnsEncodeName(getReverseName(x.address)), x.name],
+      }),
+      encodeFunctionData({
+        abi: Abi_PermissionedResolver,
+        functionName: "setAddress",
+        args: [dnsEncodeName(x.name), COIN_TYPE_ETH, x.address],
+      }),
+    ];
+  });
 }
 
 function resolveAccounts(chainId: number): NamingInfo {
@@ -248,6 +315,32 @@ function resolveAccounts(chainId: number): NamingInfo {
   }
 }
 
+export function filterContractInfos({
+  v1,
+  v2,
+  names,
+}: {
+  v1: Deployments;
+  v2: Deployments;
+  names: ContractInfo[];
+}): { found: DeployedContractInfo[]; missing: ContractInfo[] } {
+  const found: DeployedContractInfo[] = [];
+  const missing: ContractInfo[] = [];
+  for (const x of names) {
+    const address = v2[x.deployment] ?? v1[x.deployment];
+    if (address) {
+      found.push({ ...x, address });
+    } else {
+      missing.push(x);
+    }
+  }
+  return { found, missing };
+}
+
+function dump(x: any) {
+  console.log(JSON.stringify(x, null, "  "));
+}
+
 if (import.meta.main) {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
@@ -259,18 +352,22 @@ if (import.meta.main) {
       v1: {
         type: "string",
       },
-      relative: {
-        type: "boolean",
-        short: "R",
-      },
     },
     strict: true,
     allowPositionals: true,
   });
 
   const mode = positionals.shift()?.toLowerCase();
+  const names = await getContractNames();
   if (mode === "names") {
-    console.table(await getContractNames());
+    const max = names.reduce((a, x) => Math.max(a, x.name.length), 0);
+    console.table(
+      names.map(({ name, deployment, claim }) => ({
+        deployment,
+        name: name.padStart(max), // align right
+        claim,
+      })),
+    );
   } else if (mode) {
     const baseDir = fileURLToPath(new URL("../", import.meta.url));
     const v2Dir = join(baseDir, `./deployments/${values.v2}/`);
@@ -284,6 +381,7 @@ if (import.meta.main) {
     if (!v1.ENSRegistry) {
       throw new Error(`invalid V1 deployment: ${v1Dir}`);
     }
+    const collisions = Object.keys(v1).filter((x) => v2[x]);
     const chainId = await readChainId(v2Dir);
     if (chainId !== (await readChainId(v2Dir))) {
       throw new Error(`chain mismatch: ${v1.chainId} != ${v2.chainId}`);
@@ -292,36 +390,60 @@ if (import.meta.main) {
     console.log(`Mode: ${mode}`);
     console.log(`V1 Deployment: ${relative(baseDir, v1Dir)}`);
     console.log(`V2 Deployment: ${relative(baseDir, v2Dir)}`);
+    if (collisions.length) {
+      console.log(`Collisions[${collisions.length}]: ${collisions}`);
+    }
     console.log(`V1 Owner: ${info.v2Owner} [wrapper=${info.isWrapped}]`);
     console.log(`V2 Owner: ${info.v2Owner}`);
     console.log(
-      `Managers[${info.managers.length}]: ${info.managers.join(" ")}`,
+      `Managers[${info.managers.length}]: ${info.managers.join(", ") || "<none>"}`,
     );
     console.log();
 
+    function getDeployedNames() {
+      const { found, missing } = filterContractInfos({ v1, v2, names });
+      if (missing.length) {
+        missing.forEach((x) => console.log(`Cannot name: ${x.deployment}`));
+        console.log();
+      }
+      return found;
+    }
+
+    function createResolverTransactions(names: DeployedContractInfo[]) {
+      const to = expectedResolverAddress({ info, v2 });
+      return createResolverCalls(names).map((data) => ({
+        to,
+        data,
+      }));
+    }
+
     switch (mode) {
       case "deploy": {
-        console.log(createDeployResolverTx({ info, v2 }));
+        dump(createDeployResolverTransaction({ info, v2 }));
         break;
       }
       case "migrate": {
-        console.log(createMigrationTx({ info, v1, v2 }));
+        dump(createMigrationTransaction({ info, v1, v2 }));
+        break;
+      }
+      case "claim": {
+        dump(
+          createClaimTransactions({ info, v1, v2, names: getDeployedNames() }),
+        );
         break;
       }
       case "populate": {
-        console.log(createPopulateResolverTxs());
+        dump(createResolverTransactions(getDeployedNames()));
         break;
       }
       case "init": {
-        console.log([
-          createDeployResolverTx({ info, v2 }),
-          createMigrationTx({ info, v1, v2 }),
-          ...createPopulateResolverTxs(),
+        const names = getDeployedNames();
+        dump([
+          createDeployResolverTransaction({ info, v2 }),
+          createMigrationTransaction({ info, v1, v2 }),
+          createClaimTransactions({ info, v1, v2, names }),
+          ...createResolverTransactions(names),
         ]);
-        break;
-      }
-      case "diff": {
-        console.log("TODO");
         break;
       }
       default: {
@@ -350,10 +472,10 @@ if (import.meta.main) {
         mode: "init",
         description: "Generate calldata for initial deployment",
       },
-      {
-        mode: "diff",
-        description: "Generate calldata for a change in deployment",
-      },
+      // {
+      //   mode: "diff",
+      //   description: "Generate calldata for a change in deployment",
+      // },
     ]);
   }
 }

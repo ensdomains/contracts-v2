@@ -99,7 +99,7 @@ describe("v1 registrar freeze", () => {
   } = {}) {
     rmSync(workDir, { recursive: true, force: true });
     for (const [name, contract] of [
-      ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
+      ["BaseRegistrarImplementation", env.v1.BaseRegistrarImplementation],
       ["RegistrarSecurityController", env.v1.RegistrarSecurityController],
       ["ReverseRegistrar", env.v1.ReverseRegistrar],
       ["DefaultReverseRegistrar", env.v1.DefaultReverseRegistrar],
@@ -136,7 +136,7 @@ describe("v1 registrar freeze", () => {
   function writeHCAResumeDeploymentArtifacts() {
     rmSync(workDir, { recursive: true, force: true });
     for (const [name, contract] of [
-      ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
+      ["BaseRegistrarImplementation", env.v1.BaseRegistrarImplementation],
       ["RegistrarSecurityController", env.v1.RegistrarSecurityController],
       ["ReverseRegistrar", env.v1.ReverseRegistrar],
       ["DefaultReverseRegistrar", env.v1.DefaultReverseRegistrar],
@@ -407,7 +407,9 @@ describe("v1 registrar freeze", () => {
         ]),
       ).resolves.toBe(false);
       await expect(
-        env.v1.BaseRegistrar.read.controllers([ARCHIVED_ETH_RENEWER]),
+        env.v1.BaseRegistrarImplementation.read.controllers([
+          ARCHIVED_ETH_RENEWER,
+        ]),
       ).resolves.toBe(false);
 
       // The active deployment's adapters keep writing reverse records.
@@ -639,10 +641,14 @@ describe("v1 registrar freeze", () => {
       await disableV1Registrars(freezeOptions());
 
       await expect(
-        env.v1.BaseRegistrar.read.controllers([ARCHIVED_ETH_RENEWER]),
+        env.v1.BaseRegistrarImplementation.read.controllers([
+          ARCHIVED_ETH_RENEWER,
+        ]),
       ).resolves.toBe(false);
       await expect(
-        env.v1.BaseRegistrar.read.controllers([env.v1.NameWrapper.address]),
+        env.v1.BaseRegistrarImplementation.read.controllers([
+          env.v1.NameWrapper.address,
+        ]),
       ).resolves.toBe(false);
     },
     TEST_TIMEOUT_MS,
@@ -657,17 +663,21 @@ describe("v1 registrar freeze", () => {
 
       // Routing through the security controller would revert here: it is a
       // pass-through that only works while it owns the registrar.
-      expect(getAddress(await env.v1.BaseRegistrar.read.owner())).toBe(
-        getAddress(registrarOwner.address),
-      );
+      expect(
+        getAddress(await env.v1.BaseRegistrarImplementation.read.owner()),
+      ).toBe(getAddress(registrarOwner.address));
 
       await disableV1Registrars(freezeOptions());
 
       await expect(
-        env.v1.BaseRegistrar.read.controllers([ARCHIVED_ETH_RENEWER]),
+        env.v1.BaseRegistrarImplementation.read.controllers([
+          ARCHIVED_ETH_RENEWER,
+        ]),
       ).resolves.toBe(false);
       await expect(
-        env.v1.BaseRegistrar.read.controllers([env.v1.NameWrapper.address]),
+        env.v1.BaseRegistrarImplementation.read.controllers([
+          env.v1.NameWrapper.address,
+        ]),
       ).resolves.toBe(false);
       await expect(
         env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
@@ -724,7 +734,7 @@ describe("v1 registrar freeze", () => {
       // A contract that forwards to no reverse registrar: it answers no
       // back-reference, so the audit must read it as v1's own rather than as a
       // superseded handoff contract.
-      const v1Controller = env.v1.BaseRegistrar.address;
+      const v1Controller = env.v1.BaseRegistrarImplementation.address;
       const reverseOwner = await ownerAccountOf(env.v1.ReverseRegistrar);
       await env.v1.ReverseRegistrar.write.setController([v1Controller, true], {
         account: reverseOwner,
@@ -758,7 +768,9 @@ describe("v1 registrar freeze", () => {
         env.v1.ReverseRegistrar.read.controllers([ARCHIVED_REVERSE_ADAPTER]),
       ).resolves.toBe(false);
       await expect(
-        env.v1.BaseRegistrar.read.controllers([ARCHIVED_ETH_RENEWER]),
+        env.v1.BaseRegistrarImplementation.read.controllers([
+          ARCHIVED_ETH_RENEWER,
+        ]),
       ).resolves.toBe(false);
 
       // The active namespace shares no prefix with the network, so a network-keyed

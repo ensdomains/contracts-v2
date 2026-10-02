@@ -5,27 +5,46 @@
   },
   {
     "deployment": "Root",
-    "name": "root.legacy.ens.eth"
+    "name": "root.legacy.ens.eth",
+    "claim": "Ownable"
   },
   {
     "deployment": "BaseRegistrarImplementation",
-    "name": "registrar.legacy.ens.eth"
+    "name": "registrar.legacy.ens.eth",
+    "comment": "Ownable but by RegistrarSecurityCouncil or ETHRenewerV1"
+  },
+  {
+    "deployment": "DNSRegistrar",
+    "name": "dnsregistrar.legacy.ens.eth"
+  },
+  {
+    "deployment": "ExtendedDNSResolver",
+    "name": "dnsname.legacy.ens.eth"
+  },
+  {
+    "deployment": "OffchainDNSResolver",
+    "name": "dns.resolver.legacy.ens.eth"
   },
   {
     "deployment": "NameWrapper",
-    "name": "wrapper.legacy.ens.eth"
+    "name": "wrapper.legacy.ens.eth",
+    "claim": "ReverseClaimer"
   },
   {
     "deployment": "PublicResolver",
-    "name": "resolver.legacy.ens.eth"
+    "name": "resolver.legacy.ens.eth",
+    "claim": "ReverseClaimer"
   },
   {
     "deployment": "UpgradableUniversalResolverProxy",
-    "name": "universal.ens.eth"
+    "name": "universal.ens.eth",
+    "claim": "DelegatedContractNamer",
+    "comment": "top proxy => UniversalResolverV2"
   },
   {
     "deployment": "UniversalResolverV1",
-    "name": "impl.universal.legacy.ens.eth"
+    "name": "impl.universal.legacy.ens.eth",
+    "claim": "ReverseClaimer"
   },
   {
     "deployment": "ContractNamer",
@@ -61,16 +80,6 @@
     "deployment": "BoxedENSURIRenderer",
     "name": "boxed-uri-renderer.registry.ens.eth",
     "claim": "Ownable"
-  },
-  {
-    "deployment": "ENSV1Resolver",
-    "name": "2to1.resolver.ens.eth",
-    "claim": "DelegatedContractNamer"
-  },
-  {
-    "deployment": "ENSV2Resolver",
-    "name": "1to2.resolver.ens.eth",
-    "claim": "DelegatedContractNamer"
   },
   {
     "deployment": "PermissionedResolverImpl",
@@ -110,11 +119,6 @@
   {
     "deployment": "DNSTXTResolver",
     "name": "dnsname.ens.eth",
-    "claim": "DelegatedContractNamer"
-  },
-  {
-    "deployment": "DNSTXTResolver",
-    "name": "dnstxt.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {

@@ -382,7 +382,7 @@ export async function setupDevnet({
         address: rocketh.get("ENSRegistry").address,
         client,
       }),
-      BaseRegistrar: getContract({
+      BaseRegistrarImplementation: getContract({
         abi: Abi_BaseRegistrarImplementation,
         address: rocketh.get("BaseRegistrarImplementation").address,
         client,
@@ -944,7 +944,7 @@ export async function setupDevnet({
         { account },
       );
       // on fork, also grant deployer registrar-controller rights so morticia's
-      // e2e harness can call into v1.BaseRegistrar from the test mnemonic
+      // e2e harness can call into v1.BaseRegistrarImplementation from the test mnemonic
       // (matches the synthetic devnet's implicit "deployer can register" stance)
       if (isFork) {
         await v1.RegistrarSecurityController.write.addRegistrarController(
@@ -998,7 +998,7 @@ export async function setupDevnet({
               args: [dnsEncodeName(x.name), COIN_TYPE_ETH, address],
             }),
           );
-          if (x.claim) {
+          if (x.claim && x.claim !== "ReverseClaimer") {
             await v2.ReverseRegistrarAdapter.write.claim(
               [address, resolver.address],
               { account },
@@ -1012,6 +1012,9 @@ export async function setupDevnet({
             }
           }
         } catch (err) {
+          if (err instanceof ContractFunctionExecutionError) {
+            err = err.metaMessages?.[0] || err.shortMessage;
+          }
           console.log(`Cannot name: ${x.name}: ${err}`);
         }
       }

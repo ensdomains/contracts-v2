@@ -247,7 +247,10 @@ describe("PreMigration", () => {
     await registerV1Name(env, healthy, user.address, ONE_YEAR_SECONDS);
     await registerV1Name(env, extreme, user.address, ONE_YEAR_SECONDS);
     // Push it far beyond any representable date, as the real name is.
-    await env.v1.BaseRegistrar.write.renew([idFromLabel(extreme), 2n ** 63n]);
+    await env.v1.BaseRegistrarImplementation.write.renew([
+      idFromLabel(extreme),
+      2n ** 63n,
+    ]);
 
     createCSVFile(csvFilePath, [extreme, healthy]);
     await main(buildMainArgs(env, csvFilePath));
@@ -267,7 +270,10 @@ describe("PreMigration", () => {
     for (const label of labels) {
       await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
     }
-    await env.v1.BaseRegistrar.write.renew([idFromLabel(labels[1]), 2n ** 63n]);
+    await env.v1.BaseRegistrarImplementation.write.renew([
+      idFromLabel(labels[1]),
+      2n ** 63n,
+    ]);
 
     createCSVFile(csvFilePath, labels);
     await main(buildMainArgs(env, csvFilePath));
@@ -735,7 +741,7 @@ describe("PreMigration", () => {
       env.v2.ETHRegistry.address,
       registryAbi,
       {
-        baseRegistrar: env.v1.BaseRegistrar.address,
+        baseRegistrar: env.v1.BaseRegistrarImplementation.address,
         registry: env.v1.ENSRegistry.address,
         nameWrapper: env.v1.NameWrapper.address,
       },
@@ -1624,7 +1630,9 @@ describe("PreMigration", () => {
     // The reclaim leaves an expiry the expiry rule alone reads as claimable.
     expect(reclaimedExpiry).toBe(MAX_EXPIRY - V1_GRACE_PERIOD_SECONDS);
     expect(
-      await env.v1.BaseRegistrar.read.ownerOf([idFromLabel(reclaimed)]),
+      await env.v1.BaseRegistrarImplementation.read.ownerOf([
+        idFromLabel(reclaimed),
+      ]),
     ).toBe(getAddress(env.v2.Graveyard.address));
 
     createCSVFile(csvFilePath, [reclaimed, live]);
@@ -1710,7 +1718,7 @@ describe("PreMigration", () => {
     // In grace the registrar no longer names a holder, so only the registry's node
     // owner says the Graveyard has it.
     await expect(
-      env.v1.BaseRegistrar.read.ownerOf([idFromLabel(label)]),
+      env.v1.BaseRegistrarImplementation.read.ownerOf([idFromLabel(label)]),
     ).rejects.toThrow();
 
     createCSVFile(csvFilePath, [label]);
@@ -1740,9 +1748,11 @@ describe("PreMigration", () => {
       ],
       { account: user },
     );
-    expect(await env.v1.BaseRegistrar.read.ownerOf([idFromLabel(held)])).toBe(
-      getAddress(env.v1.NameWrapper.address),
-    );
+    expect(
+      await env.v1.BaseRegistrarImplementation.read.ownerOf([
+        idFromLabel(held),
+      ]),
+    ).toBe(getAddress(env.v1.NameWrapper.address));
 
     createCSVFile(csvFilePath, [held, kept]);
     await main(buildMainArgs(env, csvFilePath));

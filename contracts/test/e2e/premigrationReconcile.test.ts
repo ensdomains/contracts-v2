@@ -174,7 +174,7 @@ describe("premigration reconcile", () => {
       rpcUrl: `http://${env.hostPort}`,
       workDir,
       registry: env.v2.ETHRegistry.address,
-      v1BaseRegistrar: env.v1.BaseRegistrar.address,
+      v1BaseRegistrar: env.v1.BaseRegistrarImplementation.address,
       graveyards: [env.v2.Graveyard.address],
       bonusPeriodDays: String(BONUS_PERIOD_DAYS),
       fromBlock: fromBlock.toString(),
@@ -353,7 +353,7 @@ describe("premigration reconcile", () => {
     // unmigratable. Asserting a non-zero figure is the point: reading the wrong
     // storage key returns empty records and reports zero however many exist.
     const { user } = env.namedAccounts;
-    await env.v1.BaseRegistrar.write.safeTransferFrom(
+    await env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
       [
         user.address,
         env.v1.NameWrapper.address,
@@ -641,14 +641,15 @@ describe("premigration reconcile", () => {
     // mainnet names were. Pre-migration refuses that shape, so it never reaches v2.
     const bracketed = `[${"0418".padEnd(64, "0")}]`;
     const bracketedId = keccak256(stringToHex(bracketed));
-    await env.v1.BaseRegistrar.write.register([
+    await env.v1.BaseRegistrarImplementation.write.register([
       BigInt(bracketedId),
       user.address,
       BigInt(ONE_YEAR_SECONDS),
     ]);
-    const bracketedExpiry = await env.v1.BaseRegistrar.read.nameExpires([
-      BigInt(bracketedId),
-    ]);
+    const bracketedExpiry =
+      await env.v1.BaseRegistrarImplementation.read.nameExpires([
+        BigInt(bracketedId),
+      ]);
     writeFileSync(
       csvFile,
       `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,,,,,${bracketed},,`,
@@ -1026,7 +1027,7 @@ describe("premigration reconcile", () => {
     const indexEntries = await Promise.all(
       [locked, unwrapped, stayer].map(async (label) => ({
         id: labelhash(label),
-        expiry: await env.v1.BaseRegistrar.read.nameExpires([
+        expiry: await env.v1.BaseRegistrarImplementation.read.nameExpires([
           idFromLabel(label),
         ]),
       })),
