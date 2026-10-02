@@ -84,6 +84,9 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   ```
   Add `--include-testnet-premigration-registrar` on testnet/clean runs to also deploy
   `TestnetV1PremigrationRegistrar`. Re-run with `--resume` to continue an *interrupted* deploy.
+  Every command tolerates a load-balanced RPC: a lookup of a just-sent transaction that a lagging
+  node answers with an error ("No Result") is asked again, and still failing is answered as not
+  found, so the deploy waits for the receipt instead of stopping.
 - **Prerequisites:** `bun run compile`; a freshly funded deployer (phase 1 sends many transactions).
 - **Env / args:** `DEPLOYER_KEY` (also the `owner`/`urManager` fallback and the BatchRegistrar owner);
   `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` for the deferred v1-owner replay. `phase deploy-v2` cannot

@@ -8,7 +8,10 @@ import {
 } from "viem";
 import { sepolia } from "viem/chains";
 
-import { privateKeyRpcProvider } from "../../script/migrations/rpc.js";
+import {
+  answerLookup,
+  privateKeyRpcProvider,
+} from "../../script/migrations/rpc.js";
 
 const KEY =
   "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
@@ -155,5 +158,58 @@ describe("a deploy signer on a load-balanced endpoint", () => {
       stop();
     }
     expect(sent[0].gas).toBe((21_000n * 130n) / 100n);
+  });
+});
+
+describe("a transaction lookup on a load-balanced endpoint", () => {
+  const request = {
+    jsonrpc: "2.0",
+    id: 7,
+    method: "eth_getTransactionByHash",
+    params: [`0x${"ab".repeat(32)}`],
+  };
+  const reply = (body: object) =>
+    new Response(JSON.stringify({ jsonrpc: "2.0", id: 7, ...body }));
+  const noResult = () => reply({ error: { code: 5000, message: "No Result" } });
+  const found = () => reply({ result: { hash: request.params[0] } });
+
+  // A node that answers each request in turn from the given replies.
+  function node(...replies: Array<() => Response>) {
+    let calls = 0;
+    const fetch = (async () => replies[Math.min(calls++, replies.length - 1)]()) as never;
+    return { fetch, calls: () => calls };
+  }
+
+  const answer = async (first: Response, fake: ReturnType<typeof node>) =>
+    (await (
+      await answerLookup(fake.fetch, "rpc", {}, request, first, 0)
+    ).json()) as {
+      jsonrpc: string;
+      id: number;
+      result?: unknown;
+      error?: unknown;
+    };
+
+  it("passes an answer through untouched", async () => {
+    const fake = node(found);
+    expect((await answer(found(), fake)).result).toEqual({
+      hash: request.params[0],
+    });
+    expect(fake.calls()).toBe(0);
+  });
+
+  it("asks again when a node has not indexed the transaction yet", async () => {
+    const fake = node(noResult, found);
+    expect((await answer(noResult(), fake)).result).toEqual({
+      hash: request.params[0],
+    });
+    expect(fake.calls()).toBe(2);
+  });
+
+  it("answers as not found once the lookup keeps failing", async () => {
+    const fake = node(noResult);
+    const body = await answer(noResult(), fake);
+    expect(body).toEqual({ jsonrpc: "2.0", id: 7, result: null });
+    expect(fake.calls()).toBe(4);
   });
 });
