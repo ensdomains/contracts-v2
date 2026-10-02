@@ -115,6 +115,11 @@ stack inside an existing namespace, redeploying only what changed and preparing 
 replacement reverse adapters plus revocations of every prior one — replay the deferred owner
 transactions afterwards.
 
+Phase 1 also deploys the standalone `UniversalResolverV1`, which no proxy points at
+(see [universalResolver.md](./universalResolver.md)). To add it to a namespace deployed before it
+existed, run `phase deploy-v2 --resume --tags UniversalResolverV1`: it deploys that one contract and
+leaves the rest of the namespace untouched.
+
 ### Phase 2: initial pre-migration
 
 - **Command:**

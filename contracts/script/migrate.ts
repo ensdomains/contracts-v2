@@ -5744,6 +5744,7 @@ export async function deployV2(opts: DeployV2Options) {
     "UnlockedMigrationController",
     "LockedMigrationController",
     "UniversalResolverV2",
+    "UniversalResolverV1",
     "ManagedUniversalResolverProxy",
     "UpgradableUniversalResolverProxy",
     "ReverseRegistrarAdapter",
