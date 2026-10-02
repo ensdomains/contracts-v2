@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAddress, type Address } from "viem";
@@ -109,6 +109,17 @@ describe("registry handover", () => {
             getAddress(finding.holder.account as Address) === deployer(),
         ),
       ).toEqual([]);
+
+      // The audit leaves the state it read beside the namespace's artifacts.
+      const rolesDoc = readFileSync(
+        join(deploymentsDir, NAMESPACE, "roles.md"),
+        "utf-8",
+      );
+      expect(rolesDoc).toContain("at the `post-registry-handover` stage");
+      expect(rolesDoc).toContain("### RootRegistry");
+      expect(rolesDoc).toMatch(
+        new RegExp(`"eth" entry \\| \\*\\*owner[^*]*\\*\\*<br>\\[${owner()}\\]`),
+      );
     },
     TEST_TIMEOUT_MS,
   );

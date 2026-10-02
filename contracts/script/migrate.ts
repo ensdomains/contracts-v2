@@ -26,6 +26,7 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   getAddress,
+  isAddress,
   getContract,
   http,
   keccak256,
@@ -61,6 +62,16 @@ import { isHCAOnlyDeployment } from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import { generateAddressMarkdown } from "./addressDocs.js";
+import {
+  addressLabels,
+  type ContractControl,
+  type Labelled,
+  labelled,
+  type RoleHolding,
+  roleFamily,
+  type RoleMap,
+  writeRolesMarkdown,
+} from "./rolesDoc.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   DEPLOYMENT_ROLES,
@@ -266,8 +277,6 @@ export const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
 /// instantiation depth and degrades every result to `unknown`.
 const REGISTRY_STATE_ABI = PermissionedRegistryFragments.getState;
 const REGISTRY_RESOLVER_ABI = PermissionedRegistryFragments.getResolver;
-const REGISTRY_RESOURCE_ABI = PermissionedRegistryFragments.getResource;
-const REGISTRY_ROLES_ABI = PermissionedRegistryFragments.roles;
 const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
@@ -3791,7 +3800,8 @@ const EXPECTED_ROOT_ROLES: Record<
 // Only RootRegistry is audited this way. Its token set is the TLDs the deployment
 // creates, so an unexpected scoped grant there means something. ETHRegistry's token
 // set is the whole namespace — every registered name grants its owner roles at its
-// own resource — so the same sweep would report the entire namespace as unexpected.
+// own resource — so its scoped grants are not read at all (see
+// `NAMESPACE_REGISTRIES`).
 const EXPECTED_TOKEN_ROLES: Record<
   (typeof AUDITED_REGISTRIES)[number],
   Array<{
@@ -3827,9 +3837,6 @@ const EXPECTED_TOKEN_ROLES: Record<
   ETHRegistry: [],
 };
 
-const AUDIT_TOKEN_SCOPES: Record<(typeof AUDITED_REGISTRIES)[number], boolean> =
-  { RootRegistry: true, ETHRegistry: false };
-
 // Every (resource, account) a role has ever been granted at on a registry. Used only
 // to decide who to ask about — what they actually hold is read live, because expiry
 // and re-registration change effective authority without emitting anything.
@@ -3861,17 +3868,6 @@ async function discoverRoleGrants(
   return [...grants.values()];
 }
 
-// How a resource is named in the audit output. The root is the root; a token scope is
-// named by its label where the deployment defines one, and by its resource id where
-// it does not.
-function describeScope(
-  resource: bigint,
-  labelByResource: Map<string, string>,
-): string {
-  if (resource === 0n) return "root";
-  return labelByResource.get(resource.toString()) ?? `resource ${resource}`;
-}
-
 export async function verifyV2Roles(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -3888,7 +3884,7 @@ export async function verifyV2Roles(opts: {
 }) {
   const stage = opts.stage ?? "post-handoff";
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
 
@@ -3913,10 +3909,20 @@ export async function verifyV2Roles(opts: {
   }
 
   console.log(`auditing the ${stage} role matrix`);
+  const map = await readRoleMap({
+    client,
+    chainId: chain.id,
+    network: opts.network,
+    deploymentsDir,
+    deploymentNetwork,
+    deployer,
+    owner,
+    fromBlock:
+      opts.fromBlock !== undefined ? BigInt(opts.fromBlock) : undefined,
+  });
 
   const holders: RoleHolder[] = [];
   const expectations: RoleExpectation[] = [];
-
   for (const registryName of AUDITED_REGISTRIES) {
     const registry = maybeLoadV2Deployment(
       deploymentsDir,
@@ -3935,146 +3941,43 @@ export async function verifyV2Roles(opts: {
       )?.address;
     };
 
-    for (const entry of EXPECTED_ROOT_ROLES[registryName]) {
-      // A grant limited to other stages is expected to be absent here, so it is
-      // reported if held rather than simply not being checked.
-      if (entry.stages && !entry.stages.includes(stage)) continue;
-      const address = resolveAccount(entry.deployment);
-      // A contract this deployment does not include simply has no expectation; the
-      // discovery pass below still reports it if it somehow holds roles.
-      if (!address) continue;
-      expectations.push({
-        contract: registryName,
+    // A grant limited to other stages is expected to be absent here, so it is
+    // reported if held rather than simply not being checked. A contract this
+    // deployment does not include simply has no expectation; the reads still report
+    // it if it somehow holds roles.
+    const expected = [
+      ...EXPECTED_ROOT_ROLES[registryName].map((entry) => ({
+        ...entry,
         scope: "root",
-        account: getAddress(address),
-        roles: entry.roles,
-      });
-    }
-
-    // The resource a token's grants live at moves when the name expires or is
-    // re-registered, so it is resolved live rather than taken from the grant event.
-    const labelByResource = new Map<string, string>();
-    const wanted = new Map<string, { resource: bigint; account: Address }>();
-    const want = (resource: bigint, account: Address) => {
-      wanted.set(`${resource}|${account.toLowerCase()}`, { resource, account });
-    };
-
-    for (const entry of EXPECTED_TOKEN_ROLES[registryName]) {
+      })),
+      ...EXPECTED_TOKEN_ROLES[registryName].map((entry) => ({
+        ...entry,
+        scope: entry.label,
+      })),
+    ];
+    for (const entry of expected) {
+      if (entry.stages && !entry.stages.includes(stage)) continue;
       const address = resolveAccount(entry.deployment);
       if (!address) continue;
-      const resource = (await client.readContract({
-        address: registry.address,
-        abi: Artifact_PermissionedRegistry.abi,
-        functionName: "getResource",
-        args: [labelId(entry.label)],
-      })) as bigint;
-      labelByResource.set(resource.toString(), entry.label);
-      // Asked about at every stage, so a grant that should be gone is reported.
-      want(resource, getAddress(address));
-      if (entry.stages && !entry.stages.includes(stage)) continue;
       expectations.push({
         contract: registryName,
-        scope: entry.label,
+        scope: entry.scope,
         account: getAddress(address),
         roles: entry.roles,
       });
     }
 
-    const fromBlock =
-      opts.fromBlock !== undefined
-        ? BigInt(opts.fromBlock)
-        : (readDeploymentBlock(
-            deploymentsDir,
-            deploymentNetwork,
-            registryName,
-          ) ?? 0n);
-    const discovered = await discoverRoleGrants(
-      client,
-      registry.address,
-      fromBlock,
-    );
-
-    // Everyone ever granted anything here is asked about the root, whichever scope
-    // they were discovered at: a token grantee may hold root roles too.
-    const rootAccounts = new Set<Address>([
-      ...discovered.map((grant) => grant.account),
-      ...expectations
-        .filter((expectation) => expectation.contract === registryName)
-        .map((expectation) => getAddress(expectation.account as Address)),
-    ]);
-    for (const account of rootAccounts) want(0n, account);
-
-    // A scoped grant survives in storage after the name it belongs to is expired or
-    // re-registered, but the resource it sits at is no longer the one the registry
-    // consults, so the roles cannot be exercised. Reporting those would be noise;
-    // the current resource is the only one that carries authority.
-    if (AUDIT_TOKEN_SCOPES[registryName]) {
-      const scoped = discovered.filter((grant) => grant.resource !== 0n);
-      const resources = [...new Set(scoped.map((grant) => grant.resource))];
-      const current = await client.multicall({
-        allowFailure: true,
-        contracts: resources.map(
-          (resource) =>
-            ({
-              address: registry.address,
-              abi: REGISTRY_RESOURCE_ABI,
-              functionName: "getResource",
-              args: [resource],
-            }) as const,
-        ),
-      });
-      const live = new Set<string>();
-      let orphaned = 0;
-      for (const [index, resource] of resources.entries()) {
-        const result = current[index];
-        if (result.status === "failure") continue;
-        if (result.result === resource) live.add(resource.toString());
-        else orphaned++;
-      }
-      for (const grant of scoped) {
-        if (live.has(grant.resource.toString())) {
-          want(grant.resource, grant.account);
-        }
-      }
-      if (orphaned > 0) {
-        console.log(
-          `${registryName}: ${orphaned} scoped grant resource(s) superseded by a re-registration, so no longer reachable`,
-        );
-      }
-    }
-
-    // Reading live is what makes the audit sound: a replay of the discovery events
-    // would report grants that expiry or a version bump has since made unreachable.
-    const pairs = [...wanted.values()];
-    const results = await client.multicall({
-      allowFailure: true,
-      contracts: pairs.map(
-        (pair) =>
-          ({
-            address: registry.address,
-            abi: REGISTRY_ROLES_ABI,
-            functionName: "roles",
-            args: [pair.resource, pair.account],
-          }) as const,
-      ),
-    });
-
-    for (const [index, pair] of pairs.entries()) {
-      const result = results[index];
-      const scope = describeScope(pair.resource, labelByResource);
-      if (result.status === "failure") {
-        throw new Error(
-          `${registryName}: roles(${scope}, ${pair.account}) failed: ${result.error}`,
-        );
-      }
-      const roles = result.result;
-      if (roles === 0n) continue;
+    for (const holding of map.holdings) {
+      if (!sameAddress(holding.contract.address, registry.address)) continue;
       holders.push({
         contract: registryName,
         address: registry.address,
-        scope,
-        account: pair.account,
-        roles,
+        scope:
+          holding.resource === ROOT_RESOURCE
+            ? "root"
+            : (holding.entry ?? `resource ${holding.resource}`),
+        account: holding.holder.address,
+        roles: holding.roles,
       });
     }
   }
@@ -4086,6 +3989,14 @@ export async function verifyV2Roles(opts: {
   }
 
   const findings = diffRoleMatrix(holders, expectations);
+  // Written before the verdict, so a failed audit still leaves the state it found.
+  const docPath = writeRolesMarkdown(
+    { ...map, audit: { stage, findings: findings.map(describeRoleFinding) } },
+    deploymentsDir,
+    deploymentNetwork,
+  );
+  console.log(`role mapping: ${docPath}`);
+
   if (findings.length === 0) {
     console.log(`role audit passed: ${holders.length} holder(s) as expected`);
     return findings;
@@ -4111,6 +4022,220 @@ function namespaceDeployer(
   )
     .map((record) => record && deploymentOrigin(record))
     .find((address): address is Address => address !== undefined);
+}
+
+// Registries whose per-name roles belong to the names' owners rather than to anyone
+// administering the deployment, so the role mapping leaves them out.
+const NAMESPACE_REGISTRIES = new Set(["ETHRegistry"]);
+const LABEL_REGISTERED_EVENT = parseAbiItem(
+  "event LabelRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
+);
+const ERC1967_ADMIN_SLOT =
+  "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
+// People-facing names for accounts a deployment's config only knows by role.
+const ACCOUNT_NAMES: Record<string, string> = {
+  [MAINNET_DAO.toLowerCase()]: "ENS DAO timelock",
+  [rockethConfig.accounts.securityCouncil.mainnet.toLowerCase()]:
+    "ENS Security Council Safe",
+};
+type RockethAccountName = keyof typeof rockethConfig.accounts;
+
+// The address a named account in rocketh/config.ts resolves to for an environment,
+// following aliases; undefined where it is a local signer index.
+function configuredAccount(
+  name: RockethAccountName,
+  environment: string,
+): Address | undefined {
+  const spec = rockethConfig.accounts[name] as Record<string, unknown>;
+  const value = spec[environment] ?? spec.default;
+  if (typeof value !== "string") return undefined;
+  if (isAddress(value)) return getAddress(value);
+  return value in rockethConfig.accounts
+    ? configuredAccount(value as RockethAccountName, environment)
+    : undefined;
+}
+
+/// Reads who controls every contract of a deployment namespace: the roles each
+/// account holds on it now, its `owner()` and ERC-1967 proxy admin, and whether a
+/// registry is emancipated. Accounts are named by the role the deploy config gives
+/// them, and by a people-facing name where one is known, so the result reads the
+/// same on any network.
+///
+/// Role holders are found from each contract's role-change events and their roles
+/// read live. A grant scoped to an entry survives in storage after the entry
+/// expires or is registered again, but the registry no longer consults the
+/// resource it sits at, so such a grant carries no authority and is left out.
+async function readRoleMap(opts: {
+  client: ReturnType<typeof publicClient>;
+  chainId: number;
+  network: MigrationNetwork;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  deployer: Address;
+  owner: Address;
+  /// Where every event scan starts; each contract's deploy block by default.
+  fromBlock?: bigint;
+}): Promise<RoleMap> {
+  const { client } = opts;
+  const environment = NETWORKS[opts.network].environment;
+  const namespaceDir = join(opts.deploymentsDir, opts.deploymentNetwork);
+  const deployments = readdirSync(namespaceDir)
+    .filter((file) => file.endsWith(".json") && !file.startsWith("."))
+    .map((file) => {
+      const record = JSON.parse(
+        readFileSync(join(namespaceDir, file), "utf-8"),
+      ) as JsonDeployment & {
+        contractName?: string;
+        receipt?: { blockNumber?: string | number };
+      };
+      return {
+        name: file.slice(0, -".json".length),
+        address: record.address ? getAddress(record.address) : undefined,
+        abi: record.abi ?? [],
+        contractName: record.contractName ?? file.slice(0, -".json".length),
+        deployBlock:
+          opts.fromBlock ??
+          (record.receipt?.blockNumber !== undefined
+            ? BigInt(record.receipt.blockNumber)
+            : 0n),
+      };
+    })
+    .filter(
+      (d): d is typeof d & { address: Address } => d.address !== undefined,
+    );
+  const hasFunction = (abi: readonly unknown[], name: string) =>
+    abi.some(
+      (item) =>
+        (item as { type?: string; name?: string }).type === "function" &&
+        (item as { name?: string }).name === name,
+    );
+
+  const accounts: Labelled[] = [];
+  const addAccount = (label: string, address: Address | undefined) => {
+    if (!address) return;
+    accounts.push({ label, address: getAddress(address) });
+    const name = ACCOUNT_NAMES[address.toLowerCase()];
+    if (name) accounts.push({ label: name, address: getAddress(address) });
+  };
+  addAccount("deployer", opts.deployer);
+  addAccount("owner", opts.owner);
+  addAccount(
+    "security council",
+    configuredAccount("securityCouncil", environment),
+  );
+  addAccount("v1 owner", configuredAccount("v1Owner", environment));
+  addAccount("UniversalResolver (top proxy)", DEPLOYED_UNIVERSAL_RESOLVER_PROXY);
+  const label = addressLabels(deployments, accounts);
+
+  const holdings: RoleHolding[] = [];
+  const control: ContractControl[] = [];
+  const seen = new Set<string>();
+  for (const deployment of deployments) {
+    if (seen.has(deployment.address.toLowerCase())) continue;
+    seen.add(deployment.address.toLowerCase());
+    const contract = labelled(label, deployment.address);
+    const read = (functionName: string, args: readonly unknown[] = []) =>
+      client.readContract({
+        address: deployment.address,
+        abi: deployment.abi,
+        functionName,
+        args,
+      } as never) as Promise<unknown>;
+
+    if (hasFunction(deployment.abi, "roles")) {
+      const isNamespace = NAMESPACE_REGISTRIES.has(deployment.name);
+      const isRegistry = hasFunction(deployment.abi, "getResource");
+      // The entries a registry registered, by the resource their roles sit at now.
+      const entries = new Map<string, string>();
+      if (isRegistry && !isNamespace) {
+        const registered = await readEventLogs(client, {
+          address: deployment.address,
+          event: LABEL_REGISTERED_EVENT,
+          fromBlock: deployment.deployBlock,
+          toBlock: await client.getBlockNumber(),
+        });
+        for (const log of registered) {
+          const { tokenId, label: entry } = log.args as {
+            tokenId: bigint;
+            label: string;
+          };
+          const resource = (await read("getResource", [tokenId])) as bigint;
+          entries.set(resource.toString(), entry);
+        }
+      }
+      let superseded = 0;
+      for (const grant of await discoverRoleGrants(
+        client,
+        deployment.address,
+        deployment.deployBlock,
+      )) {
+        if (grant.resource !== ROOT_RESOURCE) {
+          if (isNamespace) continue;
+          if (
+            isRegistry &&
+            ((await read("getResource", [grant.resource])) as bigint) !==
+              grant.resource
+          ) {
+            superseded++;
+            continue;
+          }
+        }
+        const roles = (await read("roles", [
+          grant.resource,
+          grant.account,
+        ])) as bigint;
+        if (roles === 0n) continue;
+        holdings.push({
+          contract,
+          resource: grant.resource,
+          entry: entries.get(grant.resource.toString()),
+          holder: labelled(label, grant.account),
+          roles,
+          family: roleFamily(deployment.contractName),
+        });
+      }
+      if (superseded > 0) {
+        console.log(
+          `${contract.label}: ${superseded} scoped grant(s) superseded by an expiry or re-registration, so no longer reachable`,
+        );
+      }
+    }
+
+    const owner = hasFunction(deployment.abi, "owner")
+      ? ((await read("owner").catch(() => undefined)) as Address | undefined)
+      : undefined;
+    const adminWord = await client.getStorageAt({
+      address: deployment.address,
+      slot: ERC1967_ADMIN_SLOT,
+    });
+    const proxyAdmin =
+      adminWord && BigInt(adminWord) !== 0n
+        ? getAddress(`0x${adminWord.slice(-40)}`)
+        : undefined;
+    const emancipated = hasFunction(deployment.abi, "isEmancipated")
+      ? ((await read("isEmancipated")) as boolean)
+      : undefined;
+    if (owner || proxyAdmin || emancipated !== undefined) {
+      control.push({
+        contract,
+        owner: owner && labelled(label, owner),
+        proxyAdmin: proxyAdmin && labelled(label, proxyAdmin),
+        emancipated,
+      });
+    }
+  }
+
+  return {
+    network: opts.deploymentNetwork,
+    chainId: opts.chainId,
+    block: await client.getBlockNumber(),
+    readAt: new Date().toISOString(),
+    holdings,
+    control,
+    namespaceRegistries: [...NAMESPACE_REGISTRIES].filter((name) =>
+      deployments.some((d) => d.name === name),
+    ),
+  };
 }
 
 const ROOT_RESOURCE = 0n;
@@ -9083,7 +9208,7 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         new Command("verify-roles")
           .description(
-            "Audit who holds which roles on the v2 registries against the deployment's intent",
+            "Audit who holds which roles on the v2 registries against the deployment's intent, and write roles.md beside the namespace's artifacts: every role, owner and proxy admin on its contracts, read from the chain",
           )
           .option(
             "--deployer <address>",

@@ -1160,6 +1160,19 @@ table as [`docs/addresses/<network>.md`](./addresses), which only tracks a netwo
 deployment. A `clean-testnet` namespace also gets a second section listing the ENSv1 contracts it
 deployed, since the v1 stack lives in `deployments/v1/<namespace>`.
 
+Beside it, `deployments/<namespace>/roles.md` records who controls the deployment, on any network.
+`phase verify-roles` writes it each time it runs, from the same reads it audits, so the file always
+matches an audited state. It lists every role held on each contract, each contract's `owner()` and
+ERC-1967 proxy admin, whether each registry is emancipated, and the audit's result for the stage it
+checked. Everything is read from the chain, not from what the deploy meant to grant, and every account
+and contract is named as well as given its address. Accounts take the role the deploy config gives them
+(deployer, owner, security council, v1 owner), plus a people-facing name where one is known, such as
+the ENS DAO timelock on mainnet. The roles each name's owner holds on its own `.eth` name are left out,
+and so is a grant on an entry that has since expired or been registered again, since it no longer
+carries authority. The file is written before the verdict, so a failed audit still leaves the state it
+found. Run `verify-roles` after each step that changes roles, including one the DAO or a Safe executes
+from prepared calldata.
+
 > **"Fresh v1" does not mean a fresh chain.** Only the ENS stack is deployed from scratch; the run
 > still reads Sepolia contracts it does not deploy. `deploy/01_StandardRentPriceOracle.ts` reads
 > `symbol()` and `decimals()` off the real Sepolia USDC, so on an empty local node that call returns
@@ -1271,7 +1284,7 @@ and idempotency rules.
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
 | `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 4) |
 | `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
-| `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`, `root-emancipated`) |
+| `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions, and write `deployments/<namespace>/roles.md` with every role, owner and proxy admin on the namespace's contracts; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`, `root-emancipated`) |
 | `phase hand-over-registry-admin` | Phase 8: the owner takes the root registry's and the `.eth` registry's root roles and the roles that set the `eth` entry's child registry and resolver, then the deployer drops every role it holds on them |
 | `phase emancipate-root-registry` | Phase 8, after probation: the owner drops its root registry roles except naming and metadata |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
