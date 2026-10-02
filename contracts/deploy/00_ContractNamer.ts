@@ -1,4 +1,5 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_ContractNamer } from "generated/artifacts/ContractNamer.js";
 
 export default execute(
   async ({ deployViaProxy, namedAccounts: { deployer, owner } }) => {
@@ -6,7 +7,7 @@ export default execute(
       "ContractNamer",
       {
         account: deployer,
-        artifact: artifacts.ContractNamer,
+        artifact: Artifact_ContractNamer,
       },
       {
         proxyContract: "UUPS",
@@ -18,6 +19,6 @@ export default execute(
     );
   },
   {
-    tags: ["ContractNamer", "v2"],
+    tags: ["ContractNamer", "v2", "migration:phase1:deploy-v2"],
   },
 );

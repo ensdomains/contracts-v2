@@ -1,5 +1,13 @@
-import { artifacts, execute } from "@rocketh";
-import { getAddress, namehash, zeroAddress } from "viem";
+import { execute } from "@rocketh";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_IGatewayProvider } from "generated/abis/IGatewayProvider.js";
+import type { Abi_RegistrarSecurityController } from "generated/abis/RegistrarSecurityController.js";
+import type { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImplementation.js";
+import type { Abi_OwnedResolver } from "generated/abis/OwnedResolver.js";
+import type { Abi_ENS } from "generated/abis/ENS.js";
+import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
+import { getAddress, namehash } from "viem";
 
 export default execute(
   async ({
@@ -11,53 +19,45 @@ export default execute(
     read,
     namedAccounts: { deployer, owner, v1Owner },
   }) => {
-    const batchGatewayProvider = await getV1<
-      (typeof artifacts.GatewayProvider)["abi"]
-    >(
+    const batchGatewayProvider = await getV1<Abi_IGatewayProvider>(
       "BatchGatewayProvider",
     );
-
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
-
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const ensRegistry =
-      await getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
-
-    const registrarSecurityController = await getV1<
-      (typeof artifacts.RegistrarSecurityController)["abi"]
-    >("RegistrarSecurityController").catch(() => null);
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
+    const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
+    const ensRegistry = await getV1<Abi_ENS>("ENSRegistry");
+    const registrarSecurityController =
+      await getV1<Abi_RegistrarSecurityController>(
+        "RegistrarSecurityController",
+      ).catch(() => {});
 
     console.log("Deploying ENSV2Resolver");
-    console.log("  - Getting ENSv1 .eth resolver");
+    // The ENSv1 `.eth` resolver comes from the v1 deployment rather than the registry,
+    // which points at an ENSV2Resolver mirror once one has been installed.
+    const ethResolver = await getV1<Abi_OwnedResolver>("OwnedResolver");
+    console.log(`  - ENSv1 .eth resolver: ${ethResolver.address}`);
     const currentResolver = await read(ensRegistry, {
       functionName: "resolver",
       args: [namehash("eth")],
     });
-    const ethResolver = getAddress(currentResolver) === getAddress(zeroAddress)
-      ? await getV1<(typeof artifacts.OwnedResolver)["abi"]>("OwnedResolver")
-        .then((deployment) => deployment.address)
-        .catch(() => currentResolver)
-      : currentResolver;
-    console.log(`  - Got: ${ethResolver}`);
 
-    const existingEnsV2Resolver = getOrNull<
-      (typeof artifacts.ENSV2Resolver)["abi"]
-    >("ENSV2Resolver");
-    const ensV2Resolver = existingEnsV2Resolver ?? await deploy("ENSV2Resolver", {
-      account: deployer,
-      artifact: artifacts.ENSV2Resolver,
-      args: [
-        batchGatewayProvider.address,
-        contractNamer.address,
-        rootRegistry.address,
-        ethResolver,
-      ],
-    });
+    const existingEnsV2Resolver =
+      getOrNull<(typeof Artifact_ENSV2Resolver)["abi"]>("ENSV2Resolver");
+    const ensV2Resolver =
+      existingEnsV2Resolver ??
+      (await deploy("ENSV2Resolver", {
+        account: deployer,
+        artifact: Artifact_ENSV2Resolver,
+        args: [
+          batchGatewayProvider.address,
+          contractNamer.address,
+          rootRegistry.address,
+          ethResolver.address,
+        ],
+      }));
 
-    if (getAddress(currentResolver) === getAddress(ensV2Resolver.address)) return;
+    if (getAddress(currentResolver) === getAddress(ensV2Resolver.address)) {
+      return;
+    }
 
     console.log("  - Setting ENSv1 .eth resolver to ENSV2Resolver");
     if (registrarSecurityController) {
@@ -67,9 +67,9 @@ export default execute(
         args: [ensV2Resolver.address],
       });
     } else {
-      const baseRegistrar = await getV1<
-        (typeof artifacts.BaseRegistrarImplementation)["abi"]
-      >("BaseRegistrarImplementation");
+      const baseRegistrar = await getV1<Abi_BaseRegistrarImplementation>(
+        "BaseRegistrarImplementation",
+      );
       await write(baseRegistrar, {
         account: v1Owner ?? owner,
         functionName: "setResolver",
@@ -85,6 +85,13 @@ export default execute(
       "RootRegistry",
       "EthOwnedResolver", // BaseRegistrarImplementation:setup => eventually setup as OwnedResolver
       "RegistrarSecurityController",
+      // The v1 deploy scripts register their interface ids against whatever
+      // `.eth` currently resolves to, through a write only the v1 resolver's
+      // owner can make. Repointing `.eth` has to come after all of them. Only a
+      // devnet or clean-testnet run carries these scripts; elsewhere the tags
+      // name nothing and impose no order.
+      "WrappedETHRegistrarController",
+      "StaticBulkRenewal", // depends on ETHRegistrarController, which depends on NameWrapper
     ],
   },
 );

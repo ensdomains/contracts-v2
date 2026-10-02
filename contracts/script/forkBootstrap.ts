@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Address, parseEther } from "viem";
+import { RegistrarOwnership } from "./migrations/abis.js";
 
 // v1 contracts on canonical mainnet that v2 deploys and `setup.ts` reference
 // by name through rocketh's `get()`. Pre-populated into the devnet deployments
@@ -47,7 +48,7 @@ export const ENS_DAO_MULTISIG: Address =
 // hard-coded because `lib/ens-contracts/deployments/mainnet/` does not ship
 // a rocketh artifact for it (the canonical deploy scripts wire it in only
 // for the synthetic devnet); the ABI is recovered from the archive sibling.
-const LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS: Address =
+export const LEGACY_ETH_REGISTRAR_CONTROLLER_ADDRESS: Address =
   "0x283Af0B28c62C092C9727F1Ee09c02CA627EB7F5";
 const LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE = join(
   "..",
@@ -56,15 +57,7 @@ const LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE = join(
   "ETHRegistrarController_mainnet_9380471.json",
 );
 
-const OWNER_ABI = [
-  {
-    type: "function",
-    name: "owner",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "address" }],
-  },
-] as const;
+const OWNER_ABI = RegistrarOwnership.owner;
 
 type ClientLike = {
   readContract: (args: {
@@ -123,10 +116,7 @@ export async function bootstrapForkDeployments({
   // Mirror the canonical `.chain` so rocketh's chainId/genesisHash checks pass
   // against the live forked node (which exposes the upstream genesis at block
   // 0). rocketh stores chainId as a string and compares it strictly.
-  await copyFile(
-    join(canonicalDir, ".chain"),
-    join(deploymentsDir, ".chain"),
-  );
+  await copyFile(join(canonicalDir, ".chain"), join(deploymentsDir, ".chain"));
 
   // sanity: bail loudly if the canonical chainId disagrees with the live one
   const liveChainHeader = JSON.parse(

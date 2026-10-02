@@ -1,4 +1,6 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
+import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import {
   SEC_PER_YEAR,
   PRICE_SCALE,
@@ -12,10 +14,8 @@ import {
   SEPOLIA_USDC,
   MAINNET_USDC,
   MAINNET_DAI,
+  ratioFromDecimals,
 } from "../script/deploy-constants.js";
-
-type MockERC20 =
-  (typeof artifacts)["test/mocks/MockERC20.sol/MockERC20"]["abi"];
 
 export default execute(
   async ({
@@ -27,20 +27,19 @@ export default execute(
     namedAccounts: { deployer, owner },
     tags,
   }) => {
-    const mockTokenArtifact = artifacts["test/mocks/MockERC20.sol/MockERC20"];
     // Mainnet whitelists the real payment tokens; the free-mint mocks are only
     // deployed (and only accepted) on test/dev networks. The ERC20 metadata
     // reads below (symbol/decimals) work against the real tokens too.
     const paymentTokens = tags.hasDao
       ? [
-          { address: MAINNET_USDC, abi: mockTokenArtifact.abi },
-          { address: MAINNET_DAI, abi: mockTokenArtifact.abi },
+          { address: MAINNET_USDC, abi: Artifact_MockERC20.abi },
+          { address: MAINNET_DAI, abi: Artifact_MockERC20.abi },
         ]
       : [
-          get<MockERC20>("MockUSDC"),
-          get<MockERC20>("MockDAI"),
+          get<(typeof Artifact_MockERC20)["abi"]>("MockUSDC"),
+          get<(typeof Artifact_MockERC20)["abi"]>("MockDAI"),
           ...(tags.sepolia || tags["clean-testnet"]
-            ? [{ address: SEPOLIA_USDC, abi: mockTokenArtifact.abi }]
+            ? [{ address: SEPOLIA_USDC, abi: Artifact_MockERC20.abi }]
             : []),
         ];
 
@@ -56,13 +55,14 @@ export default execute(
           read(x, { functionName: "decimals" }),
         ]);
         const decimals = Number(decimalsResult);
+        const [numer, denom] = ratioFromDecimals(decimals);
         return {
           MockERC20: symbol,
           paymentToken: x.address,
           decimals,
           Δ: decimals - PRICE_DECIMALS,
-          numer: 10n ** BigInt(Math.max(decimals - PRICE_DECIMALS, 0)),
-          denom: 10n ** BigInt(Math.max(PRICE_DECIMALS - decimals, 0)),
+          numer,
+          denom,
         };
       }),
     );
@@ -74,12 +74,12 @@ export default execute(
     );
 
     const standardRentPriceOracle =
-      getOrNull<typeof artifacts.StandardRentPriceOracle.abi>(
+      getOrNull<(typeof Artifact_StandardRentPriceOracle)["abi"]>(
         "StandardRentPriceOracle",
       ) ??
       (await deploy("StandardRentPriceOracle", {
         account: deployer,
-        artifact: artifacts.StandardRentPriceOracle,
+        artifact: Artifact_StandardRentPriceOracle,
         args: [
           owner,
           BASE_RATE_PER_CP,

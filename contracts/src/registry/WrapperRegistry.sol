@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
@@ -12,14 +12,16 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
-import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {ApprovedUpgradeGate} from "./ApprovedUpgradeGate.sol";
+import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
+import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
+import {IWrapperRegistry} from "./interfaces/IWrapperRegistry.sol";
+import {IWrapperRegistryInitializable} from "./interfaces/IWrapperRegistryInitializable.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -27,6 +29,7 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 ///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
     IWrapperRegistry,
+    IWrapperRegistryInitializable,
     PermissionedRegistry,
     LockedWrapperReceiver,
     Initializable,
@@ -41,7 +44,10 @@ contract WrapperRegistry is
     address public immutable V1_RESOLVER;
 
     /// @notice Gate for approved implementation upgrade targets.
-    ApprovedUpgradeGate public immutable UPGRADE_GATE;
+    IAddressSet public immutable UPGRADE_SET;
+
+    /// @notice Fixed URI renderer.
+    IRegistryURIRenderer public immutable URI_RENDERER;
 
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -61,8 +67,9 @@ contract WrapperRegistry is
     /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param ensV1Resolver The ENSv1 resolver.
-    /// @param upgradeGate The upgrade target allowlist.
+    /// @param upgradeSet The upgrade target allowlist.
     /// @param labelStore The shared label database.
+    /// @param uriRenderer The fixed URI renderer.
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
     /// @param publicResolver The replacement `PublicResolver`.
     /// @param namer The implementation namer.
@@ -71,8 +78,9 @@ contract WrapperRegistry is
         address graveyard,
         IVerifiableFactory verifiableFactory,
         address ensV1Resolver,
-        ApprovedUpgradeGate upgradeGate,
+        IAddressSet upgradeSet,
         ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
         IAddressSet publicResolverSet,
         address publicResolver,
         address namer
@@ -91,9 +99,10 @@ contract WrapperRegistry is
             publicResolver
         )
     {
-        V1_RESOLVER = ensV1Resolver;
-        UPGRADE_GATE = upgradeGate;
         _disableInitializers();
+        V1_RESOLVER = ensV1Resolver;
+        UPGRADE_SET = upgradeSet;
+        URI_RENDERER = uriRenderer;
     }
 
     /// @inheritdoc IERC165
@@ -108,10 +117,11 @@ contract WrapperRegistry is
             type(IWrapperRegistry).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
             type(IProxyAuthorization).interfaceId == interfaceId ||
+            type(IWrapperRegistryInitializable).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
-    /// @inheritdoc IWrapperRegistry
+    /// @inheritdoc IWrapperRegistryInitializable
     function initialize(
         bytes32 node,
         IRegistry parentRegistry,
@@ -128,8 +138,10 @@ contract WrapperRegistry is
         _initialRoleBitmap = roleBitmap;
         emit RegistryCreated();
         address virtualOwner = address(_parentRegistry);
-        emit ParentUpdated(parentRegistry, childLabel, virtualOwner);
+        emit ParentUpdated(parentRegistry, childLabel, address(0));
         _grantRoles(ROOT_RESOURCE, roleBitmap, virtualOwner, false);
+        _uriRenderer = URI_RENDERER;
+        emit URIUpdated("", address(URI_RENDERER), address(0));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -204,6 +216,16 @@ contract WrapperRegistry is
         return _node;
     }
 
+    /// @inheritdoc PermissionedRegistry
+    function isEmancipated()
+        public
+        pure
+        override(PermissionedRegistry, IPermissionedRegistry)
+        returns (bool)
+    {
+        return true; // see: LockedWrapperReceiver._subregistryRoleBitmapFromFuses()
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
@@ -246,16 +268,19 @@ contract WrapperRegistry is
     /// @inheritdoc PermissionedRegistry
     /// @dev Override for token-dependent logic:
     ///
-    /// * if root and account is token owner, remap to virtual owner.
+    /// * if root and account is token owner or approved, remap to virtual owner.
     ///
     function _getRoles(uint256 resource, address account) internal view override returns (uint256) {
         if (resource == ROOT_RESOURCE) {
             address parent = address(_parentRegistry); // virtual owner
-            if (
-                parent != address(0) &&
-                account == PermissionedRegistry(parent).findOwner(_childLabel)
-            ) {
-                return super._getRoles(resource, parent); // replace, instead of OR
+            if (parent != address(0)) {
+                address owner = PermissionedRegistry(parent).findOwner(_childLabel);
+                if (
+                    account == owner ||
+                    PermissionedRegistry(parent).isApprovedForAll(owner, account)
+                ) {
+                    return super._getRoles(resource, parent); // replace, instead of OR
+                }
             }
         }
         return super._getRoles(resource, account);
@@ -275,7 +300,7 @@ contract WrapperRegistry is
         override
         onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
     {
-        if (!UPGRADE_GATE.approvedImplementations(newImplementation)) {
+        if (!UPGRADE_SET.includes(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }
     }

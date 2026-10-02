@@ -17,6 +17,8 @@ ENS clients
 - **Managed (intermediate) URP** — a second instance of the same proxy contract, admin'd by an account we control (the security council, or a designated intermediate URP admin). It exists so that implementation upgrades during the migration require only a transaction from its admin, never a top-URP-owner transaction.
 - **UniversalResolverV2** — the stateless implementation ([`src/universalResolver/UniversalResolverV2.sol`](../src/universalResolver/UniversalResolverV2.sol)).
 
+**UniversalResolverV1** ([`src/universalResolver/UniversalResolverV1.sol`](../src/universalResolver/UniversalResolverV1.sol)) is deployed alongside, outside this chain. It is the normalizing universal resolver over the v1 registry: it shares `UniversalResolverV2`'s interface, including the human-readable name forms, but walks the v1 registry. No proxy points at it, so it serves only callers that address it directly. Its constructor claims the contract's v1 reverse record for the `owner` account, as the upstream v1 `UniversalResolver` does.
+
 ### Reuse vs. bootstrap
 
 There are two flows depending on whether the top URP already fronts an intermediate URP we administer:
@@ -54,14 +56,15 @@ The phases map to [`deploy/universalResolver/`](../deploy/universalResolver/):
 | `04_deploy_UniversalResolverImplementation.ts` | Deploy `UniversalResolverV2` | `deployer` | `migration:phase1:deploy-v2` |
 | `05_setup_ManagedUniversalResolverProxyToUniversalResolverImplementation.ts` | Upgrade intermediate URP → `UniversalResolverV2` | `urManager` † | `migration:phase6:upgrade-managed-urp` |
 | `06_setup_UniversalResolverToUniversalResolverImplementation.ts` | Point top URP → `UniversalResolverV2` directly (bootstrap post-cutover only) | `owner` † | `migration:post-cutover:direct-urp-to-v2` |
+| `07_deploy_UniversalResolverV1.ts` | Deploy the standalone `UniversalResolverV1` (not wired into either proxy) | `deployer` | `migration:phase1:deploy-v2` |
 
-In the reuse flow only scripts `00`, `02`, `04`, and `05` do anything — `01` and `03` short-circuit because the top URP already fronts the intermediate URP, and `06` is a bootstrap-only post-cutover step.
+In the reuse flow only scripts `00`, `02`, `04`, `05`, and `07` do anything — `01` and `03` short-circuit because the top URP already fronts the intermediate URP, and `06` is a bootstrap-only post-cutover step.
 
 † When a setup script's proxy admin is external, the script does not execute the upgrade. It prints the target address and `upgradeTo` calldata for the admin to execute out-of-band (see `logUpgradeCalldata` in [`script/universalResolverDeployUtils.ts`](../script/universalResolverDeployUtils.ts)). The top-URP scripts (`01`, `03`, `06`) defer on mainnet (DAO) and sepolia (top URP owner); the intermediate-URP script (`05`) defers only on mainnet (DAO / security council) and executes directly on sepolia, where the intermediate URP admin is the `securityCouncil`/`urManager` account.
 
 Setup scripts are idempotent — they read the proxy's current `implementation()` and skip when it already matches.
 
-**Local environments:** every script except `04` skips when the environment has the `local` tag. Local devnets and tests deploy only the bare `UniversalResolverV2` and resolve against it directly, with no proxies.
+**Local environments:** every script except `04` and `07` skips when the environment has the `local` tag. Local devnets and tests deploy only the bare `UniversalResolverV2` and `UniversalResolverV1` and resolve against them directly, with no proxies.
 
 ## Accounts
 
@@ -75,7 +78,7 @@ Named accounts in [`rocketh/config.ts`](../rocketh/config.ts):
 
 ## CLI
 
-The bootstrap-only switch (top-URP-owner-signed) and the intermediate-URP upgrade (admin-signed), plus verification, are exposed as `script/migration.ts` phase commands, for use against live networks and fork rehearsals. In the reuse flow the upgrade is the only step you run. The post-cutover step 6 has no phase command — it runs only as the `migration:post-cutover:direct-urp-to-v2` deploy script:
+The bootstrap-only switch (top-URP-owner-signed) and the intermediate-URP upgrade (admin-signed), plus verification, are exposed as `script/migrate.ts` phase commands, for use against live networks and fork rehearsals. In the reuse flow the upgrade is the only step you run. The post-cutover step 6 has no phase command — it runs only as the `migration:post-cutover:direct-urp-to-v2` deploy script:
 
 ```bash
 # Bootstrap only: top URP → intermediate URP (top URP owner signature).

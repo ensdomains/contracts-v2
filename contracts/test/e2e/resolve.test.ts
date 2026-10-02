@@ -13,6 +13,7 @@ import {
   COIN_TYPE_ETH,
   dnsEncodeName,
   getReverseNamespace,
+  namehash,
 } from "../utils/utils.js";
 
 const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
@@ -23,7 +24,7 @@ const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
 const itLiveDns = process.env.RUN_LIVE_DNS_TESTS === "1" ? it : it.skip;
 
 describe("Resolve", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   setupEnv({ resetOnEach: true });
 
@@ -59,6 +60,15 @@ describe("Resolve", () => {
       getReverseNamespace(COIN_TYPE_OPTIMISM),
       () => env.v2.ENSV1Resolver.address,
     );
+
+    it("eth => ENSV2Resolver over the ENSv1 OwnedResolver", async () => {
+      expectVar({
+        ETH_RESOLVER: await env.v2.ENSV2Resolver.read.ETH_RESOLVER(),
+      }).toEqualAddress(env.rocketh.get("OwnedResolver").address);
+      expectVar({
+        resolver: await env.v1.ENSRegistry.read.resolver([namehash("eth")]),
+      }).toEqualAddress(env.v2.ENSV2Resolver.address);
+    });
   });
 
   describe("DNS", () => {

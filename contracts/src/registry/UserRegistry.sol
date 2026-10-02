@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {
+    IEACGrantInitializable,
+    Grant
+} from "../access-control/interfaces/IEACGrantInitializable.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
+import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -17,35 +22,50 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 ///         `VerifiableFactory` for user-owned subdomain registries. The constructor disables
 ///         initializers on the implementation contract; proxies call `initialize()` to set up the
 ///         admin and initial roles. Upgrade authorization requires the upgrade role in the root resource.
-contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, IProxyAuthorization {
+contract UserRegistry is
+    Initializable,
+    PermissionedRegistry,
+    UUPSUpgradeable,
+    IProxyAuthorization,
+    IEACGrantInitializable
+{
+    ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Default URI renderer.
+    IRegistryURIRenderer public immutable URI_RENDERER;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
     /// @param labelStore The shared label database.
+    /// @param uriRenderer The default URI renderer.
     /// @param namer The implementation namer.
-    constructor(ILabelStore labelStore, address namer)
+    constructor(ILabelStore labelStore, IRegistryURIRenderer uriRenderer, address namer)
         PermissionedRegistry(
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         )
     {
-        // This disables initialization for the implementation contract
         _disableInitializers();
+        URI_RENDERER = uriRenderer;
     }
 
-    /// @notice Initializes a proxy instance of `UserRegistry`.
-    /// @dev Grants the supplied role bitmap to `rootAccount` on the root resource.
-    ///      Reverts if the zero address.
-    /// @param rootAccount Account granted root roles.
-    /// @param roleBitmap The role bitmap granted to `rootAccount`.
-    function initialize(address rootAccount, uint256 roleBitmap) public initializer {
-        if (rootAccount == address(0)) {
+    /// @inheritdoc IEACGrantInitializable
+    function initialize(Grant[] calldata grants) public initializer {
+        __UUPSUpgradeable_init();
+        emit RegistryCreated();
+        for (uint256 i; i < grants.length; ++i) {
+            _grantRoles(ROOT_RESOURCE, grants[i].roleBitmap, grants[i].account, false);
+        }
+        if (roleCount(ROOT_RESOURCE) == 0) {
             revert InvalidOwner();
         }
-        emit RegistryCreated();
-        _grantRoles(ROOT_RESOURCE, roleBitmap, rootAccount, false);
+        _uriRenderer = URI_RENDERER;
+        emit URIUpdated("", address(URI_RENDERER), address(0));
     }
 
     /// @inheritdoc IERC165
@@ -53,6 +73,7 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
         return
             interfaceId == type(UUPSUpgradeable).interfaceId ||
             interfaceId == type(IProxyAuthorization).interfaceId ||
+            interfaceId == type(IEACGrantInitializable).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -76,6 +97,10 @@ contract UserRegistry is Initializable, PermissionedRegistry, UUPSUpgradeable, I
     {
         return true;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Restricts UUPS upgrades to accounts holding the upgrade role on the root resource.
     /// @param newImplementation The address of the new implementation contract.
