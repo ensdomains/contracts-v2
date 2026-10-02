@@ -30,7 +30,7 @@ import { FEATURES } from "../../../lib/ens-contracts/test/utils/features.js";
 
 const network = await hre.network.connect();
 
-const dnsTXTResolverName = "dnstxt.ens.eth";
+const dnsTXTResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
 const testData = "0xabcdef";

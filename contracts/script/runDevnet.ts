@@ -119,10 +119,7 @@ if (!quiet) {
             return {
               [nameKey]: name,
               "Contract Address": getAddress(address),
-              "Primary Name":
-                !primary && (name in env.v2 || name in env.shared)
-                  ? undefined
-                  : primary,
+              "Primary Name": !primary && name in env.v2 ? undefined : primary,
             };
           },
         ),

@@ -75,7 +75,7 @@ export function buildMainArgs(
     "--bonus-period-days",
     String(overrides.bonusPeriodDays ?? 0),
     "--v1-base-registrar",
-    env.v1.BaseRegistrar.address,
+    env.v1.BaseRegistrarImplementation.address,
     "--graveyards",
     (overrides.graveyards ?? [env.v2.Graveyard.address]).join(","),
   ];
