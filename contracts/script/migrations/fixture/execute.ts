@@ -25,6 +25,7 @@ import {
   rpcAny,
   v1Deployment,
   walletClient,
+  withGasBuffer,
   withPriceBuffer,
 } from "./config.js";
 import { EthRegistrarController } from "../abis.js";
@@ -69,6 +70,9 @@ export type SetAside = { fixtureId: string; call: string; reason: string };
 
 export type ExecutionHooks = {
   onTransaction?: (fixtureId: string, hash: Hex) => void;
+  /// Called once a transaction carrying `count` of a name's planned calls has
+  /// landed, so the run can record how far the name got.
+  onCallsLanded?: (fixtureId: string, count: number) => Promise<void> | void;
   onNameComplete?: (fixtureId: string) => Promise<void> | void;
   onNameSetAside?: (setAside: SetAside) => Promise<void> | void;
 };
@@ -154,6 +158,11 @@ export async function executePlannedCalls(
             `round ${round} batcher (${slice.length} calls)`,
           );
           if (hash) for (const s of slice) hooks.onTransaction?.(s.id, hash);
+          const landed = new Map<string, number>();
+          for (const s of slice) landed.set(s.id, (landed.get(s.id) ?? 0) + 1);
+          for (const [id, count] of landed) {
+            await hooks.onCallsLanded?.(id, count);
+          }
           break;
         } catch (error) {
           const refused = refusedBatchCall(error);
@@ -178,6 +187,7 @@ export async function executePlannedCalls(
             break;
           }
           if (hash) hooks.onTransaction?.(id, hash);
+          await hooks.onCallsLanded?.(id, 1);
         }
       }
     }
@@ -328,10 +338,15 @@ async function executeAsActor(
 ): Promise<Hex | undefined> {
   const wallet = await actorWallet(ex, alias);
   try {
-    const hash = await wallet.sendTransaction({
+    const request = {
+      account: wallet.account,
       to: call.target,
       data: call.data,
       value: await resolveCallValue(ex, call),
+    };
+    const hash = await wallet.sendTransaction({
+      ...request,
+      gas: withGasBuffer(await ex.client.estimateGas(request)),
     });
     await receipt(ex.client, hash, `${alias}: ${call.label}`);
     return hash;

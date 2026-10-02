@@ -463,9 +463,11 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 >
 > `snapshot-resolution` records the real answers first — `addr`, each coin type, each text key, and
 > contenthash — and `verify-resolution` re-asks exactly those questions afterwards and fails on any
-> record that changed, in either direction: a record that stops resolving, one that starts, and one
-> that returns something different are all differences. Include awkward cases in `--names`: a name
-> with no resolver, a wildcard/offchain name, and a DNS TLD mirror.
+> record that stopped resolving or returns something different, listing every one. A record that
+> only *starts* resolving is reported by name but does not fail the check: a name reserved only in the
+> new registry is invisible to the old resolver path and answers once the cutover points at it, as
+> freshly seeded fixture names do. Include awkward cases in `--names`: a name with no resolver, a
+> wildcard/offchain name, and a DNS TLD mirror.
 >
 > `fork full` does this automatically around phase 7 and prints any differences. Its sample is the
 > run's own smoke names plus names drawn from `--csv-file` that are confirmed to carry records before
@@ -603,6 +605,11 @@ Re-running is safe: contracts already verified on a backend are skipped. `--ethe
 through to `rocketh-verify`. A failure is reported by name and exits non-zero only after the rest of
 the set has been attempted, so one failure does not hide the others.
 
+Etherscan answers only a few calls per second per API key, and its "already verified" lookups count
+against the same budget, so requests are spaced 500 ms apart by default. Pass `--min-interval <ms>`
+to change that. A submission Etherscan refuses (a rate limit, say) counts as a failure, so re-run
+the command to retry the contracts it names.
+
 ## ENSv1 test fixture corpus
 
 An optional corpus of ENSv1 names, registered so the migration phases run against realistic v1 state
@@ -731,13 +738,18 @@ name by its declared v2 state like any other, because it remains a registered v1
 non-zero listing every set-aside name, and `verify-v1` reports them. Anything that is not a contract's
 refusal, such as a dropped connection, still stops the run where it is.
 
-It is resumable per name: a name whose setup finished is skipped, and one registered to anyone but a
-fixture actor aborts the run rather than shaping state against a name we do not control. A name whose
-registration landed but whose setup did not also aborts, naming the name and, for a set-aside one,
-the refusal — its state is part-shaped, and replaying setup over it would write against a name that
-has already moved on. Keep the work directory when that happens: it records the batcher that holds
-the name, and a fresh one deploys another and cannot reach it. Drop the name from the selection, or
-reseed against a fresh chain.
+It is resumable, so re-run the same command after an interruption — a dropped connection, a
+transaction that ran out of gas, a killed process. A name whose setup finished is skipped. A name
+whose registration landed but whose setup did not carries on from the first call that had not landed:
+`fixture-run.json` counts each name's landed calls after every transaction, and replanning yields the
+same calls in the same order. One registered to anyone but a fixture actor, the batcher or a corpus
+counterparty contract aborts the run rather than shaping state against a name we do not control.
+
+Two kinds of part-shaped name still abort, naming the name: one a contract refused (set aside, with
+the refusal), whose state its plan no longer expects, and one recorded by a run from before the count
+was kept, which cannot say where it stopped. Keep the work directory when that happens: it records
+the batcher that holds the name, and a fresh one deploys another and cannot reach it. Drop the name
+from the selection, or reseed against a fresh chain.
 
 > **Recompile first.** The counterparty contracts are deployed from the gitignored
 > `generated/artifacts/`. A tree compiled before they last changed fails at the first deployment with
@@ -877,7 +889,8 @@ separate checkpoints.
 
 The names left out are still live v1 names. `premigration reconcile` checks every registration on the
 chain, so it would count them as missing and keep the phase 3 gate shut. Pass the fixture work
-directory with `--fixture-work-dir` and reconcile lists them under "kept unreserved by the fixture
+directory with `--fixture-work-dir` (repeat the flag for each seeded cohort, when a chain carries more
+than one) and reconcile lists them under "kept unreserved by the fixture
 corpus" instead. It reads which names were seeded from `fixture-run.json`, and what each one needs
 from the corpus that run used. If a name that must stay absent is reserved on v2, reconcile reports it
 as unexpected, because the case its scenario tests is gone:
@@ -1165,7 +1178,7 @@ and idempotency rules.
 | `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` — the resolution cutover |
 | `phase verify-urp` | Verify top and managed URP implementations |
 | `phase snapshot-resolution` | Record how names resolve before the cutover (`addr`, coin types, text keys, contenthash) |
-| `phase verify-resolution` | Re-resolve a snapshot's names and fail on any record that changed |
+| `phase verify-resolution` | Re-resolve a snapshot's names and fail on any record that stopped resolving or changed (records that start resolving are reported, not failed) |
 | `fork full` | Run the full phased migration rehearsal against an Anvil fork (or a Tenderly fork with `--direct`) |
 | `clean-testnet` | Deploy fresh testnet v1 contracts and run the full phased migration (sepolia only) |
 

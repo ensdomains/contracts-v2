@@ -912,22 +912,39 @@ export async function seedV1(
   });
 
   // A name is skipped only once every setup call for it landed. One whose
-  // registration landed but whose setup did not is part-shaped, and replanning
-  // it would replay steps from an assumed initial state the name has left.
+  // registration landed but whose setup did not is part-shaped: it carries on
+  // from the first call that had not landed, which the run state counts.
   const alreadySeeded = new Set(
     seeded.names.filter((n) => n.setupComplete).map((n) => n.fixtureId),
   );
-  const pending = runNames.filter((n) => !alreadySeeded.has(n.fixtureId));
+  const recorded = new Map(seeded.names.map((n) => [n.fixtureId, n]));
+  const pending = runNames
+    .filter((n) => !alreadySeeded.has(n.fixtureId))
+    .map((n) => {
+      const previous = recorded.get(n.fixtureId);
+      return previous
+        ? {
+            ...n,
+            seedTransactions: previous.seedTransactions,
+            callsDone: previous.callsDone,
+            setupFailure: previous.setupFailure,
+          }
+        : n;
+    });
   const rowById = new Map(rows.map((r) => [r.fixture_id, r]));
 
   // Planned before anything is registered. Planning is pure, so a scenario it
   // cannot plan fails before anything is paid for, rather than after every name
-  // is registered but none is recorded.
+  // is registered but none is recorded. It is also why a part-shaped name can
+  // resume: replanning yields the same calls in the same order, so the ones that
+  // already landed are dropped by count.
   const perName = new Map<string, PlannedCall[]>();
   for (const run of pending) {
     perName.set(
       run.fixtureId,
-      planSetupSteps(rowById.get(run.fixtureId)!, ctx),
+      planSetupSteps(rowById.get(run.fixtureId)!, ctx).slice(
+        run.callsDone ?? 0,
+      ),
     );
   }
 
@@ -956,10 +973,14 @@ export async function seedV1(
         { baseRegistrar: v1.base.address, wrapper: v1.wrapper.address },
         run.label,
       );
+      // A part-shaped name may already sit with one of the corpus's counterparty
+      // contracts, which shaping hands names to as well.
       const ours = new Set(
-        [batcher, ...actors.map((a) => a.account.address)].map((a) =>
-          getAddress(a),
-        ),
+        [
+          batcher,
+          ...actors.map((a) => a.account.address),
+          ...Object.values(fixtureContracts),
+        ].map((a) => getAddress(a)),
       );
       if (!ours.has(owner)) {
         throw new Error(
@@ -971,12 +992,20 @@ export async function seedV1(
       // directory is what can still reach it. Sending the operator elsewhere
       // would deploy a second batcher and strand the name behind the check
       // above.
-      const failure = seeded.names.find(
-        (n) => n.fixtureId === run.fixtureId,
-      )?.setupFailure;
+      //
+      // A name whose landed calls are counted carries on from the next one, and
+      // so does one the run state never recorded: names are recorded before any
+      // setup is sent, so an unrecorded one was registered by a run interrupted
+      // part-way through registration and has had no setup at all. A contract's
+      // refusal left a name in a state its plan does not expect, and a name
+      // recorded before the count was kept cannot say where it stopped, so either
+      // is refused.
+      const counted =
+        run.callsDone !== undefined || !recorded.has(run.fixtureId);
+      if (counted && !run.setupFailure) continue;
       throw new Error(
         `${run.fixtureId}: ${run.name} is registered but its setup did not finish` +
-          (failure ? ` (${failure})` : "") +
+          (run.setupFailure ? ` (${run.setupFailure})` : "") +
           ", so its state is part-shaped and cannot be replayed; keep this work directory and " +
           "either drop the name from the selection or reseed against a fresh chain",
       );
@@ -1073,9 +1102,12 @@ export async function seedV1(
   }
 
   const byId = new Map(pending.map((r) => [r.fixtureId, r]));
-  // A name the corpus asks nothing further of is shaped by its registration
+  // Counting starts at registration, so a run interrupted before any setup
+  // landed still resumes. A name the corpus asks nothing further of — or whose
+  // every call landed before an interruption — is finished by its registration
   // alone, and never reaches the executor to report itself finished.
   for (const run of pending) {
+    run.callsDone ??= 0;
     if (!perName.get(run.fixtureId)?.length) run.setupComplete = true;
   }
 
@@ -1091,6 +1123,12 @@ export async function seedV1(
   const setAside = await executePlannedCalls(executor, perName, {
     onTransaction: (fixtureId, hash) => {
       byId.get(fixtureId)?.seedTransactions.push(hash);
+    },
+    onCallsLanded: (fixtureId, count) => {
+      const run = byId.get(fixtureId);
+      if (!run) return;
+      run.callsDone = (run.callsDone ?? 0) + count;
+      saveRunState(opts, seeded);
     },
     onNameComplete: (fixtureId) => {
       const run = byId.get(fixtureId);

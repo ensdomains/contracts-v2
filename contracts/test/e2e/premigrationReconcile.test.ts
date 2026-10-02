@@ -721,15 +721,49 @@ describe("premigration reconcile", () => {
     ]);
 
     const result = await run(workDir, fromBlock, {
-      fixtureWorkDir: writeFixtureWorkDir([
-        { label: "alpha", profile: "present" },
-        { label: keptOut, profile: "missing" },
-      ]),
+      fixtureWorkDirs: [
+        writeFixtureWorkDir([
+          { label: "alpha", profile: "present" },
+          { label: keptOut, profile: "missing" },
+        ]),
+      ],
     });
 
     expect(result.missing).toEqual([]);
     expect(result.keptUnreserved).toEqual([
       { id: labelhash(keptOut), label: keptOut, state: "missing" },
+    ]);
+  });
+
+  // A chain can carry more than one seeded cohort, each with its own work directory.
+  it("lists names kept off v2 by every fixture cohort it is given", async () => {
+    const firstKept = "keptfirst";
+    const secondKept = "keptsecond";
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+    const kept = [];
+    for (const label of [firstKept, secondKept]) {
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
+      kept.push({ id: labelhash(label), expiry });
+    }
+    writeIndex(workDir, [...indexEntries, ...kept]);
+
+    const result = await run(workDir, fromBlock, {
+      fixtureWorkDirs: [
+        writeFixtureWorkDir([{ label: firstKept, profile: "missing" }]),
+        writeFixtureWorkDir([{ label: secondKept, profile: "missing" }]),
+      ],
+    });
+
+    expect(result.missing).toEqual([]);
+    expect(result.keptUnreserved.map((n) => n.label).sort()).toEqual([
+      firstKept,
+      secondKept,
     ]);
   });
 
@@ -741,10 +775,12 @@ describe("premigration reconcile", () => {
 
     const result = await run(workDir, fromBlock, {
       reportOnly: true,
-      fixtureWorkDir: writeFixtureWorkDir([
-        { label: "alpha", profile: "present" },
-        { label: "beta", profile: "missing" },
-      ]),
+      fixtureWorkDirs: [
+        writeFixtureWorkDir([
+          { label: "alpha", profile: "present" },
+          { label: "beta", profile: "missing" },
+        ]),
+      ],
     });
 
     expect(result.unexpected).toEqual([

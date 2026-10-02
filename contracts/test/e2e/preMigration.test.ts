@@ -1031,14 +1031,34 @@ describe("PreMigration", () => {
     }
   });
 
-  it("fails fast when header has no labelName or label column", async () => {
+  it("accepts a Dune export header (name beside full_name)", async () => {
+    const label = "duneformat";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    const csvContent = [
+      "name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status",
+      `${label},${label}.eth,,,,,,active`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    const state = await verifyV2State(env, label);
+    expect(state.status).toBe(STATUS.RESERVED);
+  });
+
+  // In the subgraph schema `name` holds the full name, so on its own it is not a label.
+  it("fails fast when header has no label column", async () => {
     const csvContent = ["node,name,owner", "n,foo,0x00"].join("\n");
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
     await expectMainToExitWithCsvError(args, [
       `${csvFilePath}:1`,
-      `no "labelName" or "label" column`,
+      "has no label column",
       "Found columns: [node, name, owner]",
     ]);
   });

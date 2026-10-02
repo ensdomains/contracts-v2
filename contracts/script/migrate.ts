@@ -168,6 +168,7 @@ import {
   createFreshCheckpoint,
   FailedNamesError,
   csvLabelCell,
+  csvLabelColumnIndex,
   isEncodedLabelhash,
   isValidLabel,
   loadCheckpoint,
@@ -205,6 +206,7 @@ import {
 import {
   describeDifference,
   diffResolutionSnapshots,
+  isRegression,
   queriesFromSnapshot,
   recordQueries,
   snapshotCarriesRecords,
@@ -401,13 +403,6 @@ function countClaimableCsvRows(
   };
 }
 
-function csvLabelColumnIndex(header: string[]): number {
-  const normalized = header.map((field) => field.trim().toLowerCase());
-  const labelNameIndex = normalized.indexOf("labelname");
-  if (labelNameIndex >= 0) return labelNameIndex;
-  return normalized.indexOf("label");
-}
-
 /// A label CSV opened for reading: its rows, its header fields, and where the label
 /// column sits.
 ///
@@ -429,7 +424,9 @@ function openLabelCsv(csvFile: string): {
   const header = parseCSVLine(lines[0]);
   const labelIndex = csvLabelColumnIndex(header);
   if (labelIndex < 0) {
-    throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
+    throw new Error(
+      `CSV must contain a labelName or label column, or a Dune export's name beside full_name: ${csvFile}`,
+    );
   }
   return { header, rows: lines.slice(1), labelIndex };
 }
@@ -1248,9 +1245,10 @@ export async function reconcilePreMigration(opts: {
   // How far the CSV's and the index's claimable counts may differ before the
   // reconciliation fails. Defaults to no difference.
   crossSourceTolerance?: string;
-  // A fixture work directory, whose seeded names pre-migration leaves unreserved on
-  // purpose are listed apart rather than counted as missing.
-  fixtureWorkDir?: string;
+  // Fixture work directories, whose seeded names pre-migration leaves unreserved on
+  // purpose are listed apart rather than counted as missing. A chain can carry more
+  // than one seeded cohort, each in its own work directory.
+  fixtureWorkDirs?: string[];
   // Names renewed on v1 after the index was built. The index reads v1 state at a
   // block the renewal is not in, so their v2 expiry is checked for extension rather
   // than for equality with what the index reports.
@@ -1409,8 +1407,8 @@ export async function reconcilePreMigration(opts: {
       ? readEncodedLabelhashRows(opts.csvFile)
       : new Map<string, string>();
   const keptOut = new Map<string, { label: string; state: string }>();
-  if (opts.fixtureWorkDir) {
-    for (const name of keptUnreservedFixtureNames(opts.fixtureWorkDir)) {
+  for (const workDir of opts.fixtureWorkDirs ?? []) {
+    for (const name of keptUnreservedFixtureNames(workDir)) {
       keptOut.set(
         toLabelhashHex(canonicalLabelId(keccak256(stringToHex(name.label)))),
         name,
@@ -3630,16 +3628,26 @@ export async function verifyResolution(opts: {
     return differences;
   }
 
-  for (const difference of differences.slice(0, 40)) {
+  // Records that only start resolving are reported but do not fail the check: a name
+  // the old resolver path could not see answers once the cutover points at it.
+  const gained = differences.filter((difference) => !isRegression(difference));
+  if (gained.length > 0) {
+    const names = [...new Set(gained.map((difference) => difference.name))];
+    console.log(
+      `now resolving after the cutover: ${gained.length} record(s) on ${names.length} name(s): ${names.join(", ")}`,
+    );
+  }
+  const regressions = differences.filter(isRegression);
+  for (const difference of regressions) {
     console.error(describeDifference(difference));
   }
-  if (differences.length > 40) {
-    console.error(`...and ${differences.length - 40} more`);
-  }
-  if (!opts.reportOnly) {
+  if (regressions.length > 0 && !opts.reportOnly) {
     throw new Error(
-      `resolution changed across the cutover for ${differences.length} record(s)`,
+      `resolution changed across the cutover for ${regressions.length} record(s)`,
     );
+  }
+  if (regressions.length === 0) {
+    console.log("no record stopped resolving or changed across the cutover");
   }
   return differences;
 }
@@ -7304,14 +7312,16 @@ export async function runForkFull(opts: RunForkFullOptions) {
         `the phase 7 URP cutover, with resolution unchanged across it for ${resolutionNames.length} name(s)`,
       );
     } else {
+      const regressions = resolutionDifferences.filter(isRegression);
+      const gained = resolutionDifferences.length - regressions.length;
       console.log(
-        `resolution changed across the cutover for ${resolutionDifferences.length} record(s):`,
+        `resolution across the cutover: ${regressions.length} record(s) stopped resolving or changed, ${gained} started resolving`,
       );
-      for (const difference of resolutionDifferences.slice(0, 20)) {
+      for (const difference of regressions) {
         console.log(`  ${describeDifference(difference)}`);
       }
       coveredChecks.push(
-        `the phase 7 URP cutover, with ${resolutionDifferences.length} record(s) reported as changed across it`,
+        `the phase 7 URP cutover, with ${regressions.length} record(s) reported as stopped or changed and ${gained} as newly resolving across it`,
       );
     }
 
@@ -8309,7 +8319,8 @@ export async function main(argv = process.argv): Promise<void> {
             )
             .option(
               "--fixture-work-dir <path>",
-              "Work directory of a seeded fixture corpus: names it leaves unreserved on purpose are listed apart rather than counted as missing",
+              "Work directory of a seeded fixture corpus: names it leaves unreserved on purpose are listed apart rather than counted as missing; repeat for each seeded cohort",
+              (value: string, previous: string[] = []) => [...previous, value],
             ),
         ),
       ),
@@ -8328,12 +8339,16 @@ export async function main(argv = process.argv): Promise<void> {
           checkFuses?: boolean;
           bonusPeriodDays?: string;
           crossSourceTolerance?: string;
-          fixtureWorkDir?: string;
+          fixtureWorkDir?: string[];
           deploymentsDir?: string;
           deploymentNetwork?: string;
         },
       ) => {
-        await reconcilePreMigration({ ...withNetworkRpc(opts) });
+        const { fixtureWorkDir, ...rest } = opts;
+        await reconcilePreMigration({
+          ...withNetworkRpc(rest),
+          fixtureWorkDirs: fixtureWorkDir,
+        });
       },
     ),
   );
@@ -8574,7 +8589,7 @@ export async function main(argv = process.argv): Promise<void> {
     addNetworkOptions(
       new Command("verify-resolution")
         .description(
-          "Re-resolve a snapshot's names and fail on any record that changed",
+          "Re-resolve a snapshot's names and fail on any record that stopped resolving or changed",
         )
         .requiredOption(
           "--snapshot-file <path>",
