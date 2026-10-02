@@ -498,77 +498,15 @@ export async function fetchWithTransportRetry(
   throw lastError;
 }
 
-let rpcCompatibilityInstalled = false;
-let rpcCompatibilityDebug = false;
-
-/// Lookups a node answers with `null` for a transaction it has not seen.
-const NULLABLE_LOOKUPS = new Set([
-  "eth_getTransactionByHash",
-  "eth_getTransactionReceipt",
-]);
-/// Attempts at a lookup that came back as an error, and the wait that grows between
-/// them, before it is answered as not found.
-const LOOKUP_ERROR_ATTEMPTS = 5;
-const LOOKUP_ERROR_BACKOFF_MS = 1_000;
-
-/// Answers a transaction lookup the way a single node would.
-///
-/// A load-balanced endpoint can route a lookup for a transaction sent a moment ago
-/// to a node that has not indexed it, which answers with an error ("No Result")
-/// where a node answers `null`. Callers treat `null` as "not mined yet" and keep
-/// waiting, but an error aborts them: rocketh stops a deploy right after sending its
-/// transaction. The lookup is asked again, as other nodes may answer, and still
-/// failing it is answered as not found, so the caller waits for the receipt as it
-/// would on any node.
-export async function answerLookup(
-  originalFetch: typeof globalThis.fetch,
-  input: any,
-  init: any,
-  request: any,
-  response: Response,
-  backoffMs = LOOKUP_ERROR_BACKOFF_MS,
-): Promise<Response> {
-  const errorOf = async (candidate: Response) => {
-    try {
-      return ((await candidate.clone().json()) as { error?: { message?: string } })
-        .error;
-    } catch {
-      return undefined;
-    }
-  };
-  let error = await errorOf(response);
-  for (let attempt = 1; error && attempt < LOOKUP_ERROR_ATTEMPTS; attempt++) {
-    await sleep(backoffMs * attempt);
-    response = await fetchWithTransportRetry(originalFetch, input, init, request);
-    error = await errorOf(response);
-  }
-  if (!error) return response;
-  console.warn(
-    `${request.method} kept failing (${error.message ?? "unknown error"}); answering it as not found, so the caller keeps waiting`,
-  );
-  return new Response(
-    JSON.stringify({ jsonrpc: "2.0", id: request.id, result: null }),
-    { headers: { "content-type": "application/json" }, status: 200 },
-  );
-}
-
 /**
  * Permanently monkey-patches `globalThis.fetch` to add JSON-RPC compatibility
  * fallbacks for HTTP traffic issued by libraries we do not control (rocketh/viem
  * internals): when an RPC lacks `eth_feeHistory` and returns an error, a synthetic
- * fee-history response is fabricated so EIP-1559 fee estimation can proceed, and a
- * transaction lookup that keeps failing is answered as not found (see
- * `answerLookup`). With `debugRpc` enabled, JSON-RPC error payloads are also logged.
- * The patch is process-wide, installed at most once, never uninstalled, and
- * otherwise passes responses through untouched.
+ * fee-history response is fabricated so EIP-1559 fee estimation can proceed. With
+ * `debugRpc` enabled, JSON-RPC error payloads are also logged. The patch is
+ * process-wide, never uninstalled, and otherwise passes responses through untouched.
  */
 export function installRpcCompatibility(debugRpc: boolean): void {
-  // A later caller can still turn error logging on. The patch wraps whatever fetch
-  // is current, so installing it twice would stack two copies and multiply every
-  // retry.
-  rpcCompatibilityDebug ||= debugRpc;
-  if (rpcCompatibilityInstalled) return;
-  rpcCompatibilityInstalled = true;
   const originalFetch = globalThis.fetch.bind(globalThis);
   (globalThis as any).fetch = async (input: any, init?: any) => {
     const request = (() => {
@@ -579,15 +517,12 @@ export function installRpcCompatibility(debugRpc: boolean): void {
         return null;
       }
     })();
-    let response = await fetchWithTransportRetry(
+    const response = await fetchWithTransportRetry(
       originalFetch,
       input,
       init,
       request,
     );
-    if (NULLABLE_LOOKUPS.has(request?.method)) {
-      response = await answerLookup(originalFetch, input, init, request, response);
-    }
     try {
       const payload = await response.clone().json();
       if (
@@ -599,7 +534,7 @@ export function installRpcCompatibility(debugRpc: boolean): void {
           status: 200,
         });
       }
-      if (rpcCompatibilityDebug && payload?.error) {
+      if (debugRpc && payload?.error) {
         console.error(
           `rpc error from ${request?.method ?? "unknown"}:`,
           payload.error,

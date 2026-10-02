@@ -8526,8 +8526,6 @@ function v1OwnerKeyFromEnv(opts: {
 
 export async function main(argv = process.argv): Promise<void> {
   loadDotEnv(resolve(import.meta.dirname, "../.env"));
-  // Every command talks to a node, and a live one is often load-balanced.
-  installRpcCompatibility(false);
 
   const program = new Command()
     .name("migration")
