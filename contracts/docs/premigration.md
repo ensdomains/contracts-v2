@@ -190,8 +190,8 @@ node. The node is `keccak256(namehash("eth") ‖ labelhash)`, so no plaintext la
   locked migration leaves the `BaseRegistrar` token and the node with the `NameWrapper`, and hands the
   wrapper token to the Graveyard.
 
-A name nobody holds has no registrant. A failed read that the registrant depends on fails the name, and
-the name is retried.
+A name nobody holds has no registrant. A failed read that the registrant depends on is read again (see
+[Output](#output)), and fails the name only when it keeps failing; the name is then retried.
 
 `--graveyards` must list every Graveyard on the chain, not only the active deployment's. A superseded
 deployment's Graveyard keeps every name it reclaimed or received while it was live: on Sepolia, the
@@ -315,6 +315,16 @@ invalid / failed / success rate). Individual failures (name reverts,
 RPC timeouts at a 30s limit for a reply to start and two minutes for all of it, checkpoint write
 errors) are counted and logged without aborting
 the batch, so partial progress is preserved.
+
+**A failed read is read again before it fails a name.** None of the reads that judge a name fails for a
+reason the chain gives: the v2 entry and the v1 expiry and owners answer for any name. So when a read
+in a batch fails, such as a timeout, a refused request or a load-balanced node erroring at random, the
+whole batch is read again after a wait that doubles with each failure in a row, from about a second up
+to 30 seconds, spread at random so retries do not bunch up. After 10 attempts the names whose reads
+failed are counted failed. A rate-limited endpoint therefore slows the run rather than failing names. A failed read of either chain's time is read again the
+same way, and past the limit it stops the run, because any other time would change which names count
+as claimable. This matters most for a dry run, which keeps no checkpoint and so must start again from
+the first row after a failure.
 
 **A failed name is retried, not stepped over.** The checkpoint stops before the first failure, so
 `--continue` reaches that name again rather than resuming past it. Names that succeeded after it are

@@ -63,6 +63,7 @@ import {
   Graveyard,
   NameWrapper,
 } from "./migrations/abis.js";
+import { REFUSED_READ_ATTEMPTS, refusedReadWaitMs } from "./migrations/rpc.js";
 
 const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
 
@@ -1312,6 +1313,16 @@ export interface VerificationResult {
   error?: string;
 }
 
+/// Reads a batch's v2 state, v1 registrations and both chains' time, then judges each
+/// name.
+///
+/// A provider that balances load across nodes fails reads at random, and one failed
+/// request fails every name it carried. None of these reads fails for a reason the
+/// chain gives — `getState`, `nameExpires` and the owner reads answer for any id — so
+/// a batch with a failed read is read again after a wait that doubles with each
+/// failure in a row (`refusedReadWaitMs`), and a rate limit or timeout costs a wait
+/// rather than a failed name. Past the attempt limit the names whose reads failed are
+/// reported failed, and a failed chain-time read fails the run.
 export async function batchVerifyRegistrations(
   registrations: ENSRegistration[],
   client: any,
@@ -1320,6 +1331,7 @@ export async function batchVerifyRegistrations(
   registryAbi: any[],
   v1Contracts: V1Contracts,
   graveyards: ReadonlySet<Address>,
+  retryDelayMs?: number,
 ): Promise<VerificationResult[]> {
   const ids = registrations.map((r) => BigInt(keccak256(toHex(r.labelName))));
   const v2Contracts = ids.map((id) => ({
@@ -1328,43 +1340,65 @@ export async function batchVerifyRegistrations(
     functionName: "getState" as const,
     args: [id],
   }));
+  const readBatch = async () => {
+    const [v2Settled, v1Settled] = await Promise.allSettled([
+      client.multicall({ contracts: v2Contracts }),
+      readV1Registrations(mainnetClient, v1Contracts, ids),
+    ]);
+    const v2: any[] =
+      v2Settled.status === "fulfilled"
+        ? v2Settled.value
+        : registrations.map(() => ({
+            status: "failure" as const,
+            error: v2Settled.reason,
+          }));
+    const v1: Array<V1Registration | V1ReadError> =
+      v1Settled.status === "fulfilled"
+        ? v1Settled.value
+        : registrations.map(() => ({ error: String(v1Settled.reason) }));
+    const errors = registrations.flatMap((_, i) => {
+      const v1Read = v1[i];
+      if (v2[i].status === "failure") return [String(v2[i].error)];
+      return "error" in v1Read ? [v1Read.error] : [];
+    });
+    // The first line names the cause; the rest repeats the request.
+    const reason = errors[0]?.split("\n")[0];
+    return { v2, v1, failed: errors.length, reason };
+  };
 
-  const [v2Settled, v1Settled] = await Promise.allSettled([
-    client.multicall({ contracts: v2Contracts }),
-    readV1Registrations(mainnetClient, v1Contracts, ids),
-  ]);
-
-  const buildFallback = (reason: unknown) =>
-    registrations.map(() => ({ status: "failure" as const, error: reason }));
-
-  if (v2Settled.status === "rejected") {
+  let reads = await readBatch();
+  for (let failure = 1; reads.failed > 0; failure++) {
+    if (failure >= REFUSED_READ_ATTEMPTS) {
+      logger.warning(
+        `Reads for ${reads.failed} of ${registrations.length} names in the batch kept failing (${reads.reason}); reporting them failed.`,
+      );
+      break;
+    }
     logger.warning(
-      `v2 multicall failed for batch of ${registrations.length}: ${v2Settled.reason}`,
+      `Reads for ${reads.failed} of ${registrations.length} names in the batch failed (${reads.reason}); reading the batch again.`,
     );
+    await sleep(refusedReadWaitMs(failure, retryDelayMs));
+    reads = await readBatch();
   }
-  if (v1Settled.status === "rejected") {
-    logger.warning(
-      `v1 multicall failed for batch of ${registrations.length}: ${v1Settled.reason}`,
-    );
+  const { v2: v2Results, v1: v1Results } = reads;
+
+  let chainTimes: [bigint, bigint] | undefined;
+  for (let failure = 1; chainTimes === undefined; failure++) {
+    try {
+      chainTimes = await Promise.all([
+        readChainTimestamp(mainnetClient),
+        readChainTimestamp(client),
+      ]);
+    } catch (error) {
+      if (failure >= REFUSED_READ_ATTEMPTS) throw error;
+      await sleep(refusedReadWaitMs(failure, retryDelayMs));
+    }
   }
-
-  const v2Results =
-    v2Settled.status === "fulfilled"
-      ? v2Settled.value
-      : buildFallback(v2Settled.reason);
-  const v1Results: Array<V1Registration | V1ReadError> =
-    v1Settled.status === "fulfilled"
-      ? v1Settled.value
-      : registrations.map(() => ({ error: String(v1Settled.reason) }));
-
-  const [v1Now, v2Now] = await Promise.all([
-    readChainTimestamp(mainnetClient),
-    readChainTimestamp(client),
-  ]);
+  const [v1Now, v2Now] = chainTimes;
 
   return registrations.map((reg, i) => {
-    const v2 = (v2Results as any[])[i];
-    const v1 = (v1Results as any[])[i];
+    const v2 = v2Results[i];
+    const v1 = v1Results[i] as any;
 
     if (v2.status === "failure" || "error" in v1) {
       return {

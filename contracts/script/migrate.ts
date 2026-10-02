@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   existsSync,
   mkdirSync,
@@ -26,6 +26,7 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   getAddress,
+  isAddress,
   getContract,
   http,
   keccak256,
@@ -62,6 +63,16 @@ import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import { generateAddressMarkdown } from "./addressDocs.js";
 import {
+  addressLabels,
+  type ContractControl,
+  type Labelled,
+  labelled,
+  type RoleHolding,
+  roleFamily,
+  type RoleMap,
+  writeRolesMarkdown,
+} from "./rolesDoc.js";
+import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   DEPLOYMENT_ROLES,
   FUSES,
@@ -89,8 +100,15 @@ import {
   preparedOwnerTransactionLabel,
   printPreparedCall,
   readPreparedOwnerTransactions,
+  recordPreparedCallsTo,
   type PreparedOwnerTransaction,
 } from "./migrations/ownerTx.js";
+import { buildDaoProposal } from "./migrations/daoProposal.js";
+import {
+  planRegistryHandover,
+  rootEmancipationRoles,
+  type RegistryHandoverState,
+} from "./migrations/registryHandover.js";
 import {
   assertRejected,
   assertV1Owner,
@@ -259,8 +277,6 @@ export const FORK_UPSTREAM_RETRY_BACKOFF_MS = 2_000;
 /// instantiation depth and degrades every result to `unknown`.
 const REGISTRY_STATE_ABI = PermissionedRegistryFragments.getState;
 const REGISTRY_RESOLVER_ABI = PermissionedRegistryFragments.getResolver;
-const REGISTRY_RESOURCE_ABI = PermissionedRegistryFragments.getResource;
-const REGISTRY_ROLES_ABI = PermissionedRegistryFragments.roles;
 const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
@@ -3669,6 +3685,28 @@ const EAC_ROLES_CHANGED_EVENT = parseAbiItem(
 // documents contracts that are never deployed and omits grants that are.
 const AUDITED_REGISTRIES = ["RootRegistry", "ETHRegistry"] as const;
 
+/// Points in the migration the v2 role audit checks against, in order: before phase 6,
+/// after it, after the deployer hands the registries over, and after the owner drops
+/// its root registry roles.
+export const ROLE_AUDIT_STAGES = [
+  "pre-handoff",
+  "post-handoff",
+  "post-registry-handover",
+  "root-emancipated",
+] as const;
+export type RoleAuditStage = (typeof ROLE_AUDIT_STAGES)[number];
+
+const DEPLOYER_STAGES: RoleAuditStage[] = ["pre-handoff", "post-handoff"];
+const HANDED_OVER_STAGES: RoleAuditStage[] = [
+  "post-registry-handover",
+  "root-emancipated",
+];
+const REGISTRAR_STAGES: RoleAuditStage[] = [
+  "post-handoff",
+  "post-registry-handover",
+  "root-emancipated",
+];
+
 // Root-scope grants each deploy script makes, keyed by the registry they land on.
 // `deployer` is the constructor's initial role holder; the rest are explicit grants.
 //
@@ -3685,29 +3723,51 @@ const EXPECTED_ROOT_ROLES: Record<
   Array<{
     deployment: string;
     roles: bigint;
-    // Limits the grant to one side of the phase 6 handoff; unset means both.
-    stage?: "pre-handoff" | "post-handoff";
+    // The stages the grant is expected at; unset means every stage.
+    stages?: RoleAuditStage[];
   }>
 > = {
   RootRegistry: [
-    { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT },
+    {
+      deployment: "@deployer",
+      roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+      stages: DEPLOYER_STAGES,
+    },
     { deployment: "@owner", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER },
+    // The handover gives the owner the deployer's root roles for a probation
+    // period, after which the owner drops all but the naming and metadata roles.
+    {
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+      stages: ["post-registry-handover"],
+    },
   ],
   ETHRegistry: [
-    { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT },
+    // The handover moves the deployer's root roles to the owner. None of them reaches
+    // a name, so .eth names stay emancipated.
+    {
+      deployment: "@deployer",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      stages: DEPLOYER_STAGES,
+    },
     { deployment: "@owner", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER },
+    {
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      stages: HANDED_OVER_STAGES,
+    },
     // Phase 1 defers the ETHRegistrar grant and phase 6 makes it, while BatchRegistrar
     // seeds pre-migration reservations until phase 6 strips its roles. What each should
     // hold therefore depends on which side of the handoff the audit runs.
     {
       deployment: "ETHRegistrar",
       roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
-      stage: "post-handoff",
+      stages: REGISTRAR_STAGES,
     },
     {
       deployment: "BatchRegistrar",
       roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
-      stage: "pre-handoff",
+      stages: ["pre-handoff"],
     },
     { deployment: "ETHRenewerV1", roles: DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT },
     {
@@ -3740,17 +3800,31 @@ const EXPECTED_ROOT_ROLES: Record<
 // Only RootRegistry is audited this way. Its token set is the TLDs the deployment
 // creates, so an unexpected scoped grant there means something. ETHRegistry's token
 // set is the whole namespace — every registered name grants its owner roles at its
-// own resource — so the same sweep would report the entire namespace as unexpected.
+// own resource — so its scoped grants are not read at all (see
+// `NAMESPACE_REGISTRIES`).
 const EXPECTED_TOKEN_ROLES: Record<
   (typeof AUDITED_REGISTRIES)[number],
-  Array<{ label: string; deployment: string; roles: bigint }>
+  Array<{
+    label: string;
+    deployment: string;
+    roles: bigint;
+    stages?: RoleAuditStage[];
+  }>
 > = {
   RootRegistry: [
-    // 01_ETHRegistry.ts registers `eth` to the deployer.
+    // 01_ETHRegistry.ts registers `eth` to the deployer. The handover lets the owner
+    // set its child registry and resolver, and the deployer drops every role on it.
     {
       label: "eth",
       deployment: "@deployer",
       roles: DEPLOYMENT_ROLES.ETH_TOKEN,
+      stages: DEPLOYER_STAGES,
+    },
+    {
+      label: "eth",
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR,
+      stages: HANDED_OVER_STAGES,
     },
     // 01_ReverseMirror.ts hands the owner every regular role on `reverse`, and
     // leaves no admin role on it with anyone.
@@ -3762,9 +3836,6 @@ const EXPECTED_TOKEN_ROLES: Record<
   ],
   ETHRegistry: [],
 };
-
-const AUDIT_TOKEN_SCOPES: Record<(typeof AUDITED_REGISTRIES)[number], boolean> =
-  { RootRegistry: true, ETHRegistry: false };
 
 // Every (resource, account) a role has ever been granted at on a registry. Used only
 // to decide who to ask about — what they actually hold is read live, because expiry
@@ -3797,17 +3868,6 @@ async function discoverRoleGrants(
   return [...grants.values()];
 }
 
-// How a resource is named in the audit output. The root is the root; a token scope is
-// named by its label where the deployment defines one, and by its resource id where
-// it does not.
-function describeScope(
-  resource: bigint,
-  labelByResource: Map<string, string>,
-): string {
-  if (resource === 0n) return "root";
-  return labelByResource.get(resource.toString()) ?? `resource ${resource}`;
-}
-
 export async function verifyV2Roles(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -3819,12 +3879,14 @@ export async function verifyV2Roles(opts: {
   owner?: Address;
   fromBlock?: string;
   reportOnly?: boolean;
-  // Audit the state before phase 6, where BatchRegistrar still holds the roles it
-  // seeds reservations with and ETHRegistrar does not yet hold its own.
-  preHandoff?: boolean;
+  // The point in the migration to audit against; after phase 6 by default.
+  stage?: RoleAuditStage;
 }) {
+  const stage = opts.stage ?? "post-handoff";
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
 
@@ -3841,25 +3903,28 @@ export async function verifyV2Roles(opts: {
   // the roles it never had. The deploy transaction recorded in the namespace names
   // the deployer; where no record carries one, say so rather than guess.
   const deployer =
-    opts.deployer ??
-    AUDITED_REGISTRIES.map((name) =>
-      maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, name),
-    )
-      .map((record) => record && deploymentOrigin(record))
-      .find((address): address is Address => address !== undefined);
+    opts.deployer ?? namespaceDeployer(deploymentsDir, deploymentNetwork);
   if (!deployer) {
     throw new Error(
       `cannot determine the deployer for ${deploymentNetwork}: no deployment record carries its deploy transaction. Pass --deployer.`,
     );
   }
 
-  console.log(
-    `auditing the ${opts.preHandoff ? "pre-handoff" : "post-handoff"} role matrix (pass --pre-handoff to audit before phase 6)`,
-  );
+  console.log(`auditing the ${stage} role matrix`);
+  const map = await readRoleMap({
+    client,
+    chainId: chain.id,
+    network: opts.network,
+    deploymentsDir,
+    deploymentNetwork,
+    deployer,
+    owner,
+    fromBlock:
+      opts.fromBlock !== undefined ? BigInt(opts.fromBlock) : undefined,
+  });
 
   const holders: RoleHolder[] = [];
   const expectations: RoleExpectation[] = [];
-
   for (const registryName of AUDITED_REGISTRIES) {
     const registry = maybeLoadV2Deployment(
       deploymentsDir,
@@ -3878,145 +3943,43 @@ export async function verifyV2Roles(opts: {
       )?.address;
     };
 
-    for (const entry of EXPECTED_ROOT_ROLES[registryName]) {
-      // A grant limited to the other side of the handoff is expected to be absent
-      // here, so it is reported if held rather than simply not being checked.
-      const stage = opts.preHandoff ? "pre-handoff" : "post-handoff";
-      if (entry.stage && entry.stage !== stage) continue;
-      const address = resolveAccount(entry.deployment);
-      // A contract this deployment does not include simply has no expectation; the
-      // discovery pass below still reports it if it somehow holds roles.
-      if (!address) continue;
-      expectations.push({
-        contract: registryName,
+    // A grant limited to other stages is expected to be absent here, so it is
+    // reported if held rather than simply not being checked. A contract this
+    // deployment does not include simply has no expectation; the reads still report
+    // it if it somehow holds roles.
+    const expected = [
+      ...EXPECTED_ROOT_ROLES[registryName].map((entry) => ({
+        ...entry,
         scope: "root",
-        account: getAddress(address),
-        roles: entry.roles,
-      });
-    }
-
-    // The resource a token's grants live at moves when the name expires or is
-    // re-registered, so it is resolved live rather than taken from the grant event.
-    const labelByResource = new Map<string, string>();
-    const wanted = new Map<string, { resource: bigint; account: Address }>();
-    const want = (resource: bigint, account: Address) => {
-      wanted.set(`${resource}|${account.toLowerCase()}`, { resource, account });
-    };
-
-    for (const entry of EXPECTED_TOKEN_ROLES[registryName]) {
+      })),
+      ...EXPECTED_TOKEN_ROLES[registryName].map((entry) => ({
+        ...entry,
+        scope: entry.label,
+      })),
+    ];
+    for (const entry of expected) {
+      if (entry.stages && !entry.stages.includes(stage)) continue;
       const address = resolveAccount(entry.deployment);
       if (!address) continue;
-      const resource = (await client.readContract({
-        address: registry.address,
-        abi: Artifact_PermissionedRegistry.abi,
-        functionName: "getResource",
-        args: [labelId(entry.label)],
-      })) as bigint;
-      labelByResource.set(resource.toString(), entry.label);
       expectations.push({
         contract: registryName,
-        scope: entry.label,
+        scope: entry.scope,
         account: getAddress(address),
         roles: entry.roles,
       });
-      want(resource, getAddress(address));
     }
 
-    const fromBlock =
-      opts.fromBlock !== undefined
-        ? BigInt(opts.fromBlock)
-        : (readDeploymentBlock(
-            deploymentsDir,
-            deploymentNetwork,
-            registryName,
-          ) ?? 0n);
-    const discovered = await discoverRoleGrants(
-      client,
-      registry.address,
-      fromBlock,
-    );
-
-    // Everyone ever granted anything here is asked about the root, whichever scope
-    // they were discovered at: a token grantee may hold root roles too.
-    const rootAccounts = new Set<Address>([
-      ...discovered.map((grant) => grant.account),
-      ...expectations
-        .filter((expectation) => expectation.contract === registryName)
-        .map((expectation) => getAddress(expectation.account as Address)),
-    ]);
-    for (const account of rootAccounts) want(0n, account);
-
-    // A scoped grant survives in storage after the name it belongs to is expired or
-    // re-registered, but the resource it sits at is no longer the one the registry
-    // consults, so the roles cannot be exercised. Reporting those would be noise;
-    // the current resource is the only one that carries authority.
-    if (AUDIT_TOKEN_SCOPES[registryName]) {
-      const scoped = discovered.filter((grant) => grant.resource !== 0n);
-      const resources = [...new Set(scoped.map((grant) => grant.resource))];
-      const current = await client.multicall({
-        allowFailure: true,
-        contracts: resources.map(
-          (resource) =>
-            ({
-              address: registry.address,
-              abi: REGISTRY_RESOURCE_ABI,
-              functionName: "getResource",
-              args: [resource],
-            }) as const,
-        ),
-      });
-      const live = new Set<string>();
-      let orphaned = 0;
-      for (const [index, resource] of resources.entries()) {
-        const result = current[index];
-        if (result.status === "failure") continue;
-        if (result.result === resource) live.add(resource.toString());
-        else orphaned++;
-      }
-      for (const grant of scoped) {
-        if (live.has(grant.resource.toString())) {
-          want(grant.resource, grant.account);
-        }
-      }
-      if (orphaned > 0) {
-        console.log(
-          `${registryName}: ${orphaned} scoped grant resource(s) superseded by a re-registration, so no longer reachable`,
-        );
-      }
-    }
-
-    // Reading live is what makes the audit sound: a replay of the discovery events
-    // would report grants that expiry or a version bump has since made unreachable.
-    const pairs = [...wanted.values()];
-    const results = await client.multicall({
-      allowFailure: true,
-      contracts: pairs.map(
-        (pair) =>
-          ({
-            address: registry.address,
-            abi: REGISTRY_ROLES_ABI,
-            functionName: "roles",
-            args: [pair.resource, pair.account],
-          }) as const,
-      ),
-    });
-
-    for (const [index, pair] of pairs.entries()) {
-      const result = results[index];
-      const scope = describeScope(pair.resource, labelByResource);
-      if (result.status === "failure") {
-        throw new Error(
-          `${registryName}: roles(${scope}, ${pair.account}) failed: ${result.error}`,
-        );
-      }
-      const roles = result.result;
-      if (roles === 0n) continue;
+    for (const holding of map.holdings) {
+      if (!sameAddress(holding.contract.address, registry.address)) continue;
       holders.push({
         contract: registryName,
         address: registry.address,
-        scope,
-        account: pair.account,
-        roles,
+        scope:
+          holding.resource === ROOT_RESOURCE
+            ? "root"
+            : (holding.entry ?? `resource ${holding.resource}`),
+        account: holding.holder.address,
+        roles: holding.roles,
       });
     }
   }
@@ -4028,6 +3991,14 @@ export async function verifyV2Roles(opts: {
   }
 
   const findings = diffRoleMatrix(holders, expectations);
+  // Written before the verdict, so a failed audit still leaves the state it found.
+  const docPath = writeRolesMarkdown(
+    { ...map, audit: { stage, findings: findings.map(describeRoleFinding) } },
+    deploymentsDir,
+    deploymentNetwork,
+  );
+  console.log(`role mapping: ${docPath}`);
+
   if (findings.length === 0) {
     console.log(`role audit passed: ${holders.length} holder(s) as expected`);
     return findings;
@@ -4040,6 +4011,506 @@ export async function verifyV2Roles(opts: {
     throw new Error(`role audit failed: ${findings.length} finding(s)`);
   }
   return findings;
+}
+
+/// The account that sent a namespace's registry deploys, read from their deployment
+/// records; undefined when no record carries its deploy transaction.
+function namespaceDeployer(
+  deploymentsDir: string,
+  deploymentNetwork: string,
+): Address | undefined {
+  return AUDITED_REGISTRIES.map((name) =>
+    maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, name),
+  )
+    .map((record) => record && deploymentOrigin(record))
+    .find((address): address is Address => address !== undefined);
+}
+
+// Registries whose per-name roles belong to the names' owners rather than to anyone
+// administering the deployment, so the role mapping leaves them out.
+const NAMESPACE_REGISTRIES = new Set(["ETHRegistry"]);
+const LABEL_REGISTERED_EVENT = parseAbiItem(
+  "event LabelRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
+);
+const ERC1967_ADMIN_SLOT =
+  "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
+// People-facing names for accounts a deployment's config only knows by role.
+const ACCOUNT_NAMES: Record<string, string> = {
+  [MAINNET_DAO.toLowerCase()]: "ENS DAO timelock",
+  [rockethConfig.accounts.securityCouncil.mainnet.toLowerCase()]:
+    "ENS Security Council Safe",
+};
+type RockethAccountName = keyof typeof rockethConfig.accounts;
+
+// The address a named account in rocketh/config.ts resolves to for an environment,
+// following aliases; undefined where it is a local signer index.
+function configuredAccount(
+  name: RockethAccountName,
+  environment: string,
+): Address | undefined {
+  const spec = rockethConfig.accounts[name] as Record<string, unknown>;
+  const value = spec[environment] ?? spec.default;
+  if (typeof value !== "string") return undefined;
+  if (isAddress(value)) return getAddress(value);
+  return value in rockethConfig.accounts
+    ? configuredAccount(value as RockethAccountName, environment)
+    : undefined;
+}
+
+/// Reads who controls every contract of a deployment namespace: the roles each
+/// account holds on it now, its `owner()` and ERC-1967 proxy admin, and whether a
+/// registry is emancipated. Accounts are named by the role the deploy config gives
+/// them, and by a people-facing name where one is known, so the result reads the
+/// same on any network.
+///
+/// Role holders are found from each contract's role-change events and their roles
+/// read live. A grant scoped to an entry survives in storage after the entry
+/// expires or is registered again, but the registry no longer consults the
+/// resource it sits at, so such a grant carries no authority and is left out.
+async function readRoleMap(opts: {
+  client: ReturnType<typeof publicClient>;
+  chainId: number;
+  network: MigrationNetwork;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  deployer: Address;
+  owner: Address;
+  /// Where every event scan starts; each contract's deploy block by default.
+  fromBlock?: bigint;
+}): Promise<RoleMap> {
+  const { client } = opts;
+  const environment = NETWORKS[opts.network].environment;
+  const namespaceDir = join(opts.deploymentsDir, opts.deploymentNetwork);
+  const deployments = readdirSync(namespaceDir)
+    .filter((file) => file.endsWith(".json") && !file.startsWith("."))
+    .map((file) => {
+      const record = JSON.parse(
+        readFileSync(join(namespaceDir, file), "utf-8"),
+      ) as JsonDeployment & {
+        contractName?: string;
+        receipt?: { blockNumber?: string | number };
+      };
+      return {
+        name: file.slice(0, -".json".length),
+        address: record.address ? getAddress(record.address) : undefined,
+        abi: record.abi ?? [],
+        contractName: record.contractName ?? file.slice(0, -".json".length),
+        deployBlock:
+          opts.fromBlock ??
+          (record.receipt?.blockNumber !== undefined
+            ? BigInt(record.receipt.blockNumber)
+            : 0n),
+      };
+    })
+    .filter(
+      (d): d is typeof d & { address: Address } => d.address !== undefined,
+    );
+  const hasFunction = (abi: readonly unknown[], name: string) =>
+    abi.some(
+      (item) =>
+        (item as { type?: string; name?: string }).type === "function" &&
+        (item as { name?: string }).name === name,
+    );
+
+  const accounts: Labelled[] = [];
+  const addAccount = (label: string, address: Address | undefined) => {
+    if (!address) return;
+    accounts.push({ label, address: getAddress(address) });
+    const name = ACCOUNT_NAMES[address.toLowerCase()];
+    if (name) accounts.push({ label: name, address: getAddress(address) });
+  };
+  addAccount("deployer", opts.deployer);
+  addAccount("owner", opts.owner);
+  addAccount(
+    "security council",
+    configuredAccount("securityCouncil", environment),
+  );
+  addAccount("v1 owner", configuredAccount("v1Owner", environment));
+  addAccount(
+    "UniversalResolver (top proxy)",
+    DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  );
+  const label = addressLabels(deployments, accounts);
+
+  const holdings: RoleHolding[] = [];
+  const control: ContractControl[] = [];
+  const seen = new Set<string>();
+  for (const deployment of deployments) {
+    if (seen.has(deployment.address.toLowerCase())) continue;
+    seen.add(deployment.address.toLowerCase());
+    const contract = labelled(label, deployment.address);
+    const read = (functionName: string, args: readonly unknown[] = []) =>
+      client.readContract({
+        address: deployment.address,
+        abi: deployment.abi,
+        functionName,
+        args,
+      } as never) as Promise<unknown>;
+
+    if (hasFunction(deployment.abi, "roles")) {
+      const isNamespace = NAMESPACE_REGISTRIES.has(deployment.name);
+      const isRegistry = hasFunction(deployment.abi, "getResource");
+      // The entries a registry registered, by the resource their roles sit at now.
+      const entries = new Map<string, string>();
+      if (isRegistry && !isNamespace) {
+        const registered = await readEventLogs(client, {
+          address: deployment.address,
+          event: LABEL_REGISTERED_EVENT,
+          fromBlock: deployment.deployBlock,
+          toBlock: await client.getBlockNumber(),
+        });
+        for (const log of registered) {
+          const { tokenId, label: entry } = log.args as {
+            tokenId: bigint;
+            label: string;
+          };
+          const resource = (await read("getResource", [tokenId])) as bigint;
+          entries.set(resource.toString(), entry);
+        }
+      }
+      let superseded = 0;
+      for (const grant of await discoverRoleGrants(
+        client,
+        deployment.address,
+        deployment.deployBlock,
+      )) {
+        if (grant.resource !== ROOT_RESOURCE) {
+          if (isNamespace) continue;
+          if (
+            isRegistry &&
+            ((await read("getResource", [grant.resource])) as bigint) !==
+              grant.resource
+          ) {
+            superseded++;
+            continue;
+          }
+        }
+        const roles = (await read("roles", [
+          grant.resource,
+          grant.account,
+        ])) as bigint;
+        if (roles === 0n) continue;
+        holdings.push({
+          contract,
+          resource: grant.resource,
+          entry: entries.get(grant.resource.toString()),
+          holder: labelled(label, grant.account),
+          roles,
+          family: roleFamily(deployment.contractName),
+        });
+      }
+      if (superseded > 0) {
+        console.log(
+          `${contract.label}: ${superseded} scoped grant(s) superseded by an expiry or re-registration, so no longer reachable`,
+        );
+      }
+    }
+
+    const owner = hasFunction(deployment.abi, "owner")
+      ? ((await read("owner").catch(() => undefined)) as Address | undefined)
+      : undefined;
+    const adminWord = await client.getStorageAt({
+      address: deployment.address,
+      slot: ERC1967_ADMIN_SLOT,
+    });
+    const proxyAdmin =
+      adminWord && BigInt(adminWord) !== 0n
+        ? getAddress(`0x${adminWord.slice(-40)}`)
+        : undefined;
+    const emancipated = hasFunction(deployment.abi, "isEmancipated")
+      ? ((await read("isEmancipated")) as boolean)
+      : undefined;
+    if (owner || proxyAdmin || emancipated !== undefined) {
+      control.push({
+        contract,
+        owner: owner && labelled(label, owner),
+        proxyAdmin: proxyAdmin && labelled(label, proxyAdmin),
+        emancipated,
+      });
+    }
+  }
+
+  return {
+    network: opts.deploymentNetwork,
+    chainId: opts.chainId,
+    block: await client.getBlockNumber(),
+    readAt: new Date().toISOString(),
+    holdings,
+    control,
+    namespaceRegistries: [...NAMESPACE_REGISTRIES].filter((name) =>
+      deployments.some((d) => d.name === name),
+    ),
+  };
+}
+
+const ROOT_RESOURCE = 0n;
+// `ROLES.ALL` sets every role bit, regular roles in the low half and their admin
+// roles in the high half.
+const ANY_ROLE = ROLES.ALL;
+const ANY_ADMIN_ROLE = ROLES.ALL & ~((1n << 128n) - 1n);
+// Root roles on the root registry that would reach the `eth` entry: repointing it,
+// giving it a resolver, or unregistering it so it can be registered again.
+const ETH_ENTRY_ROOT_ROLES =
+  ROLES.REGISTRY.SET_SUBREGISTRY |
+  ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
+  ROLES.REGISTRY.SET_RESOLVER |
+  ROLES.ADMIN.REGISTRY.SET_RESOLVER |
+  ROLES.REGISTRY.UNREGISTER |
+  ROLES.ADMIN.REGISTRY.UNREGISTER;
+
+type RegistryAdminOptions = {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  owner?: Address;
+  privateKey?: `0x${string}`;
+  impersonateAccount?: Address;
+  calldataOnly?: boolean;
+};
+
+function registryAdminContext(opts: RegistryAdminOptions) {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const registry = (name: string): ContractRef => ({
+    address: loadV2Deployment(deploymentsDir, deploymentNetwork, name).address,
+    abi: Artifact_PermissionedRegistry.abi,
+  });
+  const owner = getAddress(
+    opts.owner ??
+      deploymentOwner(deploymentsDir, deploymentNetwork) ??
+      NETWORKS[opts.network].defaultOwner,
+  );
+  const read = (
+    registry: ContractRef,
+    functionName: string,
+    args: readonly unknown[],
+  ) =>
+    client.readContract({
+      address: registry.address,
+      abi: registry.abi,
+      functionName,
+      args,
+    } as never) as Promise<unknown>;
+  const roles = async (
+    registry: ContractRef,
+    resource: bigint,
+    account: Address,
+  ) => (await read(registry, "roles", [resource, account])) as bigint;
+  const assignees = async (
+    registry: ContractRef,
+    resource: bigint,
+    roleBitmap: bigint,
+  ) =>
+    (
+      (await read(registry, "getAssigneeCount", [resource, roleBitmap])) as [
+        bigint,
+        bigint,
+      ]
+    )[0];
+  return {
+    chain,
+    client,
+    deploymentsDir,
+    deploymentNetwork,
+    owner,
+    rootRegistry: registry("RootRegistry"),
+    ethRegistry: registry("ETHRegistry"),
+    read,
+    roles,
+    assignees,
+  };
+}
+
+type RegistryAdminContext = ReturnType<typeof registryAdminContext>;
+
+async function readRegistryHandoverState(
+  ctx: RegistryAdminContext,
+  deployer: Address,
+): Promise<RegistryHandoverState> {
+  const ethResource = (await ctx.read(ctx.rootRegistry, "getResource", [
+    labelId("eth"),
+  ])) as bigint;
+  const [
+    ownerRootRoles,
+    deployerRootRoles,
+    ownerEthEntryRoles,
+    deployerEthEntryRoles,
+    ownerEthRegistryRoles,
+    deployerEthRegistryRoles,
+  ] = await Promise.all([
+    ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner),
+    ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, deployer),
+    ctx.roles(ctx.rootRegistry, ethResource, ctx.owner),
+    ctx.roles(ctx.rootRegistry, ethResource, deployer),
+    ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, ctx.owner),
+    ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, deployer),
+  ]);
+  return {
+    deployer,
+    owner: ctx.owner,
+    ethResource,
+    ownerRootRoles,
+    deployerRootRoles,
+    ownerEthEntryRoles,
+    deployerEthEntryRoles,
+    ownerEthRegistryRoles,
+    deployerEthRegistryRoles,
+  };
+}
+
+// Checks the handed-over state from the registries' own role counts, so an account
+// the plan never looked at cannot hold what nobody should.
+async function assertRegistryHandoverComplete(
+  ctx: RegistryAdminContext,
+  deployer: Address,
+) {
+  const state = await readRegistryHandoverState(ctx, deployer);
+  const remaining = planRegistryHandover(state);
+  if (remaining.length > 0) {
+    throw new Error(
+      `registry handover incomplete: ${remaining.map((call) => call.label).join("; ")}`,
+    );
+  }
+  // A role's assignee count sits in the lowest bit of its nybble, so one holder of
+  // each role in a bitmap reads back as the bitmap itself. The plan being empty
+  // says the owner is that holder.
+  const failures: string[] = [];
+  if (
+    (await ctx.assignees(ctx.rootRegistry, state.ethResource, ANY_ROLE)) !==
+    DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR
+  ) {
+    failures.push(
+      "an account other than the owner holds a role on the eth entry",
+    );
+  }
+  if (
+    (await ctx.assignees(
+      ctx.rootRegistry,
+      ROOT_RESOURCE,
+      ETH_ENTRY_ROOT_ROLES,
+    )) !== 0n
+  ) {
+    failures.push(
+      "an account holds a root registry root role that reaches the eth entry",
+    );
+  }
+  if (
+    (await ctx.assignees(ctx.ethRegistry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !==
+    (DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT & ANY_ADMIN_ROLE)
+  ) {
+    failures.push(
+      "an account other than the owner holds an admin role on the .eth registry",
+    );
+  }
+  if (!(await ctx.read(ctx.ethRegistry, "isEmancipated", []))) {
+    failures.push(
+      "the .eth registry is not emancipated: a root role reaches its names",
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(`registry handover check failed: ${failures.join("; ")}`);
+  }
+  console.log(
+    `registry handover complete: ${ctx.owner} holds the root registry's and the .eth registry's root roles and can set the eth entry's child registry and resolver; the deployer holds nothing, and .eth names are emancipated`,
+  );
+}
+
+/// Hands the deployer's authority over the v2 registries to the owner: the owner
+/// takes the root registry's and the `.eth` registry's root roles and the regular
+/// roles that set the `eth` entry's child registry and resolver, then the deployer
+/// drops every role it holds on them. Sends only what is missing, then checks the
+/// end state.
+export async function handOverRegistryAdmin(
+  opts: RegistryAdminOptions & { deployer?: Address },
+) {
+  const ctx = registryAdminContext(opts);
+  const signer = keyAddress(opts.privateKey) ?? opts.impersonateAccount;
+  const deployer =
+    opts.deployer ??
+    signer ??
+    namespaceDeployer(ctx.deploymentsDir, ctx.deploymentNetwork);
+  if (!deployer) {
+    throw new Error(
+      `cannot determine the deployer for ${ctx.deploymentNetwork}; pass --deployer`,
+    );
+  }
+  if (!opts.calldataOnly && signer && !sameAddress(signer, deployer)) {
+    throw new Error(
+      `the signer ${signer} is not the deployer ${deployer}, which holds the roles to hand over`,
+    );
+  }
+
+  const calls = planRegistryHandover(
+    await readRegistryHandoverState(ctx, getAddress(deployer)),
+  );
+  console.log(
+    `registry handover from ${deployer} to ${ctx.owner}: ${calls.length} call(s) to make`,
+  );
+  for (const call of calls) {
+    await sendAdminWrite({
+      client: ctx.client,
+      chain: ctx.chain,
+      rpcUrl: opts.rpcUrl,
+      provider: opts.provider,
+      target:
+        call.registry === "RootRegistry" ? ctx.rootRegistry : ctx.ethRegistry,
+      functionName: call.functionName,
+      args: call.args,
+      receiptLabel: call.label,
+      calldataLabel: call.label,
+      privateKey: opts.privateKey,
+      impersonateAccount: opts.impersonateAccount,
+      calldataOnly: opts.calldataOnly,
+    });
+    if (!opts.calldataOnly) console.log(`  ${call.label}: done`);
+  }
+  if (opts.calldataOnly) return;
+  await assertRegistryHandoverComplete(ctx, getAddress(deployer));
+}
+
+/// The owner drops its root registry root roles once the probation period after the
+/// handover ends, keeping only the naming and metadata roles, so top-level names
+/// are emancipated. Then checks nobody holds an admin role on the root registry.
+export async function emancipateRootRegistry(opts: RegistryAdminOptions) {
+  const ctx = registryAdminContext(opts);
+  const held = await ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner);
+  const roles = rootEmancipationRoles(held);
+  if (roles === 0n) {
+    console.log(`${ctx.owner} holds no root registry roles to drop`);
+  } else {
+    await sendAdminWrite({
+      client: ctx.client,
+      chain: ctx.chain,
+      rpcUrl: opts.rpcUrl,
+      provider: opts.provider,
+      target: ctx.rootRegistry,
+      functionName: "revokeRootRoles",
+      args: [roles, ctx.owner],
+      receiptLabel: "the owner drops its root registry root roles",
+      calldataLabel:
+        "the owner drops its root registry root roles, keeping naming and metadata",
+      privateKey: opts.privateKey,
+      impersonateAccount: opts.impersonateAccount,
+      calldataOnly: opts.calldataOnly,
+    });
+  }
+  if (opts.calldataOnly) return;
+  if (
+    (await ctx.assignees(ctx.rootRegistry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !==
+    0n
+  ) {
+    throw new Error(
+      "an account still holds an admin role on the root registry",
+    );
+  }
+  console.log(
+    "root registry emancipated: no account holds an admin role on it",
+  );
 }
 
 // Compares a transaction about to be signed against the prepared one it claims to be.
@@ -4949,6 +5420,9 @@ async function verifyUrp(opts: {
   managedUrp?: Address;
   expectedTopImplementation?: Address;
   expectedManagedImplementation?: Address;
+  // Whoever administers the managed URP can change resolution for every client
+  // the top URP serves, so the admin is checked as strictly as the implementation.
+  expectedManagedAdmin?: Address;
   deploymentsDir?: string;
   deploymentNetwork?: string;
 }) {
@@ -5000,6 +5474,14 @@ async function verifyUrp(opts: {
   ) {
     throw new Error(
       `managed URP implementation is ${managedImplementation}, expected ${opts.expectedManagedImplementation}`,
+    );
+  }
+  if (
+    opts.expectedManagedAdmin &&
+    !sameAddress(managedAdmin, opts.expectedManagedAdmin)
+  ) {
+    throw new Error(
+      `managed URP admin is ${managedAdmin}, expected ${opts.expectedManagedAdmin}`,
     );
   }
 }
@@ -5583,14 +6065,21 @@ function buildDeployV1RockethConfig(
 
 // Normalize the provider (RPC-compatibility shim, chain-id override) and resolve
 // the chain id and chain, shared by the v1 and v2 deploy entrypoints.
-async function resolveDeployProviderAndChain(opts: {
+//
+// A deploy given only an RPC URL still hands rocketh a provider of ours. Left to
+// itself, rocketh builds an `eip-1193-jsonrpc-provider`, which throws "No Result"
+// for any null result. Right after sending a transaction rocketh looks it up by
+// hash, and a node that has not seen it yet rightly answers null, so that provider
+// stopped a live deploy after its first transaction. Ours returns null as null and
+// throws only the errors a node sends.
+export async function resolveDeployProviderAndChain(opts: {
   network: MigrationNetwork;
   rpcUrl?: string;
   chainId?: string;
   provider?: RpcProvider;
   rpcCompatibility?: boolean;
   debugRpc?: boolean;
-}): Promise<{ provider?: RpcProvider; chainId: number; chain: Chain }> {
+}): Promise<{ provider: RpcProvider; chainId: number; chain: Chain }> {
   const network = NETWORKS[opts.network];
   if (!opts.rpcUrl && !opts.provider) {
     throw new Error("Missing rpcUrl or provider");
@@ -5612,7 +6101,11 @@ async function resolveDeployProviderAndChain(opts: {
     chainId,
     opts.rpcUrl ?? network.chain.rpcUrls.default.http[0],
   );
-  return { provider, chainId, chain };
+  return {
+    provider: provider ?? httpRpcProvider(opts.rpcUrl!),
+    chainId,
+    chain,
+  };
 }
 
 // Print each deployed contract's address, or a placeholder when the artifact is
@@ -5703,7 +6196,7 @@ export async function deployV2(opts: DeployV2Options) {
       network.defaultV1Owner,
       "v1Owner",
     );
-    await impersonate(impersonationProvider(opts) ?? provider!, v1Owner);
+    await impersonate(impersonationProvider(opts) ?? provider, v1Owner);
   }
 
   if (opts.fresh) {
@@ -5928,6 +6421,10 @@ const SMOKE_CHECKS = {
     "phase 4 authorizing ETHRenewerV1 and handing it the v1 BaseRegistrar, the state a renewal needs",
   freshV2Registration:
     "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
+  registryHandover:
+    "the registry handover, leaving the deployer no v2 authority, the owner both registries and the eth entry, and .eth names emancipated",
+  rootEmancipation:
+    "the owner dropping its root registry roles once the handover's probation period ends",
 } as const;
 
 // One condition that stopped a rehearsal from covering everything, together with
@@ -7326,6 +7823,83 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
 
+    // The deployer hands the registries to the owner, which later drops its root
+    // registry roles, as a live run does after the cutover and a probation period.
+    // Audited after each, failing on a grant the stage intends and does not hold.
+    const auditRolesAt = async (stage: RoleAuditStage) => {
+      const findings = await verifyV2Roles({
+        ...phaseCtx,
+        deployer,
+        owner,
+        stage,
+        reportOnly: true,
+      });
+      const missing = findings.filter((finding) => finding.kind === "missing");
+      if (missing.length > 0) {
+        throw new Error(
+          `role audit (${stage}): ${missing.length} grant(s) the stage intends are missing`,
+        );
+      }
+    };
+    if (sameAddress(owner, deployer)) {
+      console.log(
+        `registry handover: skipped, the owner is the deployer (${owner})`,
+      );
+      recordSkipped({
+        cause: "owner is the deployer",
+        why: [
+          `the run's owner and deployer are both ${owner}, so there is no one to hand`,
+          "the v2 registries to. This is expected on a sepolia run with the real deployer.",
+        ],
+        checks: [SMOKE_CHECKS.registryHandover, SMOKE_CHECKS.rootEmancipation],
+        remedy: [
+          "pass an --owner that differs from --deployer to exercise the handover.",
+        ],
+      });
+    } else {
+      const deployerSigner = useRpcStateControls
+        ? adminSigner(deployer)
+        : {
+            privateKey: requirePrivateKeyForAddress(deployer, keys, "deployer"),
+          };
+      console.log(
+        "registry handover: the deployer hands the v2 registries to the owner",
+      );
+      await handOverRegistryAdmin({
+        ...phaseCtx,
+        deployer,
+        owner,
+        ...deployerSigner,
+      });
+      await auditRolesAt("post-registry-handover");
+      coveredChecks.push(SMOKE_CHECKS.registryHandover);
+
+      const ownerKey = privateKeyForAddress(owner, keys);
+      if (useRpcStateControls || ownerKey) {
+        console.log(
+          "root emancipation: the owner drops its root registry roles",
+        );
+        await emancipateRootRegistry({
+          ...phaseCtx,
+          owner,
+          ...(useRpcStateControls
+            ? adminSigner(owner)
+            : { privateKey: ownerKey }),
+        });
+        await auditRolesAt("root-emancipated");
+        coveredChecks.push(SMOKE_CHECKS.rootEmancipation);
+      } else {
+        recordSkipped({
+          cause: "no owner signer",
+          why: [
+            `the run has neither state controls nor a key for the owner ${owner}.`,
+          ],
+          checks: [SMOKE_CHECKS.rootEmancipation],
+          remedy: ["run against a local fork, or pass the owner's key."],
+        });
+      }
+    }
+
     if (opts.network === "mainnet") {
       console.log(
         `mainnet DAO simulation used owner/v1Owner impersonation: ${owner}`,
@@ -7601,13 +8175,25 @@ function addV1DeploymentOptions(command: Command): Command {
     );
 }
 
+// Preparing an owner-gated write for a multisig or the DAO instead of sending it,
+// optionally recording each prepared call for `phase build-dao-proposal`.
+function addCalldataOnlyOptions(command: Command): Command {
+  return command
+    .option("--calldata-only", "Print transaction target and calldata", false)
+    .option(
+      "--calldata-out <path>",
+      "With --calldata-only, also append each prepared call to this JSONL file",
+    );
+}
+
 // The signer options shared by every v1-owner-gated write command: a key, fork
 // impersonation, or calldata-only preparation for a multisig.
 function addV1OwnerWriteOptions(command: Command): Command {
-  return command
-    .option("--private-key <key>", "V1 owner private key")
-    .option("--impersonate-owner", "Impersonate owner on a fork", false)
-    .option("--calldata-only", "Print transaction target and calldata", false);
+  return addCalldataOnlyOptions(
+    command
+      .option("--private-key <key>", "V1 owner private key")
+      .option("--impersonate-owner", "Impersonate owner on a fork", false),
+  );
 }
 
 function assertCleanDeploymentNamespace(
@@ -7962,6 +8548,21 @@ export async function main(argv = process.argv): Promise<void> {
     .description(
       "Operate and rehearse the ENS v1 to v2 migration in explicit phases.",
     );
+
+  // A command asked to record its prepared calls starts recording before it runs.
+  program.hook("preAction", (_, actionCommand) => {
+    const { calldataOut, calldataOnly } = actionCommand.opts<{
+      calldataOut?: string;
+      calldataOnly?: boolean;
+    }>();
+    if (calldataOut === undefined) return;
+    if (!calldataOnly) {
+      throw new Error(
+        "--calldata-out records prepared calls; pass --calldata-only too",
+      );
+    }
+    recordPreparedCallsTo(calldataOut);
+  });
 
   program.addCommand(
     new Command("fetch-data")
@@ -8400,7 +9001,10 @@ export async function main(argv = process.argv): Promise<void> {
             )
             .option("--deployer <address>", "Deployer account address")
             .option("--owner <address>", "Owner/admin address")
-            .option("--ur-manager <address>", "Managed URP admin address")
+            .option(
+              "--ur-manager <address>",
+              "Managed URP admin address (default: the network's security council, else the deployer)",
+            )
             .option("--v1-owner <address>", "v1 owner address for v1 writes")
             .option(
               "--impersonate-v1-owner",
@@ -8427,12 +9031,13 @@ export async function main(argv = process.argv): Promise<void> {
         ? privateKeyToAccount(deployerKey).address
         : undefined;
       // The owner defaults to the DAO on mainnet and to the deployer elsewhere;
-      // urManager defaults to the deployer (securityCouncil -> deployer). Only
-      // attach a key that controls the resolved account so the deployer key is
-      // never used to act as the mainnet DAO.
+      // urManager defaults to the network's security council, else the deployer.
+      // Only attach a key that controls the resolved account so the deployer key
+      // is never used to act as the mainnet DAO or the security council.
       const ownerAddress =
         opts.owner ?? (network === "mainnet" ? MAINNET_DAO : deployerAddress);
-      const urManagerAddress = opts.urManager ?? deployerAddress;
+      const urManagerAddress =
+        opts.urManager ?? NETWORKS[network].defaultUrManager ?? deployerAddress;
       const v1OwnerAddress = opts.v1Owner ?? NETWORKS[network].defaultV1Owner;
       // Respect an explicit --deployer override (e.g. an impersonated/unlocked
       // account during a rehearsal or a key rotation): only attach the env key
@@ -8619,7 +9224,7 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         new Command("verify-roles")
           .description(
-            "Audit who holds which roles on the v2 registries against the deployment's intent",
+            "Audit who holds which roles on the v2 registries against the deployment's intent, and write roles.md beside the namespace's artifacts: every role, owner and proxy admin on its contracts, read from the chain",
           )
           .option(
             "--deployer <address>",
@@ -8633,10 +9238,13 @@ export async function main(argv = process.argv): Promise<void> {
             "--from-block <number>",
             "Block to discover role holders from; defaults to the registry's deploy block",
           )
-          .option(
-            "--pre-handoff",
-            "Audit the state before phase 6, where BatchRegistrar still holds its seeding roles and ETHRegistrar holds none",
-            false,
+          .addOption(
+            new Option(
+              "--stage <stage>",
+              "Point in the migration to audit against: before phase 6, after it, after the registry handover, or after the owner drops its root registry roles",
+            )
+              .choices(ROLE_AUDIT_STAGES)
+              .default("post-handoff"),
           )
           .option("--report-only", "Print findings without failing", false),
       ),
@@ -8648,7 +9256,7 @@ export async function main(argv = process.argv): Promise<void> {
             owner?: Address;
             fromBlock?: string;
             reportOnly?: boolean;
-            preHandoff?: boolean;
+            stage?: RoleAuditStage;
           },
       ) => {
         await verifyV2Roles({ ...withNetworkRpc(opts) });
@@ -8656,6 +9264,93 @@ export async function main(argv = process.argv): Promise<void> {
     ),
   );
 
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
+          .description(
+            "Hand the deployer's v2 registry authority to the owner: the owner takes the root registry's and the .eth registry's root roles and the roles that set the eth entry's child registry and resolver, then the deployer drops every role it holds on them",
+          )
+          .option(
+            "--owner <address>",
+            "Account to hand the root registry to; defaults to the owner the namespace was deployed with, else the network's configured owner",
+          )
+          .option(
+            "--deployer <address>",
+            "Account holding the roles; defaults to the signer, else the account that sent the namespace's deploy transactions",
+          )
+          .option(
+            "--private-key <key>",
+            "Deployer private key; falls back to DEPLOYER_KEY",
+          )
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate the deployer on a fork",
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            owner?: Address;
+            deployer?: Address;
+            privateKey?: `0x${string}`;
+            impersonateAccount?: Address;
+            calldataOnly?: boolean;
+          },
+      ) => {
+        await handOverRegistryAdmin({
+          ...withNetworkRpc(opts),
+          privateKey:
+            opts.privateKey ??
+            (opts.impersonateAccount || opts.calldataOnly
+              ? undefined
+              : envPrivateKey("DEPLOYER_KEY")),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        addCalldataOnlyOptions(new Command("emancipate-root-registry"))
+          .description(
+            "The owner drops its root registry root roles after the handover's probation period, keeping naming and metadata, so top-level names are emancipated",
+          )
+          .option(
+            "--owner <address>",
+            "Account dropping the roles; defaults to the owner the namespace was deployed with, else the network's configured owner",
+          )
+          .option(
+            "--private-key <key>",
+            "Owner private key; falls back to OWNER_KEY",
+          )
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate the owner on a fork",
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            owner?: Address;
+            privateKey?: `0x${string}`;
+            impersonateAccount?: Address;
+            calldataOnly?: boolean;
+          },
+      ) => {
+        await emancipateRootRegistry({
+          ...withNetworkRpc(opts),
+          privateKey:
+            opts.privateKey ??
+            (opts.impersonateAccount || opts.calldataOnly
+              ? undefined
+              : envPrivateKey("OWNER_KEY")),
+        });
+      },
+    ),
+  );
   phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
@@ -8763,6 +9458,10 @@ export async function main(argv = process.argv): Promise<void> {
         )
         .option("--private-key <key>", "Owner private key")
         .option(
+          "--impersonate-account <address>",
+          "Send as this account on a local fork instead of signing, as a rehearsal plays a DAO proposal",
+        )
+        .option(
           "--journal-file <path>",
           "Record of executed transactions, so a re-run does not re-send them (default: <file>.executed.json)",
         )
@@ -8782,6 +9481,7 @@ export async function main(argv = process.argv): Promise<void> {
           file: string;
           role?: string;
           privateKey?: `0x${string}`;
+          impersonateAccount?: Address;
           dryRun?: boolean;
           journalFile?: string;
           force?: boolean;
@@ -8794,6 +9494,62 @@ export async function main(argv = process.argv): Promise<void> {
           journalFile: opts.journalFile,
           force: opts.force,
         });
+      },
+    ),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        new Command("build-dao-proposal")
+          .description(
+            "Merge prepared owner transactions into one decoded DAO proposal",
+          )
+          .requiredOption(
+            "--file <paths...>",
+            "JSONL files of prepared owner transactions, in execution order",
+          )
+          .requiredOption(
+            "--out-dir <dir>",
+            "Directory to write the proposal to",
+          )
+          .option(
+            "--network <network>",
+            "Network whose deployments the calls target",
+            "mainnet",
+          ),
+      ),
+    ).action(
+      (
+        opts: DeploymentCliOptions &
+          V1DeploymentOptions & {
+            file: string[];
+            outDir: string;
+            network: string;
+          },
+      ) => {
+        const network = parseMigrationNetwork(opts.network);
+        const v1Environment =
+          opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
+        const v1Roots = opts.v1DeploymentsDir
+          ? [opts.v1DeploymentsDir]
+          : [LOCAL_V1_DEPLOYMENTS_DIR, BUNDLED_V1_DEPLOYMENTS_DIR];
+        const calls = buildDaoProposal({
+          files: opts.file,
+          outDir: opts.outDir,
+          contractDirs: [
+            join(
+              opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+              opts.deploymentNetwork ?? network,
+            ),
+            ...v1Roots.map((root) => join(root, v1Environment)),
+          ],
+        });
+        console.log(`DAO proposal: ${calls.length} calls -> ${opts.outDir}`);
+        for (const call of calls) {
+          console.log(
+            `  ${call.index}. ${call.contract}.${call.signature}  (${call.label})`,
+          );
+        }
       },
     ),
   );
@@ -8811,6 +9567,10 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--expected-managed-implementation <address>",
             "Expected managed URP implementation; defaults to the deployment's UniversalResolverV2",
+          )
+          .option(
+            "--expected-managed-admin <address>",
+            "Expected managed URP admin; defaults to the network's security council, unchecked where none is configured",
           ),
       ),
     ).action(
@@ -8821,6 +9581,7 @@ export async function main(argv = process.argv): Promise<void> {
             managedUrp?: Address;
             expectedTopImplementation?: Address;
             expectedManagedImplementation?: Address;
+            expectedManagedAdmin?: Address;
           },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -8849,6 +9610,9 @@ export async function main(argv = process.argv): Promise<void> {
               deploymentNetwork,
               "UniversalResolverV2",
             ),
+          expectedManagedAdmin:
+            networkOpts.expectedManagedAdmin ??
+            NETWORKS[networkOpts.network].defaultUrManager,
         });
       },
     ),
@@ -9043,7 +9807,7 @@ export async function main(argv = process.argv): Promise<void> {
   phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
-        new Command("switch-urp-to-managed")
+        addCalldataOnlyOptions(new Command("switch-urp-to-managed"))
           .description(
             "Switch the top UniversalResolverProxy to ManagedUniversalResolverProxy",
           )
@@ -9053,11 +9817,6 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--impersonate-account <address>",
             "Impersonate top URP admin on a fork",
-          )
-          .option(
-            "--calldata-only",
-            "Print transaction target and calldata",
-            false,
           ),
       ),
     ).action(
@@ -9083,7 +9842,7 @@ export async function main(argv = process.argv): Promise<void> {
   phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
-        new Command("upgrade-managed-urp")
+        addCalldataOnlyOptions(new Command("upgrade-managed-urp"))
           .description("Upgrade the managed URP to UniversalResolverV2")
           .option("--managed-urp <address>", "Managed URP address")
           .option(
@@ -9094,11 +9853,6 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--impersonate-account <address>",
             "Impersonate admin on a fork",
-          )
-          .option(
-            "--calldata-only",
-            "Print transaction target and calldata",
-            false,
           ),
       ),
     ).action(
