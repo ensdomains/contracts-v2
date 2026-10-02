@@ -247,6 +247,18 @@ export const REFUSED_READ_ATTEMPTS = 10;
 const REFUSED_READ_BACKOFF_MS = 1_000;
 const REFUSED_READ_BACKOFF_CAP_MS = 30_000;
 
+/// The wait before a refused read is asked again, after `refusal` refusals in a row.
+export function refusedReadWaitMs(
+  refusal: number,
+  baseMs = REFUSED_READ_BACKOFF_MS,
+): number {
+  const wait = Math.min(
+    REFUSED_READ_BACKOFF_CAP_MS,
+    baseMs * 2 ** (refusal - 1),
+  );
+  return wait / 2 + Math.random() * wait;
+}
+
 /// A JSON-RPC provider over HTTP that returns a node's answer as it is, `null`
 /// included, and throws only the errors a node sends.
 ///
@@ -332,11 +344,7 @@ export function httpRpcProvider(
         }
         if ("result" in outcome) return outcome.result;
         if (!outcome.transient || refusal >= attempts) throw outcome.error;
-        const wait = Math.min(
-          REFUSED_READ_BACKOFF_CAP_MS,
-          retryDelayMs * 2 ** (refusal - 1),
-        );
-        await sleep(wait / 2 + Math.random() * wait);
+        await sleep(refusedReadWaitMs(refusal, retryDelayMs));
       }
     },
   };

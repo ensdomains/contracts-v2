@@ -27,7 +27,7 @@ import {
 import { STATUS } from "../../script/deploy-constants.js";
 import { deploymentGraveyards } from "../../script/migrate.js";
 import { Graveyard } from "../../script/migrations/abis.js";
-import { FAILED_QUERY_LIMIT } from "../../script/migrations/queryRetry.js";
+import { REFUSED_READ_ATTEMPTS } from "../../script/migrations/rpc.js";
 import {
   batchVerifyRegistrations,
   ethNameNode,
@@ -427,7 +427,7 @@ describe("batchVerifyRegistrations", () => {
     const [result] = await verify(v2, v1);
 
     expect(result.error).toContain("nameExpires");
-    expect(v1.multicalls).toBe(FAILED_QUERY_LIMIT + 1);
+    expect(v1.multicalls).toBe(REFUSED_READ_ATTEMPTS);
   });
 
   it("reads the chain time again when the read failed", async () => {

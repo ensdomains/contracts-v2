@@ -63,7 +63,7 @@ import {
   Graveyard,
   NameWrapper,
 } from "./migrations/abis.js";
-import { QueryRetry } from "./migrations/queryRetry.js";
+import { REFUSED_READ_ATTEMPTS, refusedReadWaitMs } from "./migrations/rpc.js";
 
 const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
 
@@ -1319,9 +1319,10 @@ export interface VerificationResult {
 /// A provider that balances load across nodes fails reads at random, and one failed
 /// request fails every name it carried. None of these reads fails for a reason the
 /// chain gives — `getState`, `nameExpires` and the owner reads answer for any id — so
-/// a batch with a failed read is read again, as `QueryRetry` allows, and a single
-/// timeout costs a wait rather than a failed name. Past the retry limit the names
-/// whose reads failed are reported failed, and a failed chain-time read fails the run.
+/// a batch with a failed read is read again after a wait that doubles with each
+/// failure in a row (`refusedReadWaitMs`), and a rate limit or timeout costs a wait
+/// rather than a failed name. Past the attempt limit the names whose reads failed are
+/// reported failed, and a failed chain-time read fails the run.
 export async function batchVerifyRegistrations(
   registrations: ENSRegistration[],
   client: any,
@@ -1339,8 +1340,6 @@ export async function batchVerifyRegistrations(
     functionName: "getState" as const,
     args: [id],
   }));
-  const retry = new QueryRetry(retryDelayMs);
-
   const readBatch = async () => {
     const [v2Settled, v1Settled] = await Promise.allSettled([
       client.multicall({ contracts: v2Contracts }),
@@ -1368,10 +1367,8 @@ export async function batchVerifyRegistrations(
   };
 
   let reads = await readBatch();
-  while (reads.failed > 0) {
-    try {
-      await retry.failed(new Error(`${reads.failed} read(s) failed`));
-    } catch {
+  for (let failure = 1; reads.failed > 0; failure++) {
+    if (failure >= REFUSED_READ_ATTEMPTS) {
       logger.warning(
         `Reads for ${reads.failed} of ${registrations.length} names in the batch kept failing (${reads.reason}); reporting them failed.`,
       );
@@ -1380,20 +1377,21 @@ export async function batchVerifyRegistrations(
     logger.warning(
       `Reads for ${reads.failed} of ${registrations.length} names in the batch failed (${reads.reason}); reading the batch again.`,
     );
+    await sleep(refusedReadWaitMs(failure, retryDelayMs));
     reads = await readBatch();
   }
-  retry.served();
   const { v2: v2Results, v1: v1Results } = reads;
 
   let chainTimes: [bigint, bigint] | undefined;
-  while (chainTimes === undefined) {
+  for (let failure = 1; chainTimes === undefined; failure++) {
     try {
       chainTimes = await Promise.all([
         readChainTimestamp(mainnetClient),
         readChainTimestamp(client),
       ]);
     } catch (error) {
-      await retry.failed(error);
+      if (failure >= REFUSED_READ_ATTEMPTS) throw error;
+      await sleep(refusedReadWaitMs(failure, retryDelayMs));
     }
   }
   const [v1Now, v2Now] = chainTimes;
