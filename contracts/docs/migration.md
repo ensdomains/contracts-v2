@@ -501,18 +501,24 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   (default: the owner the namespace was deployed with).
 - **Expected outcome:**
   - The owner holds the root registry's root roles, admin roles included, for the probation period.
-  - The deployer holds no role on either registry or on the `eth` entry.
-  - Nobody holds a role on the `eth` entry. Admin roles on a name cannot be granted again, so
-    `.eth` can never be repointed to another registry or given a resolver.
-  - Nobody holds an admin role on the `.eth` registry, so `.eth` names are emancipated. The
-    registrar, renewer and migration controllers keep the regular roles they need, and no
-    registrar or migration controller can be added later.
+  - The owner holds the `.eth` registry's root roles, admin roles included: it can authorize or
+    remove registrars, renewers and migration controllers, including one that registers names
+    still reserved by pre-migration. None of these roles reaches a name, so `.eth` names stay
+    emancipated, and the registry still allows safe transfers of them, which it refuses otherwise.
+  - The owner can set the `eth` entry's child registry and resolver. Admin roles on a name cannot
+    be granted, and the owner cannot hold the `eth` token (the DAO timelock does not accept ERC-1155
+    tokens), so nobody can grant or revoke these roles.
+  - The deployer holds no role on either registry or on the `eth` entry. It keeps the `eth` token,
+    which carries no role.
+  - The registrar, renewer and migration controllers keep the regular roles they need.
 
-  The command sends only the grants and revocations still missing, then checks the end state from
-  the registries' own role counts, so a holder it did not look for is caught too.
-  `emancipate-root-registry` has the owner drop every root registry role except the regular naming
-  and metadata roles, after which nobody holds an admin role on either registry. `fork full` runs
-  both steps and audits the roles after each.
+  The command makes every grant to the owner before the deployer drops anything, and sends only the
+  grants and revocations still missing. It then checks the end state from the registries' own role
+  counts, so a holder it did not look for is caught too, and checks that the `.eth` registry is
+  emancipated. `emancipate-root-registry` has the owner drop every root registry root role except
+  the regular naming and metadata roles, after which nobody holds an admin role on the root
+  registry and no top-level name can be added. It leaves the owner's `.eth` registry roles and its
+  roles on the `eth` entry as they are. `fork full` runs both steps and audits the roles after each.
 
 ## Re-deploying onto an already-migrated network
 
@@ -1059,9 +1065,9 @@ smoke checks interleaved (phase 8 only when the owner is not the deployer):
 - a pre-migrated name is migrated to v2 via `UnlockedMigrationController` after phase 5;
 - the v2 registrar rejects registrations before phase 6's grant, rejects pre-migrated reserved names
   after it, and accepts a fresh name after enablement;
-- the phase 8 handover leaves the deployer no v2 role and the owner the root registry, and the
-  owner's later emancipation leaves it only the naming and metadata roles, each audited with
-  `verify-roles`.
+- the phase 8 handover leaves the deployer no v2 role, gives the owner both registries' root roles
+  and the `eth` entry's child registry and resolver, and the owner's later emancipation leaves it
+  only the naming and metadata roles on the root registry, each audited with `verify-roles`.
 
 Pre-migration is signed off after phases 2 and 5 exactly as a live run is: the rehearsal builds an
 index, runs `premigration reconcile`, and phase 3 refuses to freeze v1 without the pass it records.
@@ -1266,7 +1272,7 @@ and idempotency rules.
 | `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 4) |
 | `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
 | `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`, `root-emancipated`) |
-| `phase hand-over-registry-admin` | Phase 8: the owner takes the root registry's root roles, and the deployer drops those, its `eth` entry roles and its `.eth` registry root roles |
+| `phase hand-over-registry-admin` | Phase 8: the owner takes the root registry's and the `.eth` registry's root roles and the roles that set the `eth` entry's child registry and resolver, then the deployer drops every role it holds on them |
 | `phase emancipate-root-registry` | Phase 8, after probation: the owner drops its root registry roles except naming and metadata |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |

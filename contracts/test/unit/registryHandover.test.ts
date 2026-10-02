@@ -19,12 +19,25 @@ const deployed: RegistryHandoverState = {
   ethResource: ETH_RESOURCE,
   ownerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER,
   deployerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+  ownerEthEntryRoles: 0n,
   deployerEthEntryRoles: DEPLOYMENT_ROLES.ETH_TOKEN,
+  ownerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
   deployerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
 };
 
+// The registries once handed over.
+const handedOver: RegistryHandoverState = {
+  ...deployed,
+  ownerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+  deployerRootRoles: 0n,
+  ownerEthEntryRoles: DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR,
+  deployerEthEntryRoles: 0n,
+  ownerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+  deployerEthRegistryRoles: 0n,
+};
+
 describe("planRegistryHandover", () => {
-  it("grants the owner the root roles before the deployer drops everything", () => {
+  it("grants the owner its roles before the deployer drops everything", () => {
     expect(planRegistryHandover(deployed)).toEqual([
       {
         registry: "RootRegistry",
@@ -35,6 +48,22 @@ describe("planRegistryHandover", () => {
           OWNER,
         ],
         label: expect.stringContaining("grant the owner"),
+      },
+      {
+        registry: "RootRegistry",
+        functionName: "grantRoles",
+        args: [ETH_RESOURCE, DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR, OWNER],
+        label: expect.stringContaining("eth entry"),
+      },
+      {
+        registry: "ETHRegistry",
+        functionName: "grantRootRoles",
+        args: [
+          DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT &
+            ~DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
+          OWNER,
+        ],
+        label: expect.stringContaining(".eth registry"),
       },
       {
         registry: "RootRegistry",
@@ -59,10 +88,10 @@ describe("planRegistryHandover", () => {
 
   it("revokes whatever the deployer holds, not only what the deploy granted", () => {
     const extra = ROLES.REGISTRY.REGISTRAR;
-    const [, , , ethRegistry] = planRegistryHandover({
+    const ethRegistry = planRegistryHandover({
       ...deployed,
       deployerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT | extra,
-    });
+    }).at(-1)!;
     expect(ethRegistry.args).toEqual([
       DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT | extra,
       DEPLOYER,
@@ -74,23 +103,50 @@ describe("planRegistryHandover", () => {
       ...deployed,
       ownerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
       deployerRootRoles: 0n,
+      ownerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
     });
-    expect(calls.map((call) => call.functionName)).toEqual([
-      "revokeRoles",
-      "revokeRootRoles",
+    expect(calls.map((call) => [call.registry, call.functionName])).toEqual([
+      ["RootRegistry", "grantRoles"],
+      ["RootRegistry", "revokeRoles"],
+      ["ETHRegistry", "revokeRootRoles"],
     ]);
   });
 
-  it("plans nothing once handed over", () => {
+  it("grants the owner only the regular roles on the eth entry", () => {
+    const [grant] = planRegistryHandover({
+      ...handedOver,
+      ownerEthEntryRoles: 0n,
+    });
+    expect(grant.args[1]).toBe(
+      ROLES.REGISTRY.SET_SUBREGISTRY | ROLES.REGISTRY.SET_RESOLVER,
+    );
+  });
+
+  it("hands the owner no .eth registry role that reaches a name", () => {
+    // The roles the registry counts against emancipation: any of them at the root
+    // reaches every name, and blocks safe transfers of .eth names.
+    const unemancipated =
+      ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
+      ROLES.REGISTRY.SET_SUBREGISTRY |
+      ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
+      ROLES.REGISTRY.SET_RESOLVER |
+      ROLES.ADMIN.REGISTRY.SET_RESOLVER |
+      ROLES.REGISTRY.UNREGISTER |
+      ROLES.ADMIN.REGISTRY.UNREGISTER |
+      ROLES.REGISTRY.UPGRADE |
+      ROLES.ADMIN.REGISTRY.UPGRADE;
+    expect(DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT & unemancipated).toBe(0n);
     expect(
-      planRegistryHandover({
-        ...deployed,
-        ownerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
-        deployerRootRoles: 0n,
-        deployerEthEntryRoles: 0n,
-        deployerEthRegistryRoles: 0n,
-      }),
-    ).toEqual([]);
+      DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT &
+        (ROLES.ADMIN.REGISTRY.REGISTRAR |
+          ROLES.ADMIN.REGISTRY.REGISTER_RESERVED),
+    ).toBe(
+      ROLES.ADMIN.REGISTRY.REGISTRAR | ROLES.ADMIN.REGISTRY.REGISTER_RESERVED,
+    );
+  });
+
+  it("plans nothing once handed over", () => {
+    expect(planRegistryHandover(handedOver)).toEqual([]);
   });
 
   it("refuses to hand the registries from the deployer to itself", () => {

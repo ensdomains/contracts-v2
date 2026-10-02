@@ -3688,6 +3688,10 @@ export const ROLE_AUDIT_STAGES = [
 export type RoleAuditStage = (typeof ROLE_AUDIT_STAGES)[number];
 
 const DEPLOYER_STAGES: RoleAuditStage[] = ["pre-handoff", "post-handoff"];
+const HANDED_OVER_STAGES: RoleAuditStage[] = [
+  "post-registry-handover",
+  "root-emancipated",
+];
 const REGISTRAR_STAGES: RoleAuditStage[] = [
   "post-handoff",
   "post-registry-handover",
@@ -3730,13 +3734,19 @@ const EXPECTED_ROOT_ROLES: Record<
     },
   ],
   ETHRegistry: [
-    // The handover leaves no admin role on the .eth registry with anyone.
+    // The handover moves the deployer's root roles to the owner. None of them reaches
+    // a name, so .eth names stay emancipated.
     {
       deployment: "@deployer",
       roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
       stages: DEPLOYER_STAGES,
     },
     { deployment: "@owner", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER },
+    {
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      stages: HANDED_OVER_STAGES,
+    },
     // Phase 1 defers the ETHRegistrar grant and phase 6 makes it, while BatchRegistrar
     // seeds pre-migration reservations until phase 6 strips its roles. What each should
     // hold therefore depends on which side of the handoff the audit runs.
@@ -3792,13 +3802,19 @@ const EXPECTED_TOKEN_ROLES: Record<
   }>
 > = {
   RootRegistry: [
-    // 01_ETHRegistry.ts registers `eth` to the deployer. The handover drops every
-    // role on it, so nobody can repoint `.eth` or give it a resolver.
+    // 01_ETHRegistry.ts registers `eth` to the deployer. The handover lets the owner
+    // set its child registry and resolver, and the deployer drops every role on it.
     {
       label: "eth",
       deployment: "@deployer",
       roles: DEPLOYMENT_ROLES.ETH_TOKEN,
       stages: DEPLOYER_STAGES,
+    },
+    {
+      label: "eth",
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR,
+      stages: HANDED_OVER_STAGES,
     },
     // 01_ReverseMirror.ts hands the owner every regular role on `reverse`, and
     // leaves no admin role on it with anyone.
@@ -4192,12 +4208,16 @@ async function readRegistryHandoverState(
   const [
     ownerRootRoles,
     deployerRootRoles,
+    ownerEthEntryRoles,
     deployerEthEntryRoles,
+    ownerEthRegistryRoles,
     deployerEthRegistryRoles,
   ] = await Promise.all([
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, deployer),
+    ctx.roles(ctx.rootRegistry, ethResource, ctx.owner),
     ctx.roles(ctx.rootRegistry, ethResource, deployer),
+    ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, deployer),
   ]);
   return {
@@ -4206,7 +4226,9 @@ async function readRegistryHandoverState(
     ethResource,
     ownerRootRoles,
     deployerRootRoles,
+    ownerEthEntryRoles,
     deployerEthEntryRoles,
+    ownerEthRegistryRoles,
     deployerEthRegistryRoles,
   };
 }
@@ -4224,11 +4246,17 @@ async function assertRegistryHandoverComplete(
       `registry handover incomplete: ${remaining.map((call) => call.label).join("; ")}`,
     );
   }
+  // A role's assignee count sits in the lowest bit of its nybble, so one holder of
+  // each role in a bitmap reads back as the bitmap itself. The plan being empty
+  // says the owner is that holder.
   const failures: string[] = [];
   if (
-    (await ctx.assignees(ctx.rootRegistry, state.ethResource, ANY_ROLE)) !== 0n
+    (await ctx.assignees(ctx.rootRegistry, state.ethResource, ANY_ROLE)) !==
+    DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR
   ) {
-    failures.push("an account still holds a role on the eth entry");
+    failures.push(
+      "an account other than the owner holds a role on the eth entry",
+    );
   }
   if (
     (await ctx.assignees(
@@ -4242,22 +4270,31 @@ async function assertRegistryHandoverComplete(
     );
   }
   if (
-    (await ctx.assignees(ctx.ethRegistry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !== 0n
+    (await ctx.assignees(ctx.ethRegistry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !==
+    (DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT & ANY_ADMIN_ROLE)
   ) {
-    failures.push("an account still holds an admin role on the .eth registry");
+    failures.push(
+      "an account other than the owner holds an admin role on the .eth registry",
+    );
+  }
+  if (!(await ctx.read(ctx.ethRegistry, "isEmancipated", []))) {
+    failures.push(
+      "the .eth registry is not emancipated: a root role reaches its names",
+    );
   }
   if (failures.length > 0) {
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${ctx.owner} holds the root registry's root roles; the deployer, the eth entry and the .eth registry's admin roles have no holder`,
+    `registry handover complete: ${ctx.owner} holds the root registry's and the .eth registry's root roles and can set the eth entry's child registry and resolver; the deployer holds nothing, and .eth names are emancipated`,
   );
 }
 
 /// Hands the deployer's authority over the v2 registries to the owner: the owner
-/// takes the root registry's root roles, and the deployer drops those, its roles on
-/// the `eth` entry, and its `.eth` registry root roles. Sends only what is missing,
-/// then checks the end state.
+/// takes the root registry's and the `.eth` registry's root roles and the regular
+/// roles that set the `eth` entry's child registry and resolver, then the deployer
+/// drops every role it holds on them. Sends only what is missing, then checks the
+/// end state.
 export async function handOverRegistryAdmin(
   opts: RegistryAdminOptions & { deployer?: Address },
 ) {
@@ -6244,7 +6281,7 @@ const SMOKE_CHECKS = {
   freshV2Registration:
     "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
   registryHandover:
-    "the registry handover, leaving the deployer no v2 authority and nobody able to repoint .eth",
+    "the registry handover, leaving the deployer no v2 authority, the owner both registries and the eth entry, and .eth names emancipated",
   rootEmancipation:
     "the owner dropping its root registry roles once the handover's probation period ends",
 } as const;
@@ -9091,7 +9128,7 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
           .description(
-            "Hand the deployer's v2 registry authority to the owner: the owner takes the root registry's root roles, and the deployer drops those, its eth entry roles and its .eth registry root roles",
+            "Hand the deployer's v2 registry authority to the owner: the owner takes the root registry's and the .eth registry's root roles and the roles that set the eth entry's child registry and resolver, then the deployer drops every role it holds on them",
           )
           .option(
             "--owner <address>",

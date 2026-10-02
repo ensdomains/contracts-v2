@@ -72,7 +72,7 @@ describe("registry handover", () => {
     env.v2.RootRegistry.read.getResource([idFromLabel("eth")]);
 
   it(
-    "leaves the deployer no authority and gives the owner the root registry",
+    "leaves the deployer no authority and gives the owner both registries",
     async () => {
       await handOver();
 
@@ -85,6 +85,12 @@ describe("registry handover", () => {
       expect(ownerRoles & DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT).toBe(
         DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
       );
+      expect(await rootRoles("ETHRegistry", owner())).toBe(
+        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      );
+      expect(
+        await env.v2.RootRegistry.read.roles([await ethResource(), owner()]),
+      ).toBe(DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR);
 
       const findings = await verifyV2Roles({
         ...context(),
@@ -108,42 +114,65 @@ describe("registry handover", () => {
   );
 
   it(
-    "leaves nobody able to repoint .eth or take admin of the .eth registry",
+    "lets the owner set the eth entry and authorize registrars, keeping .eth names emancipated",
     async () => {
       await handOver();
       const ethId = idFromLabel("eth");
+      const asOwner = { account: env.namedAccounts.owner };
+      const asDeployer = { account: env.namedAccounts.deployer };
 
-      for (const account of [
-        env.namedAccounts.deployer,
-        env.namedAccounts.owner,
-      ]) {
-        await expect(
-          env.v2.RootRegistry.write.setSubregistry([ethId, STRANGER], {
-            account,
-          }),
-        ).rejects.toThrow();
-        await expect(
-          env.v2.RootRegistry.write.setResolver([ethId, STRANGER], { account }),
-        ).rejects.toThrow();
-        await expect(
-          env.v2.ETHRegistry.write.grantRootRoles(
-            [ROLES.REGISTRY.REGISTRAR, STRANGER],
-            { account },
-          ),
-        ).rejects.toThrow();
-      }
+      // The deployer can no longer touch the eth entry or the .eth registry.
+      await expect(
+        env.v2.RootRegistry.write.setResolver([ethId, STRANGER], asDeployer),
+      ).rejects.toThrow();
+      await expect(
+        env.v2.ETHRegistry.write.grantRootRoles(
+          [ROLES.REGISTRY.REGISTRAR, STRANGER],
+          asDeployer,
+        ),
+      ).rejects.toThrow();
+
+      // The owner sets the eth entry's resolver and child registry, but cannot pass
+      // those roles on: admin roles on a name stay with its token holder.
+      await env.v2.RootRegistry.write.setResolver([ethId, STRANGER], asOwner);
+      expect(await env.v2.RootRegistry.read.getResolver(["eth"])).toBe(STRANGER);
+      await env.v2.RootRegistry.write.setSubregistry(
+        [ethId, env.v2.ETHRegistry.address],
+        asOwner,
+      );
+      await expect(
+        env.v2.RootRegistry.write.grantRoles(
+          [await ethResource(), ROLES.REGISTRY.SET_RESOLVER, STRANGER],
+          asOwner,
+        ),
+      ).rejects.toThrow();
+
+      // The owner can authorize a registrar on the .eth registry, but cannot take a
+      // root role that reaches a name, so .eth names stay emancipated.
+      await env.v2.ETHRegistry.write.grantRootRoles(
+        [ROLES.REGISTRY.REGISTRAR, STRANGER],
+        asOwner,
+      );
+      expect(
+        await env.v2.ETHRegistry.read.hasRootRoles([
+          ROLES.REGISTRY.REGISTRAR,
+          STRANGER,
+        ]),
+      ).toBe(true);
+      await expect(
+        env.v2.ETHRegistry.write.grantRootRoles(
+          [ROLES.REGISTRY.SET_RESOLVER, owner()],
+          asOwner,
+        ),
+      ).rejects.toThrow();
+      expect(await env.v2.ETHRegistry.read.isEmancipated()).toBe(true);
+
       // The owner holds the root registry's admin roles, but none of them reach the
-      // eth entry or can be turned into a role that does.
+      // eth entry or can be turned into a root role that does.
       await expect(
         env.v2.RootRegistry.write.grantRootRoles(
           [ROLES.REGISTRY.SET_SUBREGISTRY, owner()],
-          { account: env.namedAccounts.owner },
-        ),
-      ).rejects.toThrow();
-      await expect(
-        env.v2.RootRegistry.write.grantRoles(
-          [await ethResource(), ROLES.REGISTRY.SET_SUBREGISTRY, owner()],
-          { account: env.namedAccounts.owner },
+          asOwner,
         ),
       ).rejects.toThrow();
 
