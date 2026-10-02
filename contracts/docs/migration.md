@@ -567,10 +567,10 @@ This runbook assumes a first migration. On a repeat deploy the order is unchange
 apply — see
 [Re-deploying onto an already-migrated network](#re-deploying-onto-an-already-migrated-network).
 
-> **Mainnet differs.** The owner, top URP admin, and v1 owner are all the DAO/multisig, so the
-> owner-signed and URP-admin phases run with `--calldata-only` (or deferred) and execute through the
-> Safe. Mainnet is also a **bootstrap** URP network, so phase 7 additionally runs
-> `switch-urp-to-managed` first.
+> **Mainnet differs.** The owner, top URP admin, and v1 owner are all the DAO timelock, so their
+> writes reach the chain through one DAO proposal. Mainnet is also a **bootstrap** URP network, so
+> phase 7 additionally runs `switch-urp-to-managed` first. See
+> [Live deployment (mainnet)](#live-deployment-mainnet).
 
 ### After
 
@@ -614,6 +614,61 @@ Etherscan answers only a few calls per second per API key, and its "already veri
 against the same budget, so requests are spaced 500 ms apart by default. Pass `--min-interval <ms>`
 to change that. A submission Etherscan refuses (a rate limit, say) counts as a failure, so re-run
 the command to retry the contracts it names.
+
+## Live deployment (mainnet)
+
+The DAO timelock owns every v1 contract and the top URP, and it is the v2 `owner`. It acts only
+through an executed proposal, so every write it must make is prepared as calldata, merged into one
+proposal, and proved on a fork before the vote. The deployer key (`DEPLOYER_KEY`) signs everything
+else: phase 1, both pre-migration passes, phase 6, and — while it administers the managed URP — the
+phase 7 upgrade.
+
+The phases run in this order:
+
+1. **Phase 1** with `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file
+   <dir>/phase1-deferred.jsonl`. Every write addressed to the DAO is saved there instead of sent.
+2. **Phase 2**, ending with a passing `premigration reconcile`.
+3. **Prepare the proposal.** Each owner-gated phase prints its calls with `--calldata-only`, and
+   `--calldata-out <file>` also records them in the JSONL format the other owner-transaction
+   commands read. Run phase 3, then phase 4 (grants before the registrar transfer), then the
+   bootstrap URP switch:
+
+   ```bash
+   bun run migration -- phase disable-v1-registrars          --network mainnet --calldata-only --calldata-out <dir>/freeze.jsonl
+   bun run migration -- phase activate-v1-handoff-controllers --network mainnet --calldata-only --calldata-out <dir>/handoff.jsonl
+   bun run migration -- phase activate-v1-renewer            --network mainnet --calldata-only --calldata-out <dir>/handoff.jsonl
+   bun run migration -- phase switch-urp-to-managed          --network mainnet --calldata-only --calldata-out <dir>/urp.jsonl
+   bun run migration -- phase build-dao-proposal --network mainnet --out-dir <dir>/proposal \
+     --file <dir>/phase1-deferred.jsonl <dir>/freeze.jsonl <dir>/handoff.jsonl <dir>/urp.jsonl
+   ```
+
+   `build-dao-proposal` keeps the files' order, drops repeated calls (a resumed phase 1 saves its
+   writes again, and `activate-v1-renewer` re-prints the renewer grant), and decodes every call
+   against the deployment artifact at its target. It refuses to write a proposal when any target is
+   unknown or any calldata does not decode. It writes `calls.jsonl` (the ordered calls),
+   `proposal.json` (the Governor `targets`, `values` and `calldatas`) and `proposal.md` (each call
+   decoded, for review).
+
+   Freezing v1 and handing the registrar to `ETHRenewerV1` land in the same execution, so renewals
+   never stop. The URP switch changes no answer: the managed URP still serves the v1 resolver, and
+   resolution moves to v2 only at the phase 7 upgrade.
+4. **Prove it on a fork.** Fork mainnet with Anvil, snapshot resolution, and play the proposal as the
+   timelock:
+
+   ```bash
+   bun run migration -- phase execute-owner-txs --network mainnet --rpc-url http://127.0.0.1:<port> \
+     --file <dir>/proposal/calls.jsonl --impersonate-account 0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7
+   ```
+
+   `--impersonate-account` refuses any RPC that is not local. Then run, against the fork,
+   `verify-v1-registrars-disabled --require-active-grants`, `verify-v1-renewer`,
+   `verify-reverse-adapters`, `verify-urp` (expecting the top URP to front the managed URP and the
+   managed URP to serve the top URP's previous implementation) and `verify-resolution`.
+5. **Vote and execute.** Check each call entered into the proposal with `phase verify-owner-tx
+   --file <dir>/proposal/calls.jsonl --to <target> --data <calldata>`. Between the proposal's
+   execution and phase 6, no `.eth` name can be registered: v1 is frozen and v2 is not yet open.
+6. **After execution**, run the same checks against mainnet, then phase 5 with a CSV exported after
+   the freeze, phase 6, and phase 7's `upgrade-managed-urp`.
 
 ## ENSv1 test fixture corpus
 
@@ -1116,7 +1171,8 @@ authoritative per-command list.
   `--batch-registrar`) override.
 - **Owner-gated writes** (v1-owner and URP-admin phases): `--private-key <key>`, `--impersonate-owner`
   or `--impersonate-account <address>` (fork/Tenderly), `--calldata-only` (print the transaction
-  target and calldata for multisig execution instead of broadcasting).
+  target and calldata for multisig execution instead of broadcasting), and `--calldata-out <file>`
+  (with `--calldata-only`, also append each prepared call to a JSONL file).
 
 Two commands are **not** on-chain and intentionally omit the network options:
 
@@ -1168,7 +1224,8 @@ and idempotency rules.
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller |
 | `phase verify-v1-renewer` | Verify `ETHRenewerV1` is a v1 controller **and** owns the v1 `BaseRegistrar`, which is what a renewal needs |
-| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it |
+| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it. `--impersonate-account` sends as that account on a local fork, to play a DAO proposal |
+| `phase build-dao-proposal` | Merge prepared owner transactions into one ordered, de-duplicated DAO proposal, decoded against the deployment artifacts (`calls.jsonl`, `proposal.json`, `proposal.md`) |
 | `phase verify-owner-tx` | Check a transaction about to be signed in a Safe against the prepared owner transactions |
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
 | `phase verify-batch-registrar-disabled` | Verify `BatchRegistrar` no longer has registrar/renew roles |

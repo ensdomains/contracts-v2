@@ -89,8 +89,10 @@ import {
   preparedOwnerTransactionLabel,
   printPreparedCall,
   readPreparedOwnerTransactions,
+  recordPreparedCallsTo,
   type PreparedOwnerTransaction,
 } from "./migrations/ownerTx.js";
+import { buildDaoProposal } from "./migrations/daoProposal.js";
 import {
   assertRejected,
   assertV1Owner,
@@ -7601,13 +7603,25 @@ function addV1DeploymentOptions(command: Command): Command {
     );
 }
 
+// Preparing an owner-gated write for a multisig or the DAO instead of sending it,
+// optionally recording each prepared call for `phase build-dao-proposal`.
+function addCalldataOnlyOptions(command: Command): Command {
+  return command
+    .option("--calldata-only", "Print transaction target and calldata", false)
+    .option(
+      "--calldata-out <path>",
+      "With --calldata-only, also append each prepared call to this JSONL file",
+    );
+}
+
 // The signer options shared by every v1-owner-gated write command: a key, fork
 // impersonation, or calldata-only preparation for a multisig.
 function addV1OwnerWriteOptions(command: Command): Command {
-  return command
-    .option("--private-key <key>", "V1 owner private key")
-    .option("--impersonate-owner", "Impersonate owner on a fork", false)
-    .option("--calldata-only", "Print transaction target and calldata", false);
+  return addCalldataOnlyOptions(
+    command
+      .option("--private-key <key>", "V1 owner private key")
+      .option("--impersonate-owner", "Impersonate owner on a fork", false),
+  );
 }
 
 function assertCleanDeploymentNamespace(
@@ -7962,6 +7976,21 @@ export async function main(argv = process.argv): Promise<void> {
     .description(
       "Operate and rehearse the ENS v1 to v2 migration in explicit phases.",
     );
+
+  // A command asked to record its prepared calls starts recording before it runs.
+  program.hook("preAction", (_, actionCommand) => {
+    const { calldataOut, calldataOnly } = actionCommand.opts<{
+      calldataOut?: string;
+      calldataOnly?: boolean;
+    }>();
+    if (calldataOut === undefined) return;
+    if (!calldataOnly) {
+      throw new Error(
+        "--calldata-out records prepared calls; pass --calldata-only too",
+      );
+    }
+    recordPreparedCallsTo(calldataOut);
+  });
 
   program.addCommand(
     new Command("fetch-data")
@@ -8763,6 +8792,10 @@ export async function main(argv = process.argv): Promise<void> {
         )
         .option("--private-key <key>", "Owner private key")
         .option(
+          "--impersonate-account <address>",
+          "Send as this account on a local fork instead of signing, as a rehearsal plays a DAO proposal",
+        )
+        .option(
           "--journal-file <path>",
           "Record of executed transactions, so a re-run does not re-send them (default: <file>.executed.json)",
         )
@@ -8782,6 +8815,7 @@ export async function main(argv = process.argv): Promise<void> {
           file: string;
           role?: string;
           privateKey?: `0x${string}`;
+          impersonateAccount?: Address;
           dryRun?: boolean;
           journalFile?: string;
           force?: boolean;
@@ -8794,6 +8828,62 @@ export async function main(argv = process.argv): Promise<void> {
           journalFile: opts.journalFile,
           force: opts.force,
         });
+      },
+    ),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        new Command("build-dao-proposal")
+          .description(
+            "Merge prepared owner transactions into one decoded DAO proposal",
+          )
+          .requiredOption(
+            "--file <paths...>",
+            "JSONL files of prepared owner transactions, in execution order",
+          )
+          .requiredOption(
+            "--out-dir <dir>",
+            "Directory to write the proposal to",
+          )
+          .option(
+            "--network <network>",
+            "Network whose deployments the calls target",
+            "mainnet",
+          ),
+      ),
+    ).action(
+      (
+        opts: DeploymentCliOptions &
+          V1DeploymentOptions & {
+            file: string[];
+            outDir: string;
+            network: string;
+          },
+      ) => {
+        const network = parseMigrationNetwork(opts.network);
+        const v1Environment =
+          opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
+        const v1Roots = opts.v1DeploymentsDir
+          ? [opts.v1DeploymentsDir]
+          : [LOCAL_V1_DEPLOYMENTS_DIR, BUNDLED_V1_DEPLOYMENTS_DIR];
+        const calls = buildDaoProposal({
+          files: opts.file,
+          outDir: opts.outDir,
+          contractDirs: [
+            join(
+              opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+              opts.deploymentNetwork ?? network,
+            ),
+            ...v1Roots.map((root) => join(root, v1Environment)),
+          ],
+        });
+        console.log(`DAO proposal: ${calls.length} calls -> ${opts.outDir}`);
+        for (const call of calls) {
+          console.log(
+            `  ${call.index}. ${call.contract}.${call.signature}  (${call.label})`,
+          );
+        }
       },
     ),
   );
@@ -9043,7 +9133,7 @@ export async function main(argv = process.argv): Promise<void> {
   phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
-        new Command("switch-urp-to-managed")
+        addCalldataOnlyOptions(new Command("switch-urp-to-managed"))
           .description(
             "Switch the top UniversalResolverProxy to ManagedUniversalResolverProxy",
           )
@@ -9053,11 +9143,6 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--impersonate-account <address>",
             "Impersonate top URP admin on a fork",
-          )
-          .option(
-            "--calldata-only",
-            "Print transaction target and calldata",
-            false,
           ),
       ),
     ).action(
@@ -9083,7 +9168,7 @@ export async function main(argv = process.argv): Promise<void> {
   phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
-        new Command("upgrade-managed-urp")
+        addCalldataOnlyOptions(new Command("upgrade-managed-urp"))
           .description("Upgrade the managed URP to UniversalResolverV2")
           .option("--managed-urp <address>", "Managed URP address")
           .option(
@@ -9094,11 +9179,6 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--impersonate-account <address>",
             "Impersonate admin on a fork",
-          )
-          .option(
-            "--calldata-only",
-            "Print transaction target and calldata",
-            false,
           ),
       ),
     ).action(
