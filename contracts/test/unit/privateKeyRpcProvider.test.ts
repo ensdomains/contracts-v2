@@ -10,7 +10,12 @@ import {
 import { sepolia } from "viem/chains";
 
 import { resolveDeployProviderAndChain } from "../../script/migrate.js";
-import { privateKeyRpcProvider } from "../../script/migrations/rpc.js";
+import {
+  httpRpcProvider,
+  privateKeyRpcProvider,
+  REFUSED_READ_ATTEMPTS,
+  RPC_MAX_IN_FLIGHT,
+} from "../../script/migrations/rpc.js";
 
 const KEY =
   "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
@@ -227,5 +232,118 @@ describe("the provider a deploy given only an RPC URL runs through", () => {
       rpcUrl: "http://127.0.0.1:1",
     });
     expect(chainId).toBe(1);
+  });
+});
+
+describe("our provider on a throttled endpoint", () => {
+  type Reply = { status?: number; body?: object };
+
+  // A node that answers each request with the next scripted reply, repeating the
+  // last once the script runs out.
+  async function withScriptedNode(
+    replies: Reply[],
+    run: (url: string, calls: () => number) => Promise<void>,
+  ): Promise<void> {
+    let calls = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const { id } = (await req.json()) as { id: number };
+        const reply = replies[Math.min(calls++, replies.length - 1)];
+        return Response.json(
+          { jsonrpc: "2.0", id, ...reply.body },
+          { status: reply.status ?? 200 },
+        );
+      },
+    });
+    try {
+      await run(`http://127.0.0.1:${server.port}`, () => calls);
+    } finally {
+      server.stop(true);
+    }
+  }
+
+  const rateLimited: Reply = {
+    body: {
+      error: {
+        code: 15,
+        message:
+          "You reached rate limit for your plan, please contact our support to increase limit",
+      },
+    },
+  };
+  const answered: Reply = { body: { result: true } };
+  const read = { method: "eth_call", params: [{ to: "0x01" }, "latest"] } as any;
+
+  it("asks a rate-limited read again until it is answered", async () => {
+    await withScriptedNode([rateLimited, rateLimited, answered], async (url, calls) => {
+      expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
+      expect(calls()).toBe(3);
+    });
+  });
+
+  it("asks again when the endpoint answers 429", async () => {
+    await withScriptedNode([{ status: 429, body: {} }, answered], async (url, calls) => {
+      expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
+      expect(calls()).toBe(2);
+    });
+  });
+
+  it("throws a revert at once", async () => {
+    const revert: Reply = {
+      body: { error: { code: 3, message: "execution reverted" } },
+    };
+    await withScriptedNode([revert, answered], async (url, calls) => {
+      await expect(httpRpcProvider(url, 0).request(read)).rejects.toThrow(
+        "execution reverted",
+      );
+      expect(calls()).toBe(1);
+    });
+  });
+
+  it("never repeats a send", async () => {
+    await withScriptedNode([rateLimited, answered], async (url, calls) => {
+      await expect(
+        httpRpcProvider(url, 0).request({
+          method: "eth_sendRawTransaction",
+          params: ["0x00"],
+        } as any),
+      ).rejects.toThrow("rate limit");
+      expect(calls()).toBe(1);
+    });
+  });
+
+  it("gives up once a read keeps being refused", async () => {
+    await withScriptedNode([rateLimited], async (url, calls) => {
+      await expect(httpRpcProvider(url, 0).request(read)).rejects.toThrow(
+        "rate limit",
+      );
+      expect(calls()).toBe(REFUSED_READ_ATTEMPTS);
+    });
+  });
+
+  it("keeps only a few requests in flight at once", async () => {
+    let active = 0;
+    let peak = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const { id } = (await req.json()) as { id: number };
+        peak = Math.max(peak, ++active);
+        await Bun.sleep(10);
+        active--;
+        return Response.json({ jsonrpc: "2.0", id, result: true });
+      },
+    });
+    try {
+      const provider = httpRpcProvider(`http://127.0.0.1:${server.port}`, 0);
+      const answers = await Promise.all(
+        Array.from({ length: 5 * RPC_MAX_IN_FLIGHT }, () => provider.request(read)),
+      );
+      expect(answers.every(Boolean)).toBe(true);
+      expect(peak).toBe(RPC_MAX_IN_FLIGHT);
+    } finally {
+      server.stop(true);
+    }
   });
 });
