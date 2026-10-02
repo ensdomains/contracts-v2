@@ -628,14 +628,16 @@ The phases run in this order:
 
 1. **Phase 1** with `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file
    <dir>/phase1-deferred.jsonl`. Every write addressed to the DAO is saved there instead of sent.
-2. **Phase 2**, ending with a passing `premigration reconcile`.
+2. **Phase 2**, followed by `premigration reconcile --report-only`. v1 keeps registering names until
+   the DAO executes the freeze, so every name registered after the export reads as missing; the
+   report is for review, and any other discrepancy needs a look before the proposal goes up.
 3. **Prepare the proposal.** Each owner-gated phase prints its calls with `--calldata-only`, and
    `--calldata-out <file>` also records them in the JSONL format the other owner-transaction
    commands read. Run phase 3, then phase 4 (grants before the registrar transfer), then the
    bootstrap URP switch:
 
    ```bash
-   bun run migration -- phase disable-v1-registrars          --network mainnet --calldata-only --calldata-out <dir>/freeze.jsonl
+   bun run migration -- phase disable-v1-registrars          --network mainnet --calldata-only --calldata-out <dir>/freeze.jsonl --skip-preconditions
    bun run migration -- phase activate-v1-handoff-controllers --network mainnet --calldata-only --calldata-out <dir>/handoff.jsonl
    bun run migration -- phase activate-v1-renewer            --network mainnet --calldata-only --calldata-out <dir>/handoff.jsonl
    bun run migration -- phase switch-urp-to-managed          --network mainnet --calldata-only --calldata-out <dir>/urp.jsonl
@@ -649,6 +651,11 @@ The phases run in this order:
    unknown or any calldata does not decode. It writes `calls.jsonl` (the ordered calls),
    `proposal.json` (the Governor `targets`, `values` and `calldatas`) and `proposal.md` (each call
    decoded, for review).
+
+   The freeze skips its reconcile gate (`--skip-preconditions`): the gate bounds how stale a passing
+   reconcile may be, but here the freeze executes when the DAO does, days after any reconcile run
+   now. The post-freeze reconcile in phase 5 is the gate instead, and phase 6 must not run until it
+   passes.
 
    Freezing v1 and handing the registrar to `ETHRenewerV1` land in the same execution, so renewals
    never stop. The URP switch changes no answer: the managed URP still serves the v1 resolver, and
@@ -669,7 +676,7 @@ The phases run in this order:
    --file <dir>/proposal/calls.jsonl --to <target> --data <calldata>`. Between the proposal's
    execution and phase 6, no `.eth` name can be registered: v1 is frozen and v2 is not yet open.
 6. **After execution**, run the same checks against mainnet, then phase 5 with a CSV exported after
-   the freeze, phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
+   the freeze — its `premigration reconcile` must pass, since v1 no longer changes — then phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
 
 ## ENSv1 test fixture corpus
 
