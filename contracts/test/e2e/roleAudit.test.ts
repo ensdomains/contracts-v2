@@ -252,7 +252,7 @@ describe("v2 role audit", () => {
         { account: env.namedAccounts.deployer },
       );
       expect(
-        findingsFor(await audit({ reportOnly: true, preHandoff: true })),
+        findingsFor(await audit({ reportOnly: true, stage: "pre-handoff" })),
       ).toEqual([]);
 
       const [missing] = findingsFor(await audit({ reportOnly: true }));
@@ -267,7 +267,7 @@ describe("v2 role audit", () => {
         { account: env.namedAccounts.deployer },
       );
       const [early] = findingsFor(
-        await audit({ reportOnly: true, preHandoff: true }),
+        await audit({ reportOnly: true, stage: "pre-handoff" }),
       );
       expect(early?.kind).toBe("unexpected");
       expect(early && "extra" in early ? early.extra : 0n).toBe(
@@ -294,7 +294,10 @@ describe("v2 role audit", () => {
       // Audited as the pre-handoff state, where BatchRegistrar legitimately holds
       // REGISTRAR | RENEW to seed reservations. Only the admin bit is unaccounted
       // for, which is exactly the leftover a per-address spot check cannot see.
-      const preHandoff = await audit({ reportOnly: true, preHandoff: true });
+      const preHandoff = await audit({
+        reportOnly: true,
+        stage: "pre-handoff",
+      });
       const adminLeftover = preHandoff.find(
         (candidate) =>
           candidate.kind === "unexpected" &&

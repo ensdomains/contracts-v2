@@ -1,11 +1,11 @@
 # Phased v1 → v2 Migration
 
-The v1 → v2 migration runs as seven explicit phases, driven by the `bun run migration` operator CLI
+The v1 → v2 migration runs as eight explicit phases, driven by the `bun run migration` operator CLI
 from `contracts/`. Phases run **strictly in order**.
 
 ## Start here
 
-Rehearse before running anything for real. One command runs all seven phases against a throwaway
+Rehearse before running anything for real. One command runs every phase against a throwaway
 local Anvil fork of the network, impersonating every signer, with smoke checks interleaved — nothing
 touches a real chain:
 
@@ -17,14 +17,14 @@ bun run migration -- fork full --network sepolia --csv-file ./csv-data/ens-regis
 
 Then pick your deployment context; it determines which phases apply:
 
-- **Live public network (sepolia/mainnet)** — v1 already exists on-chain; run phases **1–7** with real
+- **Live public network (sepolia/mainnet)** — v1 already exists on-chain; run phases **1–7** (and **8** on mainnet) with real
   signer keys. On mainnet the owner, URP admin, and v1 owner are the DAO/multisig, so owner-gated
   phases run with `--calldata-only` (or deferred) and execute through a Safe. → [Live deployment
   (Sepolia)](#live-deployment-sepolia).
 - **Clean testnet (fresh v1)** — no usable v1; deploy a fresh v1 stack first (**phase 0**), then
   phases 1–7, always including `TestnetV1PremigrationRegistrar`. Sepolia only.
   → [`clean-testnet`](#clean-testnet).
-- **Fork / Tenderly rehearsal** — dry-run phases 1–7 against a fork of the target network. Local Anvil
+- **Fork / Tenderly rehearsal** — dry-run phases 1–8 against a fork of the target network. Local Anvil
   via [`fork full`](#fork-full) as above; a live fork (real v1 state) via a
   [Tenderly virtual testnet](#tenderly-virtual-testnets).
 
@@ -56,6 +56,7 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | 5 | Final pre-migration sync | `premigration run` → `build-index` → `reconcile` | live + clean-testnet | BatchRegistrar owner |
 | 6 | Enable the v2 controller | `disable-batch-registrar` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin |
 | 7 | Switch Universal Resolver to v2 (cutover) | `phase upgrade-managed-urp` (+ `switch-urp-to-managed` on bootstrap) (+ `verify-urp`) | live + clean-testnet (bootstrap step mainnet/fresh only) | `urManager` (+ top URP owner on bootstrap) |
+| 8 | Hand the v2 registries over, then emancipate root names after a probation period | `phase hand-over-registry-admin` (+ `verify-roles --stage post-registry-handover`), later `phase emancipate-root-registry` | where the owner is not the deployer (mainnet) | `deployer`, later `owner` |
 
 ### Phase 0: deploy fresh v1 (clean-testnet only)
 
@@ -481,6 +482,38 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 > <comma-separated>`. When no sampled name resolves anything, the run says the cutover was **not
 > verified** rather than reporting an unchanged result.
 
+### Phase 8: hand the registries over
+
+- **Applies to:** networks whose owner is not the deployer — mainnet, where the owner is the DAO.
+  On sepolia the deployer is the owner, so there is no one to hand to and the command refuses.
+- **Command:**
+  ```bash
+  bun run migration -- phase hand-over-registry-admin --network mainnet
+  bun run migration -- phase verify-roles             --network mainnet --stage post-registry-handover
+
+  # After the probation period, as a DAO proposal
+  bun run migration -- phase emancipate-root-registry --network mainnet --calldata-only --calldata-out <file>
+  bun run migration -- phase verify-roles             --network mainnet --stage root-emancipated
+  ```
+- **Prerequisites:** phase 7 complete. Phase 6 needs the deployer's `.eth` registry admin roles,
+  and the handover removes them for good.
+- **Env / args:** `DEPLOYER_KEY` signs the handover. `--owner` overrides who takes the root registry
+  (default: the owner the namespace was deployed with).
+- **Expected outcome:**
+  - The owner holds the root registry's root roles, admin roles included, for the probation period.
+  - The deployer holds no role on either registry or on the `eth` entry.
+  - Nobody holds a role on the `eth` entry. Admin roles on a name cannot be granted again, so
+    `.eth` can never be repointed to another registry or given a resolver.
+  - Nobody holds an admin role on the `.eth` registry, so `.eth` names are emancipated. The
+    registrar, renewer and migration controllers keep the regular roles they need, and no
+    registrar or migration controller can be added later.
+
+  The command sends only the grants and revocations still missing, then checks the end state from
+  the registries' own role counts, so a holder it did not look for is caught too.
+  `emancipate-root-registry` has the owner drop every root registry role except the regular naming
+  and metadata roles, after which nobody holds an admin role on either registry. `fork full` runs
+  both steps and audits the roles after each.
+
 ## Re-deploying onto an already-migrated network
 
 "Re-deploying fresh" means deploying a brand-new v2 set onto a network whose v1 a previous deployment
@@ -677,6 +710,8 @@ The phases run in this order:
    execution and phase 6, no `.eth` name can be registered: v1 is frozen and v2 is not yet open.
 6. **After execution**, run the same checks against mainnet, then phase 5 with a CSV exported after
    the freeze — its `premigration reconcile` must pass, since v1 no longer changes — then phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
+7. **Phase 8**, `hand-over-registry-admin`, signed by the deployer. After the probation period
+   (30 days), the DAO executes the `emancipate-root-registry` call as a proposal.
 
 ## ENSv1 test fixture corpus
 
@@ -1015,15 +1050,18 @@ bun run migration -- fork full --network sepolia --csv-file ./csv-data/ens-regis
 ```
 
 Spawns a local Anvil fork of the network RPC (default port 8547 sepolia / 8548 mainnet), impersonates
-the deployer, owner, v1 owner, URP admins, and BatchRegistrar owner, and runs phases 1–7 in order with
-smoke checks interleaved:
+the deployer, owner, v1 owner, URP admins, and BatchRegistrar owner, and runs phases 1–8 in order with
+smoke checks interleaved (phase 8 only when the owner is not the deployer):
 
 - v1 registration succeeds before phase 3 and is rejected after;
 - `ETHRenewerV1` owns the v1 `BaseRegistrar` after phase 4, and a real renewal there extends the v1
   registration, the v2 reservation, and a wrapped name's `NameWrapper` expiry together;
 - a pre-migrated name is migrated to v2 via `UnlockedMigrationController` after phase 5;
 - the v2 registrar rejects registrations before phase 6's grant, rejects pre-migrated reserved names
-  after it, and accepts a fresh name after enablement.
+  after it, and accepts a fresh name after enablement;
+- the phase 8 handover leaves the deployer no v2 role and the owner the root registry, and the
+  owner's later emancipation leaves it only the naming and metadata roles, each audited with
+  `verify-roles`.
 
 Pre-migration is signed off after phases 2 and 5 exactly as a live run is: the rehearsal builds an
 index, runs `premigration reconcile`, and phase 3 refuses to freeze v1 without the pass it records.
@@ -1227,7 +1265,9 @@ and idempotency rules.
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
 | `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 4) |
 | `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
-| `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions |
+| `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`, `root-emancipated`) |
+| `phase hand-over-registry-admin` | Phase 8: the owner takes the root registry's root roles, and the deployer drops those, its `eth` entry roles and its `.eth` registry root roles |
+| `phase emancipate-root-registry` | Phase 8, after probation: the owner drops its root registry roles except naming and metadata |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller |
