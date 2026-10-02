@@ -167,9 +167,9 @@ describe("a deploy signer on a load-balanced endpoint", () => {
 
 describe("the provider a deploy given only an RPC URL runs through", () => {
   // The provider rocketh would build for itself, loaded the way rocketh loads it.
-  const { JSONRPCHTTPProvider } = createRequire(
-    import.meta.resolve("rocketh"),
-  )("eip-1193-jsonrpc-provider");
+  const { JSONRPCHTTPProvider } = createRequire(import.meta.resolve("rocketh"))(
+    "eip-1193-jsonrpc-provider",
+  );
 
   // A node that gives every request the same JSON-RPC body.
   async function withNode(
@@ -273,20 +273,29 @@ describe("our provider on a throttled endpoint", () => {
     },
   };
   const answered: Reply = { body: { result: true } };
-  const read = { method: "eth_call", params: [{ to: "0x01" }, "latest"] } as any;
+  const read = {
+    method: "eth_call",
+    params: [{ to: "0x01" }, "latest"],
+  } as any;
 
   it("asks a rate-limited read again until it is answered", async () => {
-    await withScriptedNode([rateLimited, rateLimited, answered], async (url, calls) => {
-      expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
-      expect(calls()).toBe(3);
-    });
+    await withScriptedNode(
+      [rateLimited, rateLimited, answered],
+      async (url, calls) => {
+        expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
+        expect(calls()).toBe(3);
+      },
+    );
   });
 
   it("asks again when the endpoint answers 429", async () => {
-    await withScriptedNode([{ status: 429, body: {} }, answered], async (url, calls) => {
-      expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
-      expect(calls()).toBe(2);
-    });
+    await withScriptedNode(
+      [{ status: 429, body: {} }, answered],
+      async (url, calls) => {
+        expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
+        expect(calls()).toBe(2);
+      },
+    );
   });
 
   it("throws a revert at once", async () => {
@@ -338,7 +347,9 @@ describe("our provider on a throttled endpoint", () => {
     try {
       const provider = httpRpcProvider(`http://127.0.0.1:${server.port}`, 0);
       const answers = await Promise.all(
-        Array.from({ length: 5 * RPC_MAX_IN_FLIGHT }, () => provider.request(read)),
+        Array.from({ length: 5 * RPC_MAX_IN_FLIGHT }, () =>
+          provider.request(read),
+        ),
       );
       expect(answers.every(Boolean)).toBe(true);
       expect(peak).toBe(RPC_MAX_IN_FLIGHT);

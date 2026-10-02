@@ -118,7 +118,9 @@ describe("registry handover", () => {
       expect(rolesDoc).toContain("at the `post-registry-handover` stage");
       expect(rolesDoc).toContain("### RootRegistry");
       expect(rolesDoc).toMatch(
-        new RegExp(`"eth" entry \\| \\*\\*owner[^*]*\\*\\*<br>\\[${owner()}\\]`),
+        new RegExp(
+          `"eth" entry \\| \\*\\*owner[^*]*\\*\\*<br>\\[${owner()}\\]`,
+        ),
       );
     },
     TEST_TIMEOUT_MS,
@@ -146,7 +148,9 @@ describe("registry handover", () => {
       // The owner sets the eth entry's resolver and child registry, but cannot pass
       // those roles on: admin roles on a name stay with its token holder.
       await env.v2.RootRegistry.write.setResolver([ethId, STRANGER], asOwner);
-      expect(await env.v2.RootRegistry.read.getResolver(["eth"])).toBe(STRANGER);
+      expect(await env.v2.RootRegistry.read.getResolver(["eth"])).toBe(
+        STRANGER,
+      );
       await env.v2.RootRegistry.write.setSubregistry(
         [ethId, env.v2.ETHRegistry.address],
         asOwner,

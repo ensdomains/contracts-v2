@@ -259,4 +259,7 @@ export function writeRolesMarkdown(
 export const labelled = (
   label: (address: Address) => string,
   address: Address,
-): Labelled => ({ label: label(getAddress(address)), address: getAddress(address) });
+): Labelled => ({
+  label: label(getAddress(address)),
+  address: getAddress(address),
+});

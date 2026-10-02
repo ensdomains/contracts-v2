@@ -99,7 +99,9 @@ describe("renderRolesMarkdown", () => {
 
   it("keeps every table row to its columns", () => {
     // A role list joined with a bare `|` would split its cell into more columns.
-    for (const table of markdown.split("\n\n").filter((b) => b.startsWith("|"))) {
+    for (const table of markdown
+      .split("\n\n")
+      .filter((b) => b.startsWith("|"))) {
       const rows = table.trim().split("\n");
       const columns = rows[0].split(" | ").length;
       for (const row of rows) expect(row.split(" | ").length).toBe(columns);

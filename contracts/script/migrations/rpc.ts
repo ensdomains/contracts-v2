@@ -309,7 +309,9 @@ export function httpRpcProvider(
       return { error, transient: true };
     }
     if (!payload.error) return { result: payload.result };
-    const error = new Error(payload.error.message ?? "JSON-RPC error") as Error & {
+    const error = new Error(
+      payload.error.message ?? "JSON-RPC error",
+    ) as Error & {
       code?: number;
       data?: unknown;
     };

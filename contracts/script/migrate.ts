@@ -3884,7 +3884,9 @@ export async function verifyV2Roles(opts: {
 }) {
   const stage = opts.stage ?? "post-handoff";
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = resolve(opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR);
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
 
@@ -4124,7 +4126,10 @@ async function readRoleMap(opts: {
     configuredAccount("securityCouncil", environment),
   );
   addAccount("v1 owner", configuredAccount("v1Owner", environment));
-  addAccount("UniversalResolver (top proxy)", DEPLOYED_UNIVERSAL_RESOLVER_PROXY);
+  addAccount(
+    "UniversalResolver (top proxy)",
+    DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  );
   const label = addressLabels(deployments, accounts);
 
   const holdings: RoleHolding[] = [];
