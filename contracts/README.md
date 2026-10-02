@@ -152,10 +152,12 @@ _Under the phased migration deploy (the `deferV2Registrar` tag, always set by `p
 _The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
 
 _These are the roles at deploy. Where the owner is not the deployer (mainnet), phase 8 of the
-migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over:
-the owner takes the `RootRegistry` root roles for a probation period and then drops all but
-`CAN_NAME` and `SET_URI`, while the deployer drops every role it holds. Nobody then holds a role on
-the `eth` token or an admin role on `ETHRegistry`._
+migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over.
+The owner takes the `RootRegistry` root roles for a probation period and then drops all but
+`CAN_NAME` and `SET_URI`. It also takes the `ETHRegistry` root roles, none of which reaches a name,
+so `.eth` names stay emancipated, and `SET_RESOLVER | SET_SUBREGISTRY` on the `eth` token, which
+nobody can grant or revoke. The deployer drops every role it holds. `phase verify-roles` records
+the roles actually held in `deployments/<namespace>/roles.md`._
 
 #### Creating Emancipated Names
 
