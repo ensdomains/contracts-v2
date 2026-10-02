@@ -4951,6 +4951,9 @@ async function verifyUrp(opts: {
   managedUrp?: Address;
   expectedTopImplementation?: Address;
   expectedManagedImplementation?: Address;
+  // Whoever administers the managed URP can change resolution for every client
+  // the top URP serves, so the admin is checked as strictly as the implementation.
+  expectedManagedAdmin?: Address;
   deploymentsDir?: string;
   deploymentNetwork?: string;
 }) {
@@ -5002,6 +5005,14 @@ async function verifyUrp(opts: {
   ) {
     throw new Error(
       `managed URP implementation is ${managedImplementation}, expected ${opts.expectedManagedImplementation}`,
+    );
+  }
+  if (
+    opts.expectedManagedAdmin &&
+    !sameAddress(managedAdmin, opts.expectedManagedAdmin)
+  ) {
+    throw new Error(
+      `managed URP admin is ${managedAdmin}, expected ${opts.expectedManagedAdmin}`,
     );
   }
 }
@@ -8429,7 +8440,10 @@ export async function main(argv = process.argv): Promise<void> {
             )
             .option("--deployer <address>", "Deployer account address")
             .option("--owner <address>", "Owner/admin address")
-            .option("--ur-manager <address>", "Managed URP admin address")
+            .option(
+              "--ur-manager <address>",
+              "Managed URP admin address (default: the network's security council, else the deployer)",
+            )
             .option("--v1-owner <address>", "v1 owner address for v1 writes")
             .option(
               "--impersonate-v1-owner",
@@ -8456,12 +8470,13 @@ export async function main(argv = process.argv): Promise<void> {
         ? privateKeyToAccount(deployerKey).address
         : undefined;
       // The owner defaults to the DAO on mainnet and to the deployer elsewhere;
-      // urManager defaults to the deployer (securityCouncil -> deployer). Only
-      // attach a key that controls the resolved account so the deployer key is
-      // never used to act as the mainnet DAO.
+      // urManager defaults to the network's security council, else the deployer.
+      // Only attach a key that controls the resolved account so the deployer key
+      // is never used to act as the mainnet DAO or the security council.
       const ownerAddress =
         opts.owner ?? (network === "mainnet" ? MAINNET_DAO : deployerAddress);
-      const urManagerAddress = opts.urManager ?? deployerAddress;
+      const urManagerAddress =
+        opts.urManager ?? NETWORKS[network].defaultUrManager ?? deployerAddress;
       const v1OwnerAddress = opts.v1Owner ?? NETWORKS[network].defaultV1Owner;
       // Respect an explicit --deployer override (e.g. an impersonated/unlocked
       // account during a rehearsal or a key rotation): only attach the env key
@@ -8901,6 +8916,10 @@ export async function main(argv = process.argv): Promise<void> {
           .option(
             "--expected-managed-implementation <address>",
             "Expected managed URP implementation; defaults to the deployment's UniversalResolverV2",
+          )
+          .option(
+            "--expected-managed-admin <address>",
+            "Expected managed URP admin; defaults to the network's security council, unchecked where none is configured",
           ),
       ),
     ).action(
@@ -8911,6 +8930,7 @@ export async function main(argv = process.argv): Promise<void> {
             managedUrp?: Address;
             expectedTopImplementation?: Address;
             expectedManagedImplementation?: Address;
+            expectedManagedAdmin?: Address;
           },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -8939,6 +8959,9 @@ export async function main(argv = process.argv): Promise<void> {
               deploymentNetwork,
               "UniversalResolverV2",
             ),
+          expectedManagedAdmin:
+            networkOpts.expectedManagedAdmin ??
+            NETWORKS[networkOpts.network].defaultUrManager,
         });
       },
     ),

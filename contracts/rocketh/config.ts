@@ -27,9 +27,13 @@ export const config = {
       1: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
     },
     securityCouncil: {
-      // admin of ManagedUniversalResolverProxy; set per-network to the
-      // security council multisig once one is designated
+      // admin of ManagedUniversalResolverProxy; the deployer where no
+      // network names a security council
       default: "deployer",
+      // the ENS DAO Security Council Safe. Keyed by environment name only: the
+      // local devnet also runs as chain 1, and its deploy must administer the
+      // managed URP itself.
+      mainnet: "0x7101B78638e34444F0a5AdE9e1149fbEeC029931",
       // admin of the long-lived intermediate URP that the top URP already fronts
       sepolia: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
       11155111: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",

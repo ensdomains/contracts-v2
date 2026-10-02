@@ -80,6 +80,9 @@ export type NetworkConfig = {
   defaultForkPort: number;
   defaultOwner: Address;
   defaultV1Owner: Address;
+  // Admin of the managed URP a deploy creates or adopts, when the network names one;
+  // otherwise the deployer administers it.
+  defaultUrManager?: Address;
   chainTags: string[];
 };
 
@@ -89,6 +92,14 @@ const MAINNET_DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
 // The Sepolia ENS v1 BaseRegistrar owner EOA; derived from the `v1Owner` named
 // account in rocketh/config.ts so the two values cannot drift apart.
 const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
+// The managed URP admin per network, from the `securityCouncil` named account in
+// rocketh/config.ts for the same reason.
+const SEPOLIA_UR_MANAGER = getAddress(
+  rockethConfig.accounts.securityCouncil.sepolia,
+);
+const MAINNET_UR_MANAGER = getAddress(
+  rockethConfig.accounts.securityCouncil.mainnet,
+);
 
 export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
   sepolia: {
@@ -98,6 +109,7 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
     defaultForkPort: 8547,
     defaultOwner: DEFAULT_ANVIL_OWNER,
     defaultV1Owner: SEPOLIA_V1_OWNER,
+    defaultUrManager: SEPOLIA_UR_MANAGER,
     chainTags: [],
   },
   mainnet: {
@@ -107,6 +119,7 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
     defaultForkPort: 8548,
     defaultOwner: MAINNET_DAO,
     defaultV1Owner: MAINNET_DAO,
+    defaultUrManager: MAINNET_UR_MANAGER,
     chainTags: ["hasDao"],
   },
 };

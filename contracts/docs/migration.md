@@ -620,8 +620,9 @@ the command to retry the contracts it names.
 The DAO timelock owns every v1 contract and the top URP, and it is the v2 `owner`. It acts only
 through an executed proposal, so every write it must make is prepared as calldata, merged into one
 proposal, and proved on a fork before the vote. The deployer key (`DEPLOYER_KEY`) signs everything
-else: phase 1, both pre-migration passes, phase 6, and — while it administers the managed URP — the
-phase 7 upgrade.
+else: phase 1, both pre-migration passes and phase 6. The managed URP is administered by the ENS DAO
+Security Council Safe (`securityCouncil` in `rocketh/config.ts`), so the phase 7 upgrade is a Safe
+transaction: prepare it with `phase upgrade-managed-urp --calldata-only`.
 
 The phases run in this order:
 
@@ -668,7 +669,7 @@ The phases run in this order:
    --file <dir>/proposal/calls.jsonl --to <target> --data <calldata>`. Between the proposal's
    execution and phase 6, no `.eth` name can be registered: v1 is frozen and v2 is not yet open.
 6. **After execution**, run the same checks against mainnet, then phase 5 with a CSV exported after
-   the freeze, phase 6, and phase 7's `upgrade-managed-urp`.
+   the freeze, phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
 
 ## ENSv1 test fixture corpus
 
