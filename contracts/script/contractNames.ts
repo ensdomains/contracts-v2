@@ -39,6 +39,17 @@ import { encodeMigrationData } from "../test/utils/migrationData.js";
 // so after new deployment, the first operation is for owner
 // to claim every contract and update the name and resolver
 
+// [wallets]
+//
+// mainnet:
+// 0x690F0581eCecCf8389c223170778cD9D029606F2 = cold wallet
+// 0x0904Dac3347eA47d208F3Fd67402D039a3b99859 = hot wallet
+// 0xb6E040C9ECAaE172a89bD561c5F73e1C48d28cd9 = hot wallet 2
+// 0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b = registrar sec council
+//
+// sepolia:
+//
+
 const CLAIMS = [
   "ReverseClaimer",
   "Ownable",
