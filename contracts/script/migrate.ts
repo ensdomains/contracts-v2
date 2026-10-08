@@ -3756,9 +3756,10 @@ const EXPECTED_ROOT_ROLES: Record<
       roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
       stages: HANDED_OVER_STAGES,
     },
-    // Phase 1 defers the ETHRegistrar grant and phase 6 makes it, while BatchRegistrar
-    // seeds pre-migration reservations until phase 6 strips its roles. What each should
-    // hold therefore depends on which side of the handoff the audit runs.
+    // Phase 1 defers the ETHRegistrar and migration controller grants and phase 6
+    // makes them, while BatchRegistrar seeds pre-migration reservations until phase 6
+    // strips its roles. What each should hold therefore depends on which side of the
+    // handoff the audit runs.
     {
       deployment: "ETHRegistrar",
       roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
@@ -3773,10 +3774,12 @@ const EXPECTED_ROOT_ROLES: Record<
     {
       deployment: "UnlockedMigrationController",
       roles: DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+      stages: REGISTRAR_STAGES,
     },
     {
       deployment: "LockedMigrationController",
       roles: DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+      stages: REGISTRAR_STAGES,
     },
     {
       deployment: "TestnetV1PremigrationRegistrar",
@@ -5085,65 +5088,64 @@ function resolveRegistry(opts: {
   };
 }
 
-// Read whether an account holds the registrar/renew root roles on the registry.
-/// Whether the account holds *every* registrar role, which is what a completed grant
-/// looks like.
+/// Whether the account holds *every* role in the bitmap, which is what a completed
+/// grant looks like.
 ///
 /// `hasRootRoles` is all-or-nothing (`roles & bitmap == bitmap`), so it answers "did
 /// the grant land in full" and not "can this account still write". The two questions
 /// differ for a partially-granted or partially-revoked account, and asking the wrong
-/// one reads a contract that still holds REGISTRAR as disabled.
-async function holdsAllRegistrarRoles(
+/// one reads a contract that still holds one of the roles as disabled.
+async function holdsAllRootRoles(
   client: ReturnType<typeof publicClient>,
   registry: ContractRef,
   account: Address,
+  roles: bigint,
 ): Promise<boolean> {
   return (await client.readContract({
     address: registry.address,
     abi: registry.abi,
     functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, account],
+    args: [roles, account],
   })) as boolean;
 }
 
-/// Whether the account holds *any* registrar role, which is what still being able to
-/// write looks like. A revocation is only complete when this is false.
+/// Whether the account holds *any* role in the bitmap, which is what still being
+/// able to write looks like. A revocation is only complete when this is false.
 ///
 /// Asked one role at a time because `hasRootRoles` answers all-or-nothing, and the
 /// registry's own `roles(anyId, …)` resolves its argument through `getResource`, so it
 /// cannot be handed the root resource directly.
-async function holdsAnyRegistrarRole(
+async function holdsAnyRootRole(
   client: ReturnType<typeof publicClient>,
   registry: ContractRef,
   account: Address,
+  roles: bigint,
 ): Promise<boolean> {
-  for (const role of [ROLES.REGISTRY.REGISTRAR, ROLES.REGISTRY.RENEW]) {
-    const held = (await client.readContract({
-      address: registry.address,
-      abi: registry.abi,
-      functionName: "hasRootRoles",
-      args: [role, account],
-    })) as boolean;
-    if (held) return true;
+  for (let role = 1n; role <= roles; role <<= 1n) {
+    if ((roles & role) === 0n) continue;
+    if (await holdsAllRootRoles(client, registry, account, role)) return true;
   }
   return false;
 }
 
-/// Where a contract's registrar roles are being taken, and how to tell it arrived.
+/// Where a contract's root roles are being taken, and how to tell they arrived.
 ///
 /// Granting and revoking are the same operation in opposite directions, but they are
 /// not asking the same question of the result. A grant has landed when the account
 /// holds *every* role; a revocation only when it holds *none*. `hasRootRoles` answers
 /// the first, so using it for both reports a half-revoked account as disabled.
-type RegistrarRolesTarget = {
+type RootRolesTarget = {
   deployment: string;
   address?: Address;
+  roles: bigint;
+  /// How the roles are named in log lines and errors.
+  rolesName: string;
   /// True to grant the roles, false to revoke them.
   grant: boolean;
   label: string;
 };
 
-type RegistrarRolesOptions = {
+type RootRolesOptions = {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -5152,9 +5154,17 @@ type RegistrarRolesOptions = {
   deploymentNetwork?: string;
 };
 
-function resolveRegistrarRolesTarget(
-  opts: RegistrarRolesOptions,
-  target: RegistrarRolesTarget,
+type RootRolesSigner = {
+  privateKey?: `0x${string}`;
+  impersonateAccount?: Address;
+};
+
+const REGISTRAR_ROLES_NAME = "registrar/renew roles";
+const MIGRATION_ROLES_NAME = "register-reserved role";
+
+function resolveRootRolesTarget(
+  opts: RootRolesOptions,
+  target: RootRolesTarget,
 ) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
@@ -5171,21 +5181,29 @@ function resolveRegistrarRolesTarget(
     deploymentNetwork,
     target.deployment,
   );
-  const holds = target.grant ? holdsAllRegistrarRoles : holdsAnyRegistrarRole;
+  const check = target.grant ? holdsAllRootRoles : holdsAnyRootRole;
+  const holds = () => check(client, registry, account, target.roles);
   return { chain, client, registry, account, holds };
 }
 
-async function setRegistrarRoles(
-  opts: RegistrarRolesOptions & {
-    privateKey?: `0x${string}`;
-    impersonateAccount?: Address;
-  },
-  target: RegistrarRolesTarget,
-) {
-  const { chain, client, registry, account, holds } =
-    resolveRegistrarRolesTarget(opts, target);
+function rootRolesMismatch(target: RootRolesTarget, account: Address) {
+  return new Error(
+    target.grant
+      ? `${target.deployment} ${account} does not hold the ${target.rolesName}`
+      : `${target.deployment} ${account} still has the ${target.rolesName}`,
+  );
+}
 
-  const before = await holds(client, registry, account);
+async function setRootRoles(
+  opts: RootRolesOptions & RootRolesSigner,
+  target: RootRolesTarget,
+) {
+  const { chain, client, registry, account, holds } = resolveRootRolesTarget(
+    opts,
+    target,
+  );
+
+  const before = await holds();
   console.log(`${target.label} before phase: ${before}`);
   // Already where it is being taken. Read in the direction of travel, so a partial
   // grant is not mistaken for a complete one, nor a partial revocation for none.
@@ -5197,81 +5215,108 @@ async function setRegistrarRoles(
     rpcUrl: opts.rpcUrl,
     target: registry,
     functionName: target.grant ? "grantRootRoles" : "revokeRootRoles",
-    args: [REGISTRAR_ROLES, account],
+    args: [target.roles, account],
     receiptLabel: `${target.grant ? "enable" : "disable"} ${target.deployment} ${account}`,
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
 
-  const after = await holds(client, registry, account);
+  const after = await holds();
   console.log(`${target.label} after phase: ${after}`);
-  if (after !== target.grant) {
-    throw new Error(
-      target.grant
-        ? `${target.deployment} ${account} does not hold registrar/renew roles after the grant`
-        : `${target.deployment} ${account} still has registrar/renew roles`,
-    );
-  }
+  if (after !== target.grant) throw rootRolesMismatch(target, account);
 }
 
-async function verifyRegistrarRoles(
-  opts: RegistrarRolesOptions,
-  target: RegistrarRolesTarget,
+async function verifyRootRoles(
+  opts: RootRolesOptions,
+  target: RootRolesTarget,
 ) {
-  const { client, registry, account, holds } = resolveRegistrarRolesTarget(
-    opts,
-    target,
-  );
-  const held = await holds(client, registry, account);
+  const { account, holds } = resolveRootRolesTarget(opts, target);
+  const held = await holds();
   console.log(`${target.label}: ${held}`);
-  if (held !== target.grant) {
-    throw new Error(
-      target.grant
-        ? `${target.deployment} ${account} does not hold registrar/renew roles`
-        : `${target.deployment} ${account} still has registrar/renew roles`,
-    );
-  }
+  if (held !== target.grant) throw rootRolesMismatch(target, account);
+}
+
+function v2RegistrarTarget(ethRegistrar?: Address): RootRolesTarget {
+  return {
+    deployment: "ETHRegistrar",
+    address: ethRegistrar,
+    roles: REGISTRAR_ROLES,
+    rolesName: REGISTRAR_ROLES_NAME,
+    grant: true,
+    label: "v2 registrar enabled",
+  };
+}
+
+function batchRegistrarTarget(batchRegistrar?: Address): RootRolesTarget {
+  return {
+    deployment: "BatchRegistrar",
+    address: batchRegistrar,
+    roles: REGISTRAR_ROLES,
+    rolesName: REGISTRAR_ROLES_NAME,
+    grant: false,
+    label: "batch registrar enabled",
+  };
+}
+
+type MigrationControllerAddresses = {
+  unlockedMigrationController?: Address;
+  lockedMigrationController?: Address;
+};
+
+/// Both migration controllers, which together open migration: the unlocked one
+/// takes unwrapped and unlocked wrapped names, the locked one locked wrapped names.
+function migrationControllerTargets(
+  opts: MigrationControllerAddresses,
+): RootRolesTarget[] {
+  const target = (deployment: string, address?: Address): RootRolesTarget => ({
+    deployment,
+    address,
+    roles: DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+    rolesName: MIGRATION_ROLES_NAME,
+    grant: true,
+    label: `${deployment} migration enabled`,
+  });
+  return [
+    target("UnlockedMigrationController", opts.unlockedMigrationController),
+    target("LockedMigrationController", opts.lockedMigrationController),
+  ];
 }
 
 async function enableV2Registrar(
-  opts: RegistrarRolesOptions & {
-    ethRegistrar?: Address;
-    privateKey?: `0x${string}`;
-    impersonateAccount?: Address;
-  },
+  opts: RootRolesOptions & RootRolesSigner & { ethRegistrar?: Address },
 ) {
-  await setRegistrarRoles(opts, {
-    deployment: "ETHRegistrar",
-    address: opts.ethRegistrar,
-    grant: true,
-    label: "v2 registrar enabled",
-  });
+  await setRootRoles(opts, v2RegistrarTarget(opts.ethRegistrar));
 }
 
 async function disableBatchRegistrar(
-  opts: RegistrarRolesOptions & {
-    batchRegistrar?: Address;
-    privateKey?: `0x${string}`;
-    impersonateAccount?: Address;
-  },
+  opts: RootRolesOptions & RootRolesSigner & { batchRegistrar?: Address },
 ) {
-  await setRegistrarRoles(opts, {
-    deployment: "BatchRegistrar",
-    address: opts.batchRegistrar,
-    grant: false,
-    label: "batch registrar enabled",
-  });
+  await setRootRoles(opts, batchRegistrarTarget(opts.batchRegistrar));
 }
 
 async function verifyBatchRegistrarDisabled(
-  opts: RegistrarRolesOptions & { batchRegistrar?: Address },
+  opts: RootRolesOptions & { batchRegistrar?: Address },
 ) {
-  await verifyRegistrarRoles(opts, {
-    deployment: "BatchRegistrar",
-    address: opts.batchRegistrar,
-    grant: false,
-    label: "batch registrar enabled",
-  });
+  await verifyRootRoles(opts, batchRegistrarTarget(opts.batchRegistrar));
+}
+
+/// Opens migration by letting both migration controllers turn reserved names into
+/// registered ones. Held back until go-live, so no name moves to v2 before the v2
+/// registrar opens and resolution can follow it.
+async function enableMigration(
+  opts: RootRolesOptions & RootRolesSigner & MigrationControllerAddresses,
+) {
+  for (const target of migrationControllerTargets(opts)) {
+    await setRootRoles(opts, target);
+  }
+}
+
+async function verifyMigrationEnabled(
+  opts: RootRolesOptions & MigrationControllerAddresses,
+) {
+  for (const target of migrationControllerTargets(opts)) {
+    await verifyRootRoles(opts, target);
+  }
 }
 
 export async function checkBatchRegistrarOwner(opts: {
@@ -5345,14 +5390,9 @@ function adminSigner(account: Address): {
 }
 
 async function verifyV2Registrar(
-  opts: RegistrarRolesOptions & { ethRegistrar?: Address },
+  opts: RootRolesOptions & { ethRegistrar?: Address },
 ) {
-  await verifyRegistrarRoles(opts, {
-    deployment: "ETHRegistrar",
-    address: opts.ethRegistrar,
-    grant: true,
-    label: "v2 registrar enabled",
-  });
+  await verifyRootRoles(opts, v2RegistrarTarget(opts.ethRegistrar));
 }
 
 // Asserts the state a renewal through `ETHRenewerV1` actually needs, which is more
@@ -5934,6 +5974,7 @@ function buildDeployV2RockethConfig(
     opts.network === "sepolia" ? "sepolia" : undefined,
     opts.tags?.includes("hca") ? "hca" : undefined,
     "deferV2Registrar",
+    "deferMigration",
     opts.tenderly ? "tenderly" : undefined,
     opts.includeTestnetPremigrationRegistrar
       ? "testnet-premigration-registrar"
@@ -6406,6 +6447,8 @@ const SMOKE_CHECKS = {
     "the phase 3 freeze rejecting a registration that previously succeeded",
   reservedAssertions: "the pre-migration RESERVED assertions",
   migration: "the v1 → v2 migration smoke, unwrapped and wrapped",
+  preEnableMigrationRejection:
+    "the migration controllers rejecting a migration before phase 6 grants them REGISTER_RESERVED",
   reservedRejection: "the phase 6 rejection of a pre-migrated reserved name",
   renewal:
     "the ETHRenewerV1 renewal smoke, and with it the v1 ↔ v2 expiry-sync invariant",
@@ -6853,6 +6896,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
           SMOKE_CHECKS.freezeRejection,
           SMOKE_CHECKS.reservedAssertions,
           SMOKE_CHECKS.migration,
+          SMOKE_CHECKS.preEnableMigrationRejection,
           SMOKE_CHECKS.reservedRejection,
           SMOKE_CHECKS.renewal,
         ],
@@ -6955,6 +6999,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ethRenewerV1,
       mockUsdc: deployedMockUsdc,
       unlockedMigrationController,
+      lockedMigrationController,
       universalResolverV2,
       managedUrp,
       topUrp,
@@ -7398,68 +7443,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         `smoke pre-migration reserved ${smokeLabels.reservedOnly}.eth for registrar rejection`,
       );
-
-      console.log("smoke: migrate a pre-migrated v1 name to v2");
-      await migrateUnwrappedV1Name({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.migrate,
-        owner: smokeMigrationOwner,
-        privateKey: smokeMigrationPrivateKey,
-        ...(smokeMigrationPrivateKey === undefined
-          ? useRpcStateControls
-            ? { impersonateAccount: smokeMigrationOwner }
-            : { account: smokeMigrationOwner }
-          : {}),
-        migrationController: unlockedMigrationController,
-      });
-      await assertV2State({
-        rpcUrl,
-        chain,
-        ethRegistry,
-        label: smokeLabels.migrate,
-        status: STATUS.REGISTERED,
-        owner: smokeMigrationOwner,
-      });
-      console.log(
-        `smoke migration registered ${smokeLabels.migrate}.eth on v2`,
-      );
-
-      // The wrapped path: the token is a NameWrapper 1155 keyed by namehash, not a
-      // registrar 721 keyed by labelhash, and it is what most `.eth` names actually
-      // hold. Nothing else in the rehearsal touches it.
-      console.log("smoke: migrate a wrapped v1 name to v2");
-      await migrateWrappedV1Name({
-        network: opts.network,
-        rpcUrl,
-        chain,
-        provider,
-        ...v1Deployments,
-        label: smokeLabels.migrateWrapped,
-        owner: smokeMigrationOwner,
-        privateKey: smokeMigrationPrivateKey,
-        ...(smokeMigrationPrivateKey === undefined
-          ? useRpcStateControls
-            ? { impersonateAccount: smokeMigrationOwner }
-            : { account: smokeMigrationOwner }
-          : {}),
-        migrationController: unlockedMigrationController,
-      });
-      await assertV2State({
-        rpcUrl,
-        chain,
-        ethRegistry,
-        label: smokeLabels.migrateWrapped,
-        status: STATUS.REGISTERED,
-        owner: smokeMigrationOwner,
-      });
-      console.log(
-        `smoke migration registered wrapped ${smokeLabels.migrateWrapped}.eth on v2`,
-      );
-      coveredChecks.push(SMOKE_CHECKS.migration);
     }
 
     console.log(
@@ -7520,6 +7503,90 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentNetwork,
       ...deploymentAdminSigner,
     });
+
+    // Both smoke migrations move a name the smoke owner holds through the unlocked
+    // controller, which takes wrapped names that are not locked as well.
+    const smokeMigration = {
+      network: opts.network,
+      rpcUrl,
+      chain,
+      provider,
+      ...v1Deployments,
+      owner: smokeMigrationOwner,
+      privateKey: smokeMigrationPrivateKey,
+      ...(smokeMigrationPrivateKey === undefined
+        ? useRpcStateControls
+          ? { impersonateAccount: smokeMigrationOwner }
+          : { account: smokeMigrationOwner }
+        : {}),
+      migrationController: unlockedMigrationController,
+    };
+    // Migration opens together with the v2 registrar. A migration attempted before
+    // then must fail on the registry's role check, not on anything the name or its
+    // owner got wrong.
+    if (!postMigration) {
+      await assertRejected(
+        migrateUnwrappedV1Name({
+          ...smokeMigration,
+          label: smokeLabels.migrate,
+        }),
+        `migration rejected before phase 6 opens it: ${smokeLabels.migrate}.eth`,
+        // The registry raises this when the controller lacks REGISTER_RESERVED. The
+        // v1 registrar's ABI cannot decode it, so it may surface as its selector.
+        /EACUnauthorizedAccountRoles|0x4b27a133/i,
+      );
+      coveredChecks.push(SMOKE_CHECKS.preEnableMigrationRejection);
+    }
+    await enableMigration({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      registry: ethRegistry.address,
+      unlockedMigrationController: unlockedMigrationController.address,
+      lockedMigrationController: lockedMigrationController.address,
+      deploymentsDir,
+      deploymentNetwork,
+      ...deploymentAdminSigner,
+    });
+    if (!postMigration) {
+      console.log("smoke: migrate a pre-migrated v1 name to v2");
+      await migrateUnwrappedV1Name({
+        ...smokeMigration,
+        label: smokeLabels.migrate,
+      });
+      await assertV2State({
+        rpcUrl,
+        chain,
+        ethRegistry,
+        label: smokeLabels.migrate,
+        status: STATUS.REGISTERED,
+        owner: smokeMigrationOwner,
+      });
+      console.log(
+        `smoke migration registered ${smokeLabels.migrate}.eth on v2`,
+      );
+
+      // The wrapped path: the token is a NameWrapper 1155 keyed by namehash, not a
+      // registrar 721 keyed by labelhash, and it is what most `.eth` names actually
+      // hold. Nothing else in the rehearsal touches it.
+      console.log("smoke: migrate a wrapped v1 name to v2");
+      await migrateWrappedV1Name({
+        ...smokeMigration,
+        label: smokeLabels.migrateWrapped,
+      });
+      await assertV2State({
+        rpcUrl,
+        chain,
+        ethRegistry,
+        label: smokeLabels.migrateWrapped,
+        status: STATUS.REGISTERED,
+        owner: smokeMigrationOwner,
+      });
+      console.log(
+        `smoke migration registered wrapped ${smokeLabels.migrateWrapped}.eth on v2`,
+      );
+      coveredChecks.push(SMOKE_CHECKS.migration);
+    }
     if (mockUsdc) {
       if (!postMigration) {
         await assertRejected(
@@ -10029,6 +10096,74 @@ export async function main(argv = process.argv): Promise<void> {
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await verifyV2Registrar({
+          ...networkOpts,
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        new Command("enable-migration")
+          .description(
+            "Grant the register-reserved role to both migration controllers, opening v1 → v2 migration",
+          )
+          .option("--registry <address>", "v2 ETHRegistry address")
+          .option(
+            "--unlocked-migration-controller <address>",
+            "UnlockedMigrationController address",
+          )
+          .option(
+            "--locked-migration-controller <address>",
+            "LockedMigrationController address",
+          )
+          .option("--private-key <key>", "Registry role admin private key")
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate registry role admin on a fork",
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          AdminSignerCliOptions &
+          MigrationControllerAddresses & { registry?: Address },
+      ) => {
+        const networkOpts = withNetworkRpc(opts);
+        await enableMigration({
+          ...networkOpts,
+          privateKey:
+            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        new Command("verify-migration-enabled")
+          .description(
+            "Verify both migration controllers hold the register-reserved role",
+          )
+          .option("--registry <address>", "v2 ETHRegistry address")
+          .option(
+            "--unlocked-migration-controller <address>",
+            "UnlockedMigrationController address",
+          )
+          .option(
+            "--locked-migration-controller <address>",
+            "LockedMigrationController address",
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          MigrationControllerAddresses & { registry?: Address },
+      ) => {
+        const networkOpts = withNetworkRpc(opts);
+        await verifyMigrationEnabled({
           ...networkOpts,
         });
       },

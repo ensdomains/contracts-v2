@@ -220,8 +220,9 @@ out of the batch and counted separately, so the final sync sends only what has a
 than resubmitting the whole CSV.
 
 > **When can a name be `Registered (2)`?** Not during the migration phases. Migration opens to users
-> only after the final pre-migration sync completes, so a name owned on v2 while pre-migration is
-> still running did not get there by being claimed. It is reported and counted, and does not fail the
+> at go-live ([phase 6](./migration.md#phase-6-enable-the-v2-controller)), after the final
+> pre-migration sync completes, so a name owned on v2 while pre-migration is still running did not get
+> there by being claimed. It is reported and counted, and does not fail the
 > run, but it is worth understanding before continuing.
 
 **One name cannot stop the run.** Every per-name failure mode is handled explicitly, but an
