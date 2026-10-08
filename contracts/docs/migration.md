@@ -517,6 +517,10 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
     tokens), so nobody can grant or revoke these roles.
   - The deployer holds no role on either registry or on the `eth` entry. It keeps the `eth` token,
     which carries no role.
+  - The deployer still owns `BatchRegistrar` and `RootBatchRegistrar`. That ownership gives it no
+    power over names. `RootBatchRegistrar` gives up its root registry role as soon as phase 1 has
+    registered the DNS top-level names, and `BatchRegistrar` loses its `.eth` registry roles in
+    phase 6. Once the deployer has dropped its admin roles, only the owner can grant them one again.
   - The registrar, renewer and migration controllers keep the regular roles they need.
 
   The command makes every grant to the owner before the deployer drops anything, and sends only the
