@@ -1,0 +1,12 @@
+[global]
+function = "check_"
+forge-build-out = "out/hca-formal"
+solver = "yices"
+solver-threads = 4
+solver-timeout-assertion = "60s"
+solver-timeout-branching = "50ms"
+panic-error-codes = "0x01"
+loop = 8
+default-array-lengths = "0,1,2"
+default-bytes-lengths = "0,1,31,32,33,65"
+no-status = true

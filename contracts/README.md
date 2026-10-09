@@ -392,6 +392,27 @@ bun run test:hardhat test/Ens.t.ts # specific Hardhat test
 bun run test:e2e # end-to-end tests
 ```
 
+### HCA formal verification
+
+The HCA state-transition and access-control suite uses Halmos with a pinned Solidity/Foundry
+profile. From `contracts/`, with Foundry 1.8.5 and the packages in
+`script/formal/requirements.txt` installed:
+
+```sh
+python3 script/formal/run_hca.py
+python3 script/formal/check_mutations.py
+```
+
+The runner requires complete results for every selected `check_` property and rejects solver
+failures, blocked paths, empty selections, and reached loop bounds. It records exact input hashes
+and machine-readable results under `out/hca-formal-reports/`.
+Integration properties execute the actual mainnet and Sepolia IntentExecutor proxy and
+implementation runtimes at pinned blocks. Each run verifies the checked-in deployment snapshot
+and records its code hashes; `python3 script/formal/check_intent_executor.py --rpc` also rechecks
+the captured state through historical read-only RPC calls.
+See [HCA verification](../docs/HCA.md#halmos-verification-of-post-audit-2) for the property map,
+cryptographic assumptions, state and sequence bounds, and reproduction instructions.
+
 ## Running the Devnet
 
 There are two ways to run the devnet:
