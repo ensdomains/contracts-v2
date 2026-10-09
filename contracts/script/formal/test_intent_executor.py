@@ -3,6 +3,7 @@
 import copy
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -30,8 +31,13 @@ class ExecutorAttestationTests(unittest.TestCase):
         self.assertGreater(report["immutable_regions"], 0)
 
     def test_embedded_runtime_substitution_fails(self):
-        changed = self.helper.replace('return hex"60', 'return hex"61', 1)
-        self.assertNotEqual(changed, self.helper)
+        changed, replacements = re.subn(
+            r'(\breturn\s+hex")([0-9a-fA-F]{2})',
+            lambda match: match[1] + f"{int(match[2], 16) ^ 1:02x}",
+            self.helper,
+            count=1,
+        )
+        self.assertEqual(replacements, 1, "Expected one embedded runtime byte mutation")
         with self.assertRaisesRegex(ValueError, "embedded runtime differs"):
             self.verify_copy(helper=changed)
 
