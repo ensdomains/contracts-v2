@@ -622,6 +622,21 @@ describe("firstBlockWithCode", () => {
     expect(await firstBlockWithCode(client, ADDRESS)).toBe(42);
   });
 
+  it("asks a failed lookup again", async () => {
+    const { client } = chain(9_380_410);
+    let calls = 0;
+    const flaky = {
+      ...client,
+      getCode: async (args: { blockNumber: bigint }) => {
+        if (++calls % 3 === 0) {
+          throw new Error("pruned history unavailable");
+        }
+        return client.getCode(args);
+      },
+    };
+    expect(await firstBlockWithCode(flaky, ADDRESS, 0)).toBe(9_380_410);
+  });
+
   it("refuses an address with no contract at the head block", async () => {
     await expect(
       firstBlockWithCode(chain(undefined).client, ADDRESS),

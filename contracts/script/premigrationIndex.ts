@@ -314,7 +314,9 @@ export class RangeTooWideError extends Error {
 
 /// The first block at which `address` holds code, which is the block that deployed it.
 /// It bisects code lookups over the chain's history, so it needs an archive node and
-/// makes about one lookup per bit of the head block number.
+/// makes about one lookup per bit of the head block number. A failed lookup is asked
+/// again as `QueryRetry` allows, since a load-balanced endpoint can route one to a
+/// node that has pruned old state.
 export async function firstBlockWithCode(
   client: {
     getBlockNumber(): Promise<bigint>;
@@ -324,10 +326,22 @@ export async function firstBlockWithCode(
     }): Promise<`0x${string}` | undefined>;
   },
   address: `0x${string}`,
+  retryDelayMs?: number,
 ): Promise<number> {
-  const hasCode = async (block: number) => {
-    const code = await client.getCode({ address, blockNumber: BigInt(block) });
-    return code !== undefined && code !== "0x";
+  const retry = new QueryRetry(retryDelayMs);
+  const hasCode = async (block: number): Promise<boolean> => {
+    for (;;) {
+      try {
+        const code = await client.getCode({
+          address,
+          blockNumber: BigInt(block),
+        });
+        retry.served();
+        return code !== undefined && code !== "0x";
+      } catch (error) {
+        await retry.failed(error);
+      }
+    }
   };
   let high = Number(await client.getBlockNumber());
   if (!(await hasCode(high))) {
