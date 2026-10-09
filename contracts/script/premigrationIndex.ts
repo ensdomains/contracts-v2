@@ -312,6 +312,36 @@ export class RangeTooWideError extends Error {
   }
 }
 
+/// The first block at which `address` holds code, which is the block that deployed it.
+/// It bisects code lookups over the chain's history, so it needs an archive node and
+/// makes about one lookup per bit of the head block number.
+export async function firstBlockWithCode(
+  client: {
+    getBlockNumber(): Promise<bigint>;
+    getCode(args: {
+      address: `0x${string}`;
+      blockNumber: bigint;
+    }): Promise<`0x${string}` | undefined>;
+  },
+  address: `0x${string}`,
+): Promise<number> {
+  const hasCode = async (block: number) => {
+    const code = await client.getCode({ address, blockNumber: BigInt(block) });
+    return code !== undefined && code !== "0x";
+  };
+  let high = Number(await client.getBlockNumber());
+  if (!(await hasCode(high))) {
+    throw new Error(`no contract at ${address} at block ${high}`);
+  }
+  let low = 0;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (await hasCode(mid)) high = mid;
+    else low = mid + 1;
+  }
+  return low;
+}
+
 function idsPath(workDir: string) {
   return join(workDir, V1_INDEX_IDS_FILE);
 }

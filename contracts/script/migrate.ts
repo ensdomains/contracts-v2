@@ -246,6 +246,7 @@ import {
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
   createRpcIndexClient,
+  firstBlockWithCode,
   loadV1NameIndex,
   readV1NameIndexMeta,
 } from "./premigrationIndex.js";
@@ -1103,8 +1104,6 @@ function readDeploymentBlock(
   return BigInt(block);
 }
 
-// The deploy block recorded on an already-loaded artifact. Bundled v1 artifacts
-// carry it as a hex string, locally deployed ones as a number.
 // The address that sent a deployment's own transaction. The deploy scripts grant the
 // constructor roles to whoever deployed, so this is what the role audit has to compare
 // against — the configured owner is a different address on any live deployment, and on
@@ -1139,6 +1138,8 @@ function deploymentOwner(
   return getAddress(owner as Address);
 }
 
+// The deploy block recorded on an already-loaded artifact, as a hex string or a
+// number. Some bundled v1 artifacts carry no deploy receipt at all.
 function deploymentBlockNumber(deployment: JsonDeployment): number | undefined {
   const block = (deployment as { receipt?: { blockNumber?: string | number } })
     .receipt?.blockNumber;
@@ -8832,7 +8833,7 @@ export async function main(argv = process.argv): Promise<void> {
         )
         .option(
           "--from-block <number>",
-          "First block to scan for registrations; defaults to the v1 BaseRegistrar deploy block (--source rpc)",
+          "First block to scan for registrations; defaults to the v1 BaseRegistrar deploy block, from its deployment record or else found on chain (--source rpc)",
         )
         .option(
           "--scan-range <number>",
@@ -8882,21 +8883,21 @@ export async function main(argv = process.argv): Promise<void> {
                   V1_BASE_REGISTRAR_NAME,
                   opts,
                 );
+                const registrar = opts.v1BaseRegistrar ?? baseRegistrar.address;
                 // The registrar logged nothing before it existed, so its own
                 // deploy block is the only sensible floor for the scan; without
                 // it the walk starts at genesis and burns queries on empty
-                // ranges.
+                // ranges. A record without a deploy receipt, or an address
+                // that overrides it, leaves the block to be found on chain.
                 const fromBlock =
                   opts.fromBlock !== undefined
                     ? Number(opts.fromBlock)
-                    : deploymentBlockNumber(baseRegistrar);
-                if (fromBlock === undefined) {
-                  throw new Error(
-                    "cannot determine the v1 BaseRegistrar deploy block; pass --from-block",
-                  );
-                }
+                    : ((opts.v1BaseRegistrar
+                        ? undefined
+                        : deploymentBlockNumber(baseRegistrar)) ??
+                      (await firstBlockWithCode(client, registrar)));
                 console.log(
-                  `scanning ${V1_BASE_REGISTRAR_NAME} ${baseRegistrar.address} from block ${fromBlock}`,
+                  `scanning ${V1_BASE_REGISTRAR_NAME} ${registrar} from block ${fromBlock}`,
                 );
                 return buildV1NameIndexFromRpc(
                   {
@@ -8909,10 +8910,7 @@ export async function main(argv = process.argv): Promise<void> {
                     resume: opts.resume,
                     onProgress,
                   },
-                  v1IndexClient(
-                    client,
-                    opts.v1BaseRegistrar ?? baseRegistrar.address,
-                  ),
+                  v1IndexClient(client, registrar),
                 );
               })()
             : await (async () => {

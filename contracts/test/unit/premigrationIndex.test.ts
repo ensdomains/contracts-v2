@@ -10,6 +10,7 @@ import {
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
   createRpcIndexClient,
+  firstBlockWithCode,
   loadV1NameIndex,
   readV1NameIndexMeta,
   RangeTooWideError,
@@ -579,5 +580,51 @@ describe("createRpcIndexClient log refusals", () => {
     await expect(failingClient(error).getRegisteredIds(1, 100)).rejects.toBe(
       error,
     );
+  });
+});
+
+describe("firstBlockWithCode", () => {
+  const ADDRESS = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85";
+
+  // A chain whose contract appears at `deployBlock`, counting the lookups made.
+  function chain(deployBlock: number | undefined, head = HEAD_BLOCK) {
+    const lookups: number[] = [];
+    return {
+      lookups,
+      client: {
+        getBlockNumber: async () => BigInt(head),
+        getCode: async ({ blockNumber }: { blockNumber: bigint }) => {
+          lookups.push(Number(blockNumber));
+          return deployBlock !== undefined && blockNumber >= BigInt(deployBlock)
+            ? ("0x6080" as const)
+            : undefined;
+        },
+      },
+    };
+  }
+
+  it("finds the block that deployed the contract", async () => {
+    for (const deployBlock of [0, 1, 9_380_410, HEAD_BLOCK - 1, HEAD_BLOCK]) {
+      const { client, lookups } = chain(deployBlock);
+      expect(await firstBlockWithCode(client, ADDRESS)).toBe(deployBlock);
+      expect(lookups.length).toBeLessThanOrEqual(
+        Math.ceil(Math.log2(HEAD_BLOCK)) + 1,
+      );
+    }
+  });
+
+  it("treats empty code as no contract", async () => {
+    const client = {
+      getBlockNumber: async () => 100n,
+      getCode: async ({ blockNumber }: { blockNumber: bigint }) =>
+        blockNumber >= 42n ? ("0x6080" as const) : ("0x" as const),
+    };
+    expect(await firstBlockWithCode(client, ADDRESS)).toBe(42);
+  });
+
+  it("refuses an address with no contract at the head block", async () => {
+    await expect(
+      firstBlockWithCode(chain(undefined).client, ADDRESS),
+    ).rejects.toThrow(/no contract at/);
   });
 });

@@ -195,9 +195,12 @@ leaves the rest of the namespace untouched.
 >   --work-dir .dev/premig-1 --rpc-url $SEPOLIA_RPC_URL
 > ```
 >
-> The scan starts at the registrar's recorded deploy block and narrows its range whenever a provider
-> refuses the span. A query that fails for any other reason is asked again for a narrower range
-> after a wait that grows with each failure in a row, and the build stops after 8 failures in a row.
+> The scan starts at the registrar's deploy block. That is the block its deployment record holds or,
+> for a record with no deploy receipt such as the bundled mainnet one, the first block at which the
+> registrar has code, found on chain by bisecting code lookups against an archive node. It narrows
+> its range whenever a provider refuses the span. A query that fails for any other reason is asked
+> again for a narrower range after a wait that grows with each failure in a row, and the build stops
+> after 8 failures in a row.
 > So a rate-limited or load-balanced endpoint slows the walk rather than failing it. Both phases
 > checkpoint, so `--resume` continues an interrupted build at a block boundary. A partial index built
 > from one source refuses to resume as the other.
