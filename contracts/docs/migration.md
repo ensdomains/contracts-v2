@@ -163,14 +163,15 @@ leaves the rest of the namespace untouched.
 > CSV's recorded source matches the index's, because verifying a CSV against the indexer that
 > produced it cannot detect anything missing from that indexer. Use `--report-only` for a dry read.
 >
-> **Names the CSV holds only as `[labelhash]` are listed apart.** ENS writes a label it cannot show
+> **Names whose CSV label pre-migration refuses are listed apart.** ENS writes a label it cannot show
 > as text — one nobody knows, or one longer than DNS encoding's 255 bytes — as its labelhash in square
 > brackets, and ENSIP-15 disallows brackets in a normalized name. Pre-migration refuses a label of that
 > shape, since the text alone cannot say whether it is a placeholder or a name registered with the
 > placeholder text itself; mainnet holds a handful of the latter, registered by typing the bracketed
-> form. Such a name can never be reserved from the CSV, so when `--csv-file` is given reconcile lists
-> each one under "not reservable from the CSV" instead of counting it as missing. Without the CSV they
-> cannot be told apart and count as missing.
+> form. It also refuses a label the export does give as text but that is longer than 255 bytes, which
+> no DNS-encoded name can carry. Such a name can never be reserved from the CSV, so when `--csv-file`
+> is given reconcile lists each one under "not reservable from the CSV" instead of counting it as
+> missing. Without the CSV they cannot be told apart and count as missing.
 >
 > **Read the `cross-source:` line first.** Before comparing anything against v2, reconcile prints the
 > CSV's label count beside the index's claimable count. Two independent views of the same chain must

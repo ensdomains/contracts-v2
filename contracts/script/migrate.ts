@@ -359,20 +359,23 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // neither is present so callers can fail loudly instead of guessing a column.
 // How many CSV rows name a v1 registration that is still claimable at `chainNow`.
 //
-// Rows whose label has the `[labelhash]` shape, keyed by every labelhash the row can
-// stand for: the hash of the text itself, for a name registered with that text, and
-// the hash inside the brackets, for a placeholder of a label nobody knows.
-function readEncodedLabelhashRows(csvFile: string): Map<string, string> {
+// Rows whose label pre-migration refuses, keyed by every labelhash the row can stand
+// for: the hash of the text itself, for a name registered with that text, and, for a
+// label of the `[labelhash]` shape, the hash inside the brackets, for a placeholder
+// of a label nobody knows.
+function readUnreservableLabelRows(csvFile: string): Map<string, string> {
   const { rows, labelIndex } = openLabelCsv(csvFile);
   const labels = new Map<string, string>();
   if (labelIndex < 0) return labels;
   for (const line of rows) {
     const label = csvLabelCell(parseCSVLine(line), labelIndex);
-    if (!label || !isEncodedLabelhash(label)) continue;
-    for (const id of [
-      keccak256(stringToHex(label)),
-      `0x${label.slice(1, -1)}`,
-    ]) {
+    // Read into a plain boolean: the check is a type guard, and a refused string
+    // would otherwise narrow to nothing.
+    const refused: boolean = !isValidLabel(label);
+    if (!label || !refused) continue;
+    const ids = [keccak256(stringToHex(label))];
+    if (isEncodedLabelhash(label)) ids.push(`0x${label.slice(1, -1)}`);
+    for (const id of ids) {
       labels.set(toLabelhashHex(canonicalLabelId(id)), label);
     }
   }
@@ -1220,9 +1223,10 @@ type ReconcileResult = {
   reservedInGrace: number;
   registered: number;
   missing: string[];
-  /// Claimable names the CSV carries only as `[labelhash]`-shaped text, which
-  /// pre-migration refuses to submit. They can never be reserved from that CSV, so
-  /// they are listed on their own rather than counted as missing.
+  /// Claimable names whose CSV label pre-migration refuses to submit: text of the
+  /// `[labelhash]` shape, or longer than a DNS label's 255 bytes. They can never be
+  /// reserved from that CSV, so they are listed on their own rather than counted as
+  /// missing.
   unreservable: Array<{ id: string; label: string }>;
   /// Seeded fixture names pre-migration leaves out on purpose, with the v2 state
   /// their scenario declares. They are live v1 names, so without the list they would
@@ -1429,9 +1433,9 @@ export async function reconcilePreMigration(opts: {
     `not claimable, v1 registrant is a Graveyard: ${graveyardIds.size} (graveyards: ${[...graveyards].join(", ")})`,
   );
 
-  const bracketLabels =
+  const unreservableLabels =
     opts.csvFile && existsSync(opts.csvFile)
-      ? readEncodedLabelhashRows(opts.csvFile)
+      ? readUnreservableLabelRows(opts.csvFile)
       : new Map<string, string>();
   const keptOut = new Map<string, { label: string; state: string }>();
   for (const workDir of opts.fixtureWorkDirs ?? []) {
@@ -1484,7 +1488,7 @@ export async function reconcilePreMigration(opts: {
     const fixture = keptOut.get(canonicalId);
     // Nothing on v2 at all: the name was never seeded.
     if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
-      const label = bracketLabels.get(canonicalId);
+      const label = unreservableLabels.get(canonicalId);
       if (fixture) result.keptUnreserved.push({ id: entry.id, ...fixture });
       else if (label === undefined) result.missing.push(entry.id);
       else result.unreservable.push({ id: entry.id, label });
@@ -1735,10 +1739,14 @@ export async function reconcilePreMigration(opts: {
   }
   if (result.unreservable.length > 0) {
     console.log(
-      `not reservable from the CSV, label in [labelhash] form: ${result.unreservable.length}`,
+      `not reservable from the CSV, label in [labelhash] form or over 255 bytes: ${result.unreservable.length}`,
     );
     for (const { id, label } of result.unreservable) {
-      console.log(`  ${id} ${label}.eth`);
+      const shown =
+        label.length > 80
+          ? `${label.slice(0, 77)}... (${label.length} chars)`
+          : label;
+      console.log(`  ${id} ${shown}.eth`);
     }
   }
   console.log(`expiry mismatches: ${result.expiryMismatched.length}`);
