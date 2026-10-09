@@ -63,6 +63,7 @@ import {
   Graveyard,
   NameWrapper,
 } from "./migrations/abis.js";
+import { briefError, ONE_CALL_PER_BATCH } from "./migrations/queryRetry.js";
 import { REFUSED_READ_ATTEMPTS, refusedReadWaitMs } from "./migrations/rpc.js";
 
 const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
@@ -441,15 +442,17 @@ function resolveRegistrant(
   if (ownerOf.status === "success") {
     holder = getAddress(ownerOf.result as Address);
   } else if (!isRevert(ownerOf.error)) {
-    return { error: `ownerOf: ${String(ownerOf.error)}` };
+    return { error: `ownerOf: ${briefError(ownerOf.error)}` };
   } else if (nodeOwner.status === "success") {
     holder = getAddress(nodeOwner.result as Address);
   } else {
-    return { error: `registry owner: ${String(nodeOwner.error)}` };
+    return { error: `registry owner: ${briefError(nodeOwner.error)}` };
   }
   if (holder === v1.nameWrapper) {
     if (wrapperOwner.status === "failure") {
-      return { error: `NameWrapper ownerOf: ${String(wrapperOwner.error)}` };
+      return {
+        error: `NameWrapper ownerOf: ${briefError(wrapperOwner.error)}`,
+      };
     }
     holder = getAddress(wrapperOwner.result as Address);
   }
@@ -467,6 +470,7 @@ export async function readV1Registrations(
 ): Promise<Array<V1Registration | V1ReadError>> {
   if (ids.length === 0) return [];
   const outcomes: CallOutcome[] = await client.multicall({
+    ...ONE_CALL_PER_BATCH,
     allowFailure: true,
     contracts: ids.flatMap((id) => {
       const node = ethNameNode(id);
@@ -504,7 +508,7 @@ export async function readV1Registrations(
       4 * index + 4,
     );
     if (expiry.status === "failure") {
-      return { error: `nameExpires: ${String(expiry.error)}` };
+      return { error: `nameExpires: ${briefError(expiry.error)}` };
     }
     const owner = resolveRegistrant(v1, ownerOf, nodeOwner, wrapperOwner);
     if ("error" in owner) return owner;

@@ -94,7 +94,12 @@ import {
 } from "./migrations/fixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
 import { isLogSpanRefusal } from "./migrations/logSpanRefusal.js";
-import { QueryRetry } from "./migrations/queryRetry.js";
+import {
+  briefError,
+  ONE_CALL_PER_BATCH,
+  QueryRetry,
+  readUntilComplete,
+} from "./migrations/queryRetry.js";
 import {
   executePreparedOwnerTransactions,
   preparedOwnerTransactionLabel,
@@ -953,6 +958,7 @@ async function verifyPreMigration(opts: {
       validBatch.map(labelId),
     );
     const stateResults = await client.multicall({
+      ...ONE_CALL_PER_BATCH,
       allowFailure: true,
       contracts: validBatch.map(
         (label) =>
@@ -976,7 +982,7 @@ async function verifyPreMigration(opts: {
       }
       if (stateResult.status === "failure") {
         errors.push(
-          `${label}.eth v2 state lookup failed: ${stateResult.error}`,
+          `${label}.eth v2 state lookup failed: ${briefError(stateResult.error)}`,
         );
         continue;
       }
@@ -1030,6 +1036,7 @@ async function verifyPreMigration(opts: {
     const resolverToCheck = expectedResolver;
     if (resolverToCheck && resolverChecks.length > 0) {
       const resolverResults = await client.multicall({
+        ...ONE_CALL_PER_BATCH,
         allowFailure: true,
         contracts: resolverChecks.map((label) => ({
           address: registry.address,
@@ -1042,7 +1049,9 @@ async function verifyPreMigration(opts: {
         const label = resolverChecks[index];
         const result = resolverResults[index];
         if (result.status === "failure") {
-          errors.push(`${label}.eth resolver lookup failed: ${result.error}`);
+          errors.push(
+            `${label}.eth resolver lookup failed: ${briefError(result.error)}`,
+          );
           continue;
         }
         const actualResolver = result.result;
@@ -1459,104 +1468,84 @@ export async function reconcilePreMigration(opts: {
   const migrationOpen = expectedStatus === "reserved-or-registered";
 
   // Forward: every claimable v1 name must exist on v2 with the bonus-adjusted expiry.
-  for (
-    let start = 0;
-    start < claimable.length;
-    start += PREMIGRATION_VERIFY_BATCH_SIZE
-  ) {
-    const batch = claimable.slice(
-      start,
-      start + PREMIGRATION_VERIFY_BATCH_SIZE,
-    );
-    const states = await client.multicall({
-      allowFailure: true,
-      contracts: batch.map(
-        (entry) =>
-          ({
-            address: registryAddress,
-            abi: REGISTRY_STATE_ABI,
-            functionName: "getState",
-            args: [BigInt(entry.id)],
-          }) as const,
-      ),
-    });
+  const claimableStates = await readV2StatesInBatches(
+    client,
+    registryAddress,
+    claimable.map((entry) => entry.id),
+  );
+  for (const entry of claimable) {
+    const {
+      status,
+      expiry: actualExpiry,
+      latestOwner,
+    } = claimableStates.get(entry.id)!;
 
-    for (let index = 0; index < batch.length; index++) {
-      const entry = batch[index];
-      const state = states[index];
-      if (state.status === "failure") {
-        result.missing.push(`${entry.id} state lookup failed: ${state.error}`);
-        continue;
-      }
-      const { status, expiry: actualExpiry, latestOwner } = state.result;
-
-      const canonicalId = toLabelhashHex(canonicalLabelId(entry.id));
-      const fixture = keptOut.get(canonicalId);
-      // Nothing on v2 at all: the name was never seeded.
-      if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
-        const label = bracketLabels.get(canonicalId);
-        if (fixture) result.keptUnreserved.push({ id: entry.id, ...fixture });
-        else if (label === undefined) result.missing.push(entry.id);
-        else result.unreservable.push({ id: entry.id, label });
-        continue;
-      }
-      if (fixture) {
-        // A name whose scenario needs it absent from v2 has been reserved after all,
-        // which destroys the case it exists to test. The other kept-out states model
-        // a name v2 already holds, so finding it there is what they declare.
-        if (fixture.state === "missing") {
-          result.unexpected.push(
-            `${entry.id} (${fixture.label}.eth) is on v2, but its fixture scenario keeps it unreserved`,
-          );
-        } else {
-          result.keptUnreserved.push({ id: entry.id, ...fixture });
-        }
-        continue;
-      }
-      // Computed with the same cap pre-migration applies, or every name near the
-      // uint64 ceiling reads as a permanent mismatch and the gate never opens.
-      const expectedExpiry = bonusAdjustedExpiry(
-        entry.expiry,
-        bonusPeriodSeconds,
-      );
-      // A registered name's owner can renew it on v2, which only ever extends it. A
-      // reservation keeps the expiry pre-migration wrote, since the renewer extends
-      // v1 and v2 together — unless the renewal came after the index, which reports
-      // the expiry it superseded.
-      const expiryHolds =
-        status === STATUS.REGISTERED || renewedIds.has(entry.id.toLowerCase())
-          ? actualExpiry >= expectedExpiry
-          : actualExpiry === expectedExpiry;
-      if (!expiryHolds) {
-        result.expiryMismatched.push(
-          `${entry.id} v2=${actualExpiry} expected=${expectedExpiry}`,
+    const canonicalId = toLabelhashHex(canonicalLabelId(entry.id));
+    const fixture = keptOut.get(canonicalId);
+    // Nothing on v2 at all: the name was never seeded.
+    if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
+      const label = bracketLabels.get(canonicalId);
+      if (fixture) result.keptUnreserved.push({ id: entry.id, ...fixture });
+      else if (label === undefined) result.missing.push(entry.id);
+      else result.unreservable.push({ id: entry.id, label });
+      continue;
+    }
+    if (fixture) {
+      // A name whose scenario needs it absent from v2 has been reserved after all,
+      // which destroys the case it exists to test. The other kept-out states model
+      // a name v2 already holds, so finding it there is what they declare.
+      if (fixture.state === "missing") {
+        result.unexpected.push(
+          `${entry.id} (${fixture.label}.eth) is on v2, but its fixture scenario keeps it unreserved`,
         );
-        continue;
-      }
-      if (
-        holdsReservation({ status, latestOwner, expiry: actualExpiry }, v2Now)
-      ) {
-        result.reserved++;
-        if (status !== STATUS.RESERVED) result.reservedInGrace++;
-      } else if (status === STATUS.REGISTERED) {
-        result.registered++;
-        // Before migration opens no name can legitimately be claimed on v2, so a
-        // REGISTERED entry in that window is an anomaly rather than a user action.
-        if (expectedStatus === "reserved") {
-          result.unexpected.push(
-            `${entry.id} is REGISTERED before migration opened`,
-          );
-        } else if (!reservedIds.has(canonicalId)) {
-          // A migration only ever registers a reserved name. A claimable v1 name
-          // registered without one was taken through the registrar, so its v1 owner
-          // lost it: pre-migration missed it.
-          result.unexpected.push(
-            `${entry.id} is REGISTERED on v2 but was never reserved for its v1 owner`,
-          );
-        }
       } else {
-        result.missing.push(`${entry.id} has status ${status}`);
+        result.keptUnreserved.push({ id: entry.id, ...fixture });
       }
+      continue;
+    }
+    // Computed with the same cap pre-migration applies, or every name near the
+    // uint64 ceiling reads as a permanent mismatch and the gate never opens.
+    const expectedExpiry = bonusAdjustedExpiry(
+      entry.expiry,
+      bonusPeriodSeconds,
+    );
+    // A registered name's owner can renew it on v2, which only ever extends it. A
+    // reservation keeps the expiry pre-migration wrote, since the renewer extends
+    // v1 and v2 together — unless the renewal came after the index, which reports
+    // the expiry it superseded.
+    const expiryHolds =
+      status === STATUS.REGISTERED || renewedIds.has(entry.id.toLowerCase())
+        ? actualExpiry >= expectedExpiry
+        : actualExpiry === expectedExpiry;
+    if (!expiryHolds) {
+      result.expiryMismatched.push(
+        `${entry.id} v2=${actualExpiry} expected=${expectedExpiry}`,
+      );
+      continue;
+    }
+    if (
+      holdsReservation({ status, latestOwner, expiry: actualExpiry }, v2Now)
+    ) {
+      result.reserved++;
+      if (status !== STATUS.RESERVED) result.reservedInGrace++;
+    } else if (status === STATUS.REGISTERED) {
+      result.registered++;
+      // Before migration opens no name can legitimately be claimed on v2, so a
+      // REGISTERED entry in that window is an anomaly rather than a user action.
+      if (expectedStatus === "reserved") {
+        result.unexpected.push(
+          `${entry.id} is REGISTERED before migration opened`,
+        );
+      } else if (!reservedIds.has(canonicalId)) {
+        // A migration only ever registers a reserved name. A claimable v1 name
+        // registered without one was taken through the registrar, so its v1 owner
+        // lost it: pre-migration missed it.
+        result.unexpected.push(
+          `${entry.id} is REGISTERED on v2 but was never reserved for its v1 owner`,
+        );
+      }
+    } else {
+      result.missing.push(`${entry.id} has status ${status}`);
     }
   }
 
@@ -1691,6 +1680,7 @@ export async function reconcilePreMigration(opts: {
         // fails on every entry where the two differ, and the failures were being
         // skipped — which reports zero burned fuses rather than an error.
         const results = await v1Client.multicall({
+          ...ONE_CALL_PER_BATCH,
           allowFailure: true,
           contracts: batch.map((entry) => ({
             address: nameWrapper.address,
@@ -1873,6 +1863,7 @@ async function readV1RegistrationsInBatches(
     string,
     Awaited<ReturnType<typeof readV1Registrations>>[number]
   >();
+  const retry = new QueryRetry();
   for (
     let start = 0;
     start < labelhashes.length;
@@ -1882,10 +1873,22 @@ async function readV1RegistrationsInBatches(
       start,
       start + PREMIGRATION_VERIFY_BATCH_SIZE,
     );
-    const reads = await readV1Registrations(
-      v1Client,
-      v1Contracts,
-      batch.map((labelhash) => BigInt(labelhash)),
+    // A revert is an answer and comes back as one; a failure left over is the
+    // provider's, so the batch is asked again.
+    const reads = await readUntilComplete(
+      () =>
+        readV1Registrations(
+          v1Client,
+          v1Contracts,
+          batch.map((labelhash) => BigInt(labelhash)),
+        ),
+      (reads) => {
+        const failed = reads.findIndex((read) => "error" in read);
+        return failed === -1
+          ? undefined
+          : `v1 lookup of ${batch[failed]} failed: ${(reads[failed] as { error: string }).error}`;
+      },
+      retry,
     );
     for (const [index, labelhash] of batch.entries()) {
       registrations.set(labelhash, reads[index]);
@@ -1894,14 +1897,15 @@ async function readV1RegistrationsInBatches(
   return registrations;
 }
 
-// Current v2 state per labelhash, batched. Used by the reverse pass, which has to
-// judge a seed by what it carries rather than by the fact that it exists.
+// Current v2 state per labelhash, batched. A state read never reverts, so a failed
+// one is the provider's and its batch is asked again.
 async function readV2StatesInBatches(
   client: ReturnType<typeof publicClient>,
   registryAddress: Address,
-  labelhashes: string[],
+  labelhashes: readonly string[],
 ): Promise<Map<string, V2EntryState>> {
   const states = new Map<string, V2EntryState>();
+  const retry = new QueryRetry();
   for (
     let start = 0;
     start < labelhashes.length;
@@ -1911,18 +1915,31 @@ async function readV2StatesInBatches(
       start,
       start + PREMIGRATION_VERIFY_BATCH_SIZE,
     );
-    const outcomes = await client.multicall({
-      allowFailure: true,
-      contracts: batch.map(
-        (labelhash) =>
-          ({
-            address: registryAddress,
-            abi: REGISTRY_STATE_ABI,
-            functionName: "getState",
-            args: [BigInt(labelhash)],
-          }) as const,
-      ),
-    });
+    const outcomes = await readUntilComplete(
+      () =>
+        client.multicall({
+          ...ONE_CALL_PER_BATCH,
+          allowFailure: true,
+          contracts: batch.map(
+            (labelhash) =>
+              ({
+                address: registryAddress,
+                abi: REGISTRY_STATE_ABI,
+                functionName: "getState",
+                args: [BigInt(labelhash)],
+              }) as const,
+          ),
+        }),
+      (outcomes) => {
+        const failed = outcomes.findIndex(
+          (outcome) => outcome.status === "failure",
+        );
+        return failed === -1
+          ? undefined
+          : `v2 state lookup of ${batch[failed]} failed: ${briefError(outcomes[failed].error)}`;
+      },
+      retry,
+    );
     for (const [index, labelhash] of batch.entries()) {
       const outcome = outcomes[index];
       if (outcome.status === "failure") continue;

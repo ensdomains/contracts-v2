@@ -33,7 +33,11 @@ import {
   isLogSpanRefusal,
   isLogSpanRefusalMessage,
 } from "./migrations/logSpanRefusal.js";
-import { QueryRetry } from "./migrations/queryRetry.js";
+import {
+  ONE_CALL_PER_BATCH,
+  QueryRetry,
+  readUntilComplete,
+} from "./migrations/queryRetry.js";
 import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
 
 export const V1_INDEX_FILE = "v1-name-index.ndjson";
@@ -330,18 +334,12 @@ export async function firstBlockWithCode(
 ): Promise<number> {
   const retry = new QueryRetry(retryDelayMs);
   const hasCode = async (block: number): Promise<boolean> => {
-    for (;;) {
-      try {
-        const code = await client.getCode({
-          address,
-          blockNumber: BigInt(block),
-        });
-        retry.served();
-        return code !== undefined && code !== "0x";
-      } catch (error) {
-        await retry.failed(error);
-      }
-    }
+    const code = await readUntilComplete(
+      () => client.getCode({ address, blockNumber: BigInt(block) }),
+      () => undefined,
+      retry,
+    );
+    return code !== undefined && code !== "0x";
   };
   let high = Number(await client.getBlockNumber());
   if (!(await hasCode(high))) {
@@ -527,26 +525,20 @@ export async function buildV1NameIndexFromRpc(
   // A batch is read in calls the provider can fail one at a time, and a failed call
   // leaves every name in it unread. A batch with an unread name is asked again as
   // `QueryRetry` allows.
-  const readExpiries = async (batch: string[]): Promise<bigint[]> => {
-    for (;;) {
-      try {
-        const expiries = await client.getExpiries(batch, block);
+  const readExpiries = async (batch: string[]): Promise<bigint[]> =>
+    (await readUntilComplete(
+      () => client.getExpiries(batch, block),
+      (expiries) => {
         const unread = batch.findIndex(
           (_, index) =>
             expiries[index] === null || expiries[index] === undefined,
         );
-        if (unread !== -1) {
-          throw new Error(
-            `could not read nameExpires for ${batch[unread]} at block ${block}; re-run with --resume`,
-          );
-        }
-        retry.served();
-        return expiries as bigint[];
-      } catch (error) {
-        await retry.failed(error);
-      }
-    }
-  };
+        return unread === -1
+          ? undefined
+          : `could not read nameExpires for ${batch[unread]} at block ${block}; re-run with --resume`;
+      },
+      retry,
+    )) as bigint[];
 
   for (let start = resumeAt; start < ids.length; start += batchSize) {
     const batch = ids.slice(start, start + batchSize);
@@ -654,11 +646,9 @@ export function createRpcIndexClient(opts: {
     },
 
     async getExpiries(ids, block) {
-      // One call per batch: split into many small calls sent at once, a batch
-      // bursts past a provider's rate limit, which then fails whole batches.
       const results = await opts.client.multicall({
+        ...ONE_CALL_PER_BATCH,
         allowFailure: true,
-        batchSize: 0,
         blockNumber: BigInt(block),
         multicallAddress: opts.multicallAddress ?? MULTICALL3_ADDRESS,
         contracts: ids.map((id) => ({
