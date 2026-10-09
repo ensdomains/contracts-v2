@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { createRequire } from "node:module";
 import {
   keccak256,
   parseTransaction,
@@ -8,7 +9,13 @@ import {
 } from "viem";
 import { sepolia } from "viem/chains";
 
-import { privateKeyRpcProvider } from "../../script/migrations/rpc.js";
+import { resolveDeployProviderAndChain } from "../../script/migrate.js";
+import {
+  httpRpcProvider,
+  privateKeyRpcProvider,
+  REFUSED_READ_ATTEMPTS,
+  RPC_MAX_IN_FLIGHT,
+} from "../../script/migrations/rpc.js";
 
 const KEY =
   "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
@@ -155,5 +162,199 @@ describe("a deploy signer on a load-balanced endpoint", () => {
       stop();
     }
     expect(sent[0].gas).toBe((21_000n * 130n) / 100n);
+  });
+});
+
+describe("the provider a deploy given only an RPC URL runs through", () => {
+  // The provider rocketh would build for itself, loaded the way rocketh loads it.
+  const { JSONRPCHTTPProvider } = createRequire(import.meta.resolve("rocketh"))(
+    "eip-1193-jsonrpc-provider",
+  );
+
+  // A node that gives every request the same JSON-RPC body.
+  async function withNode(
+    body: object,
+    run: (url: string) => Promise<void>,
+  ): Promise<void> {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const { id } = (await req.json()) as { id: number };
+        return Response.json({ jsonrpc: "2.0", id, ...body });
+      },
+    });
+    try {
+      await run(`http://127.0.0.1:${server.port}`);
+    } finally {
+      server.stop(true);
+    }
+  }
+
+  // rocketh looks a transaction up right after sending it, and stops on an error.
+  const lookup = (provider: { request: (args: any) => Promise<unknown> }) =>
+    provider.request({
+      method: "eth_getTransactionByHash",
+      params: [`0x${"ab".repeat(32)}`],
+    });
+  const deployProvider = async (url: string) =>
+    (await resolveDeployProviderAndChain({ network: "mainnet", rpcUrl: url }))
+      .provider;
+
+  it("is not rocketh's own, which reports a transaction the node has not seen yet as an error", async () => {
+    await withNode({ result: null }, async (url) => {
+      await expect(lookup(new JSONRPCHTTPProvider(url))).rejects.toEqual({
+        code: 5000,
+        message: "No Result",
+      });
+    });
+  });
+
+  it("returns null for a transaction the node has not seen yet", async () => {
+    await withNode({ result: null }, async (url) => {
+      expect(await lookup(await deployProvider(url))).toBeNull();
+    });
+  });
+
+  it("still throws the error a node returns", async () => {
+    await withNode(
+      { error: { code: -32000, message: "header not found" } },
+      async (url) => {
+        await expect(lookup(await deployProvider(url))).rejects.toThrow(
+          "header not found",
+        );
+      },
+    );
+  });
+
+  it("keeps the network's chain id without asking the node", async () => {
+    const { chainId } = await resolveDeployProviderAndChain({
+      network: "mainnet",
+      rpcUrl: "http://127.0.0.1:1",
+    });
+    expect(chainId).toBe(1);
+  });
+});
+
+describe("our provider on a throttled endpoint", () => {
+  type Reply = { status?: number; body?: object };
+
+  // A node that answers each request with the next scripted reply, repeating the
+  // last once the script runs out.
+  async function withScriptedNode(
+    replies: Reply[],
+    run: (url: string, calls: () => number) => Promise<void>,
+  ): Promise<void> {
+    let calls = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const { id } = (await req.json()) as { id: number };
+        const reply = replies[Math.min(calls++, replies.length - 1)];
+        return Response.json(
+          { jsonrpc: "2.0", id, ...reply.body },
+          { status: reply.status ?? 200 },
+        );
+      },
+    });
+    try {
+      await run(`http://127.0.0.1:${server.port}`, () => calls);
+    } finally {
+      server.stop(true);
+    }
+  }
+
+  const rateLimited: Reply = {
+    body: {
+      error: {
+        code: 15,
+        message:
+          "You reached rate limit for your plan, please contact our support to increase limit",
+      },
+    },
+  };
+  const answered: Reply = { body: { result: true } };
+  const read = {
+    method: "eth_call",
+    params: [{ to: "0x01" }, "latest"],
+  } as any;
+
+  it("asks a rate-limited read again until it is answered", async () => {
+    await withScriptedNode(
+      [rateLimited, rateLimited, answered],
+      async (url, calls) => {
+        expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
+        expect(calls()).toBe(3);
+      },
+    );
+  });
+
+  it("asks again when the endpoint answers 429", async () => {
+    await withScriptedNode(
+      [{ status: 429, body: {} }, answered],
+      async (url, calls) => {
+        expect(await httpRpcProvider(url, 0).request(read)).toBe(true);
+        expect(calls()).toBe(2);
+      },
+    );
+  });
+
+  it("throws a revert at once", async () => {
+    const revert: Reply = {
+      body: { error: { code: 3, message: "execution reverted" } },
+    };
+    await withScriptedNode([revert, answered], async (url, calls) => {
+      await expect(httpRpcProvider(url, 0).request(read)).rejects.toThrow(
+        "execution reverted",
+      );
+      expect(calls()).toBe(1);
+    });
+  });
+
+  it("never repeats a send", async () => {
+    await withScriptedNode([rateLimited, answered], async (url, calls) => {
+      await expect(
+        httpRpcProvider(url, 0).request({
+          method: "eth_sendRawTransaction",
+          params: ["0x00"],
+        } as any),
+      ).rejects.toThrow("rate limit");
+      expect(calls()).toBe(1);
+    });
+  });
+
+  it("gives up once a read keeps being refused", async () => {
+    await withScriptedNode([rateLimited], async (url, calls) => {
+      await expect(httpRpcProvider(url, 0).request(read)).rejects.toThrow(
+        "rate limit",
+      );
+      expect(calls()).toBe(REFUSED_READ_ATTEMPTS);
+    });
+  });
+
+  it("keeps only a few requests in flight at once", async () => {
+    let active = 0;
+    let peak = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const { id } = (await req.json()) as { id: number };
+        peak = Math.max(peak, ++active);
+        await Bun.sleep(10);
+        active--;
+        return Response.json({ jsonrpc: "2.0", id, result: true });
+      },
+    });
+    try {
+      const provider = httpRpcProvider(`http://127.0.0.1:${server.port}`, 0);
+      const answers = await Promise.all(
+        Array.from({ length: 5 * RPC_MAX_IN_FLIGHT }, () =>
+          provider.request(read),
+        ),
+      );
+      expect(answers.every(Boolean)).toBe(true);
+      expect(peak).toBe(RPC_MAX_IN_FLIGHT);
+    } finally {
+      server.stop(true);
+    }
   });
 });

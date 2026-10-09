@@ -666,6 +666,34 @@ describe("premigration reconcile", () => {
     ]);
   });
 
+  it("lists a name whose CSV label is over 255 bytes apart from the missing", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A label too long for any DNS-encoded name, as some live mainnet names carry.
+    // Pre-migration refuses it, so it never reaches v2.
+    const long = "69".repeat(150);
+    const longId = keccak256(stringToHex(long));
+    await env.v1.BaseRegistrar.write.register([
+      BigInt(longId),
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const longExpiry = await env.v1.BaseRegistrar.read.nameExpires([
+      BigInt(longId),
+    ]);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,,,,,${long},,`,
+    );
+    writeIndex(workDir, [...indexEntries, { id: longId, expiry: longExpiry }]);
+
+    const result = await run(workDir, fromBlock, { csvFile });
+
+    expect(result.missing).toEqual([]);
+    expect(result.unreservable).toEqual([{ id: longId, label: long }]);
+  });
+
   // A seeded fixture work directory: the run state naming what was seeded, and the
   // corpus it was seeded from, holding each name's declared v2 state.
   function writeFixtureWorkDir(

@@ -1,11 +1,11 @@
 # Phased v1 → v2 Migration
 
-The v1 → v2 migration runs as seven explicit phases, driven by the `bun run migration` operator CLI
+The v1 → v2 migration runs as eight explicit phases, driven by the `bun run migration` operator CLI
 from `contracts/`. Phases run **strictly in order**.
 
 ## Start here
 
-Rehearse before running anything for real. One command runs all seven phases against a throwaway
+Rehearse before running anything for real. One command runs every phase against a throwaway
 local Anvil fork of the network, impersonating every signer, with smoke checks interleaved — nothing
 touches a real chain:
 
@@ -17,14 +17,14 @@ bun run migration -- fork full --network sepolia --csv-file ./csv-data/ens-regis
 
 Then pick your deployment context; it determines which phases apply:
 
-- **Live public network (sepolia/mainnet)** — v1 already exists on-chain; run phases **1–7** with real
+- **Live public network (sepolia/mainnet)** — v1 already exists on-chain; run phases **1–7** (and **8** on mainnet) with real
   signer keys. On mainnet the owner, URP admin, and v1 owner are the DAO/multisig, so owner-gated
   phases run with `--calldata-only` (or deferred) and execute through a Safe. → [Live deployment
   (Sepolia)](#live-deployment-sepolia).
 - **Clean testnet (fresh v1)** — no usable v1; deploy a fresh v1 stack first (**phase 0**), then
   phases 1–7, always including `TestnetV1PremigrationRegistrar`. Sepolia only.
   → [`clean-testnet`](#clean-testnet).
-- **Fork / Tenderly rehearsal** — dry-run phases 1–7 against a fork of the target network. Local Anvil
+- **Fork / Tenderly rehearsal** — dry-run phases 1–8 against a fork of the target network. Local Anvil
   via [`fork full`](#fork-full) as above; a live fork (real v1 state) via a
   [Tenderly virtual testnet](#tenderly-virtual-testnets).
 
@@ -48,14 +48,15 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | Phase | Action | Command(s) | Applies to | Signer |
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
-| 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
+| 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar and migration deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
 | F1 | *(optional)* Seed the ENSv1 test fixture corpus and check the shaped v1 state | `fixture fund-actors` → `seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `build-index` → `reconcile` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable, and lock down v1 | `authorize-v1-renewer` → `activate-v1-handoff-controllers` → `activate-v1-renewer` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 5 | Final pre-migration sync | `premigration run` → `build-index` → `reconcile` | live + clean-testnet | BatchRegistrar owner |
-| 6 | Enable the v2 controller | `disable-batch-registrar` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin |
+| 6 | Enable the v2 controller and open migration | `disable-batch-registrar` → `enable-v2-registrar` → `enable-migration` (+ `verify-*`) | live + clean-testnet | registry root-role admin |
 | 7 | Switch Universal Resolver to v2 (cutover) | `phase upgrade-managed-urp` (+ `switch-urp-to-managed` on bootstrap) (+ `verify-urp`) | live + clean-testnet (bootstrap step mainnet/fresh only) | `urManager` (+ top URP owner on bootstrap) |
+| 8 | Hand the v2 registries over, then emancipate root names after a probation period | `phase hand-over-registry-admin` (+ `verify-roles --stage post-registry-handover`), later `phase emancipate-root-registry` | where the owner is not the deployer (mainnet) | `deployer`, later `owner` |
 
 ### Phase 0: deploy fresh v1 (clean-testnet only)
 
@@ -83,13 +84,16 @@ Phase numbering matches the console output of the `fork full` orchestrator in
   ```
   Add `--include-testnet-premigration-registrar` on testnet/clean runs to also deploy
   `TestnetV1PremigrationRegistrar`. Re-run with `--resume` to continue an *interrupted* deploy.
+  The deploy keeps at most a few RPC requests in flight at once, and asks a read refused by a rate
+  limit or a busy node again after a growing wait, so a throttled RPC slows it down rather than
+  stopping it.
 - **Prerequisites:** `bun run compile`; a freshly funded deployer (phase 1 sends many transactions).
 - **Env / args:** `DEPLOYER_KEY` (also the `owner`/`urManager` fallback and the BatchRegistrar owner);
   `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` for the deferred v1-owner replay. `phase deploy-v2` cannot
   sign v1-owner transactions itself, hence the defer-then-replay flow above.
-- **Expected outcome:** all v2 contracts deployed with the `ETHRegistrar` grant **deferred** to
-  [phase 6](#phase-6-enable-the-v2-controller) (`BatchRegistrar` holds `REGISTRAR | RENEW` for
-  seeding); the URP proxy chain points at the v1 `UniversalResolver`
+- **Expected outcome:** all v2 contracts deployed with the `ETHRegistrar` and migration controller
+  grants **deferred** to [phase 6](#phase-6-enable-the-v2-controller) (`BatchRegistrar` holds
+  `REGISTRAR | RENEW` for seeding, and no v1 name can migrate yet); the URP proxy chain points at the v1 `UniversalResolver`
   (see [universalResolver.md](./universalResolver.md)); the v2 reverse-registrar adapters are deployed
   and authorized as controllers on the v1 reverse registrars; on HCA-enabled networks, the shared HCA
   contracts are deployed and the standalone implementation is approved by `StandaloneHCAFactory`;
@@ -159,14 +163,15 @@ leaves the rest of the namespace untouched.
 > CSV's recorded source matches the index's, because verifying a CSV against the indexer that
 > produced it cannot detect anything missing from that indexer. Use `--report-only` for a dry read.
 >
-> **Names the CSV holds only as `[labelhash]` are listed apart.** ENS writes a label it cannot show
+> **Names whose CSV label pre-migration refuses are listed apart.** ENS writes a label it cannot show
 > as text — one nobody knows, or one longer than DNS encoding's 255 bytes — as its labelhash in square
 > brackets, and ENSIP-15 disallows brackets in a normalized name. Pre-migration refuses a label of that
 > shape, since the text alone cannot say whether it is a placeholder or a name registered with the
 > placeholder text itself; mainnet holds a handful of the latter, registered by typing the bracketed
-> form. Such a name can never be reserved from the CSV, so when `--csv-file` is given reconcile lists
-> each one under "not reservable from the CSV" instead of counting it as missing. Without the CSV they
-> cannot be told apart and count as missing.
+> form. It also refuses a label the export does give as text but that is longer than 255 bytes, which
+> no DNS-encoded name can carry. Such a name can never be reserved from the CSV, so when `--csv-file`
+> is given reconcile lists each one under "not reservable from the CSV" instead of counting it as
+> missing. Without the CSV they cannot be told apart and count as missing.
 >
 > **Read the `cross-source:` line first.** Before comparing anything against v2, reconcile prints the
 > CSV's label count beside the index's claimable count. Two independent views of the same chain must
@@ -191,9 +196,12 @@ leaves the rest of the namespace untouched.
 >   --work-dir .dev/premig-1 --rpc-url $SEPOLIA_RPC_URL
 > ```
 >
-> The scan starts at the registrar's recorded deploy block and narrows its range whenever a provider
-> refuses the span. A query that fails for any other reason is asked again for a narrower range
-> after a wait that grows with each failure in a row, and the build stops after 8 failures in a row.
+> The scan starts at the registrar's deploy block. That is the block its deployment record holds or,
+> for a record with no deploy receipt such as the bundled mainnet one, the first block at which the
+> registrar has code, found on chain by bisecting code lookups against an archive node. It narrows
+> its range whenever a provider refuses the span. A query that fails for any other reason is asked
+> again for a narrower range after a wait that grows with each failure in a row, and the build stops
+> after 8 failures in a row. An expiry read that leaves a name unread is asked again the same way.
 > So a rate-limited or load-balanced endpoint slows the walk rather than failing it. Both phases
 > checkpoint, so `--resume` continues an interrupted build at a block boundary. A partial index built
 > from one source refuses to resume as the other.
@@ -395,11 +403,13 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 
 ### Phase 6: enable the v2 controller
 
-- **Command:** two owner-gated steps, **in order**, then verify:
+- **Command:** three owner-gated steps, **in order**, then verify:
   ```bash
   bun run migration -- phase disable-batch-registrar          --network sepolia
   bun run migration -- phase enable-v2-registrar              --network sepolia
+  bun run migration -- phase enable-migration                 --network sepolia
   bun run migration -- phase verify-v2-registrar              --network sepolia
+  bun run migration -- phase verify-migration-enabled         --network sepolia
   bun run migration -- phase verify-roles                     --network sepolia
   ```
 - **Prerequisites:** phase 5 complete. Every v1-side write already happened in
@@ -408,8 +418,10 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 - **Env / args:** registry root-role admin key (`OWNER_KEY`, falls back to `DEPLOYER_KEY`), and
   `--calldata-only` for a multisig.
 - **Expected outcome:** `BatchRegistrar` roles revoked (pre-migration seeding ends); `ETHRegistrar`
-  granted `REGISTRAR | RENEW` on the v2 `ETHRegistry` — live v2 registrations open.
-  `verify-v2-registrar` confirms the grant.
+  granted `REGISTRAR | RENEW` on the v2 `ETHRegistry` — live v2 registrations open; both migration
+  controllers granted `ROLE_REGISTER_RESERVED` — v1 owners can migrate their names. Migration opens
+  here and not at deploy because a migrated name leaves v1, and it only resolves once v2 is live.
+  `verify-v2-registrar` and `verify-migration-enabled` confirm the grants.
 
   > `verify-roles` audits the v2 side the way
   > [phase 4](#phase-4-keep-unmigrated-names-renewable)'s `verify-v1-registrars-disabled` audits the
@@ -481,6 +493,53 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 > <comma-separated>`. When no sampled name resolves anything, the run says the cutover was **not
 > verified** rather than reporting an unchanged result.
 
+### Phase 8: hand the registries over
+
+- **Applies to:** networks whose owner is not the deployer — mainnet, where the owner is the DAO.
+  On sepolia the deployer is the owner, so there is no one to hand to and the command refuses.
+- **Command:**
+  ```bash
+  bun run migration -- phase hand-over-registry-admin --network mainnet
+  bun run migration -- phase verify-roles             --network mainnet --stage post-registry-handover
+
+  # After the probation period, as a DAO proposal
+  bun run migration -- phase emancipate-root-registry --network mainnet --calldata-only --calldata-out <file>
+  bun run migration -- phase verify-roles             --network mainnet --stage root-emancipated
+  ```
+- **Prerequisites:** phase 7 complete. Phase 6 needs the deployer's `.eth` registry admin roles,
+  and the handover removes them for good.
+- **Env / args:** `DEPLOYER_KEY` signs the handover. `--owner` overrides who takes the root registry
+  (default: the owner the namespace was deployed with).
+- **Expected outcome:**
+  - The owner holds the root registry's root roles, admin roles included, for the probation period.
+  - The owner holds the `.eth` registry's root roles, admin roles included: it can authorize or
+    remove registrars, renewers and migration controllers, including one that registers names
+    still reserved by pre-migration. None of these roles reaches a name, so `.eth` names stay
+    emancipated, and the registry still allows safe transfers of them, which it refuses otherwise.
+  - The owner can set the `eth` entry's child registry and resolver. Admin roles on a name cannot
+    be granted, and the owner cannot hold the `eth` token (the DAO timelock does not accept ERC-1155
+    tokens), so nobody can grant or revoke these roles.
+  - The deployer holds no role on either registry or on the `eth` entry. It keeps the `eth` token,
+    which carries no role.
+  - The deployer still owns `BatchRegistrar` and `RootBatchRegistrar`. That ownership gives it no
+    power over names. `RootBatchRegistrar` gives up its root registry role as soon as phase 1 has
+    registered the DNS top-level names, and `BatchRegistrar` loses its `.eth` registry roles in
+    phase 6. Once the deployer has dropped its admin roles, only the owner can grant them one again.
+  - The registrar, renewer and migration controllers keep the regular roles they need.
+
+  The command makes every grant to the owner before the deployer drops anything, and sends only the
+  grants and revocations still missing. It then checks the end state from the registries' own role
+  counts, so a holder it did not look for is caught too, and checks that the `.eth` registry is
+  emancipated. `emancipate-root-registry` has the owner drop every root registry root role except
+  the regular naming and metadata roles, and `REGISTRAR` and `REGISTER_RESERVED` with their admin
+  roles. Neither of those two changes a registered, unexpired name, so registered top-level names
+  are emancipated. The owner can still add a top-level name, and give a reserved one, such as a DNS
+  top-level name, to its operator by registering it to them; a zero expiry keeps the reservation's.
+  It can also grant either role to another account, such as a contract that checks DNS ownership.
+  The command checks that the owner is then the only admin on the root registry, and only over
+  those two roles. It leaves the owner's `.eth` registry roles and its roles on the `eth` entry as
+  they are. `fork full` runs both steps and audits the roles after each.
+
 ## Re-deploying onto an already-migrated network
 
 "Re-deploying fresh" means deploying a brand-new v2 set onto a network whose v1 a previous deployment
@@ -505,7 +564,7 @@ adjusts automatically.
 | 3 | **Must be run — not a no-op.** The v1 registration controllers stay frozen from the prior deployment, but *its* handoff contracts are still authorized. `TestnetV1PremigrationRegistrar` among them is a permissionless free registrar: leaving it enabled silently reopens `.eth` registration on v1, and the names it mints reserve into the **archived** v2 registry (they are also invisible to the TheGraph-based CSV export, so a later pre-migration will not pick them up). Follow with `verify-v1-registrars-disabled`. |
 | 4 | Re-points v1 at the new set: authorizes the **newly-deployed** `ETHRenewerV1` and `Graveyard` (new addresses), then transfers v1 `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership reclaimed above). The prior deployment's `Graveyard`/`ETHRenewerV1`/`TestnetV1PremigrationRegistrar` are removed by phase 3 in the same run, so run the phases in order rather than skipping ahead. |
 | 5 | Same as phase 2 — re-seeds the new registry against a fresh post-freeze CSV and a fresh `--work-dir`. |
-| 6 | `enable-v2-registrar` grants the new `ETHRegistrar` its roles on the new registry. |
+| 6 | `enable-v2-registrar` grants the new `ETHRegistrar` its roles on the new registry, and `enable-migration` grants the new migration controllers theirs. |
 | 7 | On a reuse network (sepolia) the top **and** intermediate URPs are adopted by address and never redeployed — phase 1 deploys a fresh `UniversalResolverV2` implementation and `upgrade-managed-urp` re-points the reused intermediate URP at it, orphaning the prior implementation. Bootstrap networks deploy a fresh intermediate URP instead. |
 
 ## Live deployment (Sepolia)
@@ -567,10 +626,10 @@ This runbook assumes a first migration. On a repeat deploy the order is unchange
 apply — see
 [Re-deploying onto an already-migrated network](#re-deploying-onto-an-already-migrated-network).
 
-> **Mainnet differs.** The owner, top URP admin, and v1 owner are all the DAO/multisig, so the
-> owner-signed and URP-admin phases run with `--calldata-only` (or deferred) and execute through the
-> Safe. Mainnet is also a **bootstrap** URP network, so phase 7 additionally runs
-> `switch-urp-to-managed` first.
+> **Mainnet differs.** The owner, top URP admin, and v1 owner are all the DAO timelock, so their
+> writes reach the chain through one DAO proposal. Mainnet is also a **bootstrap** URP network, so
+> phase 7 additionally runs `switch-urp-to-managed` first. See
+> [Live deployment (mainnet)](#live-deployment-mainnet).
 
 ### After
 
@@ -614,6 +673,71 @@ Etherscan answers only a few calls per second per API key, and its "already veri
 against the same budget, so requests are spaced 500 ms apart by default. Pass `--min-interval <ms>`
 to change that. A submission Etherscan refuses (a rate limit, say) counts as a failure, so re-run
 the command to retry the contracts it names.
+
+## Live deployment (mainnet)
+
+The DAO timelock owns every v1 contract and the top URP, and it is the v2 `owner`. It acts only
+through an executed proposal, so every write it must make is prepared as calldata, merged into one
+proposal, and proved on a fork before the vote. The deployer key (`DEPLOYER_KEY`) signs everything
+else: phase 1, both pre-migration passes and phase 6. The managed URP is administered by the ENS DAO
+Security Council Safe (`securityCouncil` in `rocketh/config.ts`), so the phase 7 upgrade is a Safe
+transaction: prepare it with `phase upgrade-managed-urp --calldata-only`.
+
+The phases run in this order:
+
+1. **Phase 1** with `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file
+   <dir>/phase1-deferred.jsonl`. Every write addressed to the DAO is saved there instead of sent.
+2. **Phase 2**, followed by `premigration reconcile --report-only`. v1 keeps registering names until
+   the DAO executes the freeze, so every name registered after the export reads as missing; the
+   report is for review, and any other discrepancy needs a look before the proposal goes up.
+3. **Prepare the proposal.** Each owner-gated phase prints its calls with `--calldata-only`, and
+   `--calldata-out <file>` also records them in the JSONL format the other owner-transaction
+   commands read. Run phase 3, then phase 4 (grants before the registrar transfer), then the
+   bootstrap URP switch:
+
+   ```bash
+   bun run migration -- phase disable-v1-registrars          --network mainnet --calldata-only --calldata-out <dir>/freeze.jsonl --skip-preconditions
+   bun run migration -- phase activate-v1-handoff-controllers --network mainnet --calldata-only --calldata-out <dir>/handoff.jsonl
+   bun run migration -- phase activate-v1-renewer            --network mainnet --calldata-only --calldata-out <dir>/handoff.jsonl
+   bun run migration -- phase switch-urp-to-managed          --network mainnet --calldata-only --calldata-out <dir>/urp.jsonl
+   bun run migration -- phase build-dao-proposal --network mainnet --out-dir <dir>/proposal \
+     --file <dir>/phase1-deferred.jsonl <dir>/freeze.jsonl <dir>/handoff.jsonl <dir>/urp.jsonl
+   ```
+
+   `build-dao-proposal` keeps the files' order, drops repeated calls (a resumed phase 1 saves its
+   writes again, and `activate-v1-renewer` re-prints the renewer grant), and decodes every call
+   against the deployment artifact at its target. It refuses to write a proposal when any target is
+   unknown or any calldata does not decode. It writes `calls.jsonl` (the ordered calls),
+   `proposal.json` (the Governor `targets`, `values` and `calldatas`) and `proposal.md` (each call
+   decoded, for review).
+
+   The freeze skips its reconcile gate (`--skip-preconditions`): the gate bounds how stale a passing
+   reconcile may be, but here the freeze executes when the DAO does, days after any reconcile run
+   now. The post-freeze reconcile in phase 5 is the gate instead, and phase 6 must not run until it
+   passes.
+
+   Freezing v1 and handing the registrar to `ETHRenewerV1` land in the same execution, so renewals
+   never stop. The URP switch changes no answer: the managed URP still serves the v1 resolver, and
+   resolution moves to v2 only at the phase 7 upgrade.
+4. **Prove it on a fork.** Fork mainnet with Anvil, snapshot resolution, and play the proposal as the
+   timelock:
+
+   ```bash
+   bun run migration -- phase execute-owner-txs --network mainnet --rpc-url http://127.0.0.1:<port> \
+     --file <dir>/proposal/calls.jsonl --impersonate-account 0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7
+   ```
+
+   `--impersonate-account` refuses any RPC that is not local. Then run, against the fork,
+   `verify-v1-registrars-disabled --require-active-grants`, `verify-v1-renewer`,
+   `verify-reverse-adapters`, `verify-urp` (expecting the top URP to front the managed URP and the
+   managed URP to serve the top URP's previous implementation) and `verify-resolution`.
+5. **Vote and execute.** Check each call entered into the proposal with `phase verify-owner-tx
+   --file <dir>/proposal/calls.jsonl --to <target> --data <calldata>`. Between the proposal's
+   execution and phase 6, no `.eth` name can be registered: v1 is frozen and v2 is not yet open.
+6. **After execution**, run the same checks against mainnet, then phase 5 with a CSV exported after
+   the freeze — its `premigration reconcile` must pass, since v1 no longer changes — then phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
+7. **Phase 8**, `hand-over-registry-admin`, signed by the deployer. After the probation period
+   (30 days), the DAO executes the `emancipate-root-registry` call as a proposal.
 
 ## ENSv1 test fixture corpus
 
@@ -952,15 +1076,20 @@ bun run migration -- fork full --network sepolia --csv-file ./csv-data/ens-regis
 ```
 
 Spawns a local Anvil fork of the network RPC (default port 8547 sepolia / 8548 mainnet), impersonates
-the deployer, owner, v1 owner, URP admins, and BatchRegistrar owner, and runs phases 1–7 in order with
-smoke checks interleaved:
+the deployer, owner, v1 owner, URP admins, and BatchRegistrar owner, and runs phases 1–8 in order with
+smoke checks interleaved (phase 8 only when the owner is not the deployer):
 
 - v1 registration succeeds before phase 3 and is rejected after;
 - `ETHRenewerV1` owns the v1 `BaseRegistrar` after phase 4, and a real renewal there extends the v1
   registration, the v2 reservation, and a wrapped name's `NameWrapper` expiry together;
-- a pre-migrated name is migrated to v2 via `UnlockedMigrationController` after phase 5;
+- migrating a pre-migrated name is rejected before phase 6 opens migration, and succeeds after it,
+  unwrapped and wrapped, via `UnlockedMigrationController`;
 - the v2 registrar rejects registrations before phase 6's grant, rejects pre-migrated reserved names
-  after it, and accepts a fresh name after enablement.
+  after it, and accepts a fresh name after enablement;
+- the phase 8 handover leaves the deployer no v2 role, gives the owner both registries' root roles
+  and the `eth` entry's child registry and resolver, and the owner's later emancipation leaves it
+  only the naming, metadata, registrar and register-reserved roles on the root registry, each
+  audited with `verify-roles`.
 
 Pre-migration is signed off after phases 2 and 5 exactly as a live run is: the rehearsal builds an
 index, runs `premigration reconcile`, and phase 3 refuses to freeze v1 without the pass it records.
@@ -1053,6 +1182,19 @@ table as [`docs/addresses/<network>.md`](./addresses), which only tracks a netwo
 deployment. A `clean-testnet` namespace also gets a second section listing the ENSv1 contracts it
 deployed, since the v1 stack lives in `deployments/v1/<namespace>`.
 
+Beside it, `deployments/<namespace>/roles.md` records who controls the deployment, on any network.
+`phase verify-roles` writes it each time it runs, from the same reads it audits, so the file always
+matches an audited state. It lists every role held on each contract, each contract's `owner()` and
+ERC-1967 proxy admin, whether each registry is emancipated, and the audit's result for the stage it
+checked. Everything is read from the chain, not from what the deploy meant to grant, and every account
+and contract is named as well as given its address. Accounts take the role the deploy config gives them
+(deployer, owner, security council, v1 owner), plus a people-facing name where one is known, such as
+the ENS DAO timelock on mainnet. The roles each name's owner holds on its own `.eth` name are left out,
+and so is a grant on an entry that has since expired or been registered again, since it no longer
+carries authority. The file is written before the verdict, so a failed audit still leaves the state it
+found. Run `verify-roles` after each step that changes roles, including one the DAO or a Safe executes
+from prepared calldata.
+
 > **"Fresh v1" does not mean a fresh chain.** Only the ENS stack is deployed from scratch; the run
 > still reads Sepolia contracts it does not deploy. `deploy/01_StandardRentPriceOracle.ts` reads
 > `symbol()` and `decimals()` off the real Sepolia USDC, so on an empty local node that call returns
@@ -1116,7 +1258,8 @@ authoritative per-command list.
   `--batch-registrar`) override.
 - **Owner-gated writes** (v1-owner and URP-admin phases): `--private-key <key>`, `--impersonate-owner`
   or `--impersonate-account <address>` (fork/Tenderly), `--calldata-only` (print the transaction
-  target and calldata for multisig execution instead of broadcasting).
+  target and calldata for multisig execution instead of broadcasting), and `--calldata-out <file>`
+  (with `--calldata-only`, also append each prepared call to a JSONL file).
 
 Two commands are **not** on-chain and intentionally omit the network options:
 
@@ -1163,12 +1306,15 @@ and idempotency rules.
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
 | `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 4) |
 | `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
-| `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions |
+| `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions, and write `deployments/<namespace>/roles.md` with every role, owner and proxy admin on the namespace's contracts; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`, `root-emancipated`) |
+| `phase hand-over-registry-admin` | Phase 8: the owner takes the root registry's and the `.eth` registry's root roles and the roles that set the `eth` entry's child registry and resolver, then the deployer drops every role it holds on them |
+| `phase emancipate-root-registry` | Phase 8, after probation: the owner drops its root registry roles except naming, metadata, and adding and assigning top-level names |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller |
 | `phase verify-v1-renewer` | Verify `ETHRenewerV1` is a v1 controller **and** owns the v1 `BaseRegistrar`, which is what a renewal needs |
-| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it |
+| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it. `--impersonate-account` sends as that account on a local fork, to play a DAO proposal |
+| `phase build-dao-proposal` | Merge prepared owner transactions into one ordered, de-duplicated DAO proposal, decoded against the deployment artifacts (`calls.jsonl`, `proposal.json`, `proposal.md`) |
 | `phase verify-owner-tx` | Check a transaction about to be signed in a Safe against the prepared owner transactions |
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
 | `phase verify-batch-registrar-disabled` | Verify `BatchRegistrar` no longer has registrar/renew roles |
@@ -1179,6 +1325,8 @@ and idempotency rules.
 | `phase activate-v1-renewer` | Phase 4: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1`, which is what makes renewals work (final v1 lock-down) |
 | `phase enable-v2-registrar` | Phase 6: grant registrar/renew roles to `ETHRegistrar` |
 | `phase verify-v2-registrar` | Verify `ETHRegistrar` has registrar/renew roles |
+| `phase enable-migration` | Phase 6: grant `ROLE_REGISTER_RESERVED` to both migration controllers, opening migration |
+| `phase verify-migration-enabled` | Verify both migration controllers hold `ROLE_REGISTER_RESERVED` |
 | `phase switch-urp-to-managed` | Phase 7 (bootstrap only): point the top URP at the managed URP |
 | `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` — the resolution cutover |
 | `phase verify-urp` | Verify top and managed URP implementations |
@@ -1216,7 +1364,7 @@ flags/env). See `bunx hardhat migration <task> --help` for options.
 | --- | --- |
 | `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` | Default RPC when `--rpc-url` is omitted |
 | `DEPLOYER_KEY` | Deployer key (`phase deploy-v2`); fallback for owner/urManager keys |
-| `OWNER_KEY` | Owner / registry root-role admin (`phase deploy-v2`, `disable-batch-registrar`, `enable-v2-registrar`; falls back to `DEPLOYER_KEY`) |
+| `OWNER_KEY` | Owner / registry root-role admin (`phase deploy-v2`, `disable-batch-registrar`, `enable-v2-registrar`, `enable-migration`; falls back to `DEPLOYER_KEY`) |
 | `UR_MANAGER_KEY` | Intermediate URP admin (`phase upgrade-managed-urp`; falls back to `DEPLOYER_KEY`) |
 | `SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY` | v1 owner (`disable-v1-registrars` †, `set-v1-reverse-default-resolver`, `authorize-v1-renewer`, `activate-v1-*`, `authorize-testnet-v1-premigration-registrar`) |
 | `SEPOLIA_TOP_URP_OWNER_KEY` / `TOP_URP_OWNER_KEY` | Top URP admin (`phase switch-urp-to-managed`, bootstrap networks only) |

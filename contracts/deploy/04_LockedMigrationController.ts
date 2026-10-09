@@ -17,6 +17,7 @@ export default execute(
     get,
     getV1,
     namedAccounts: { deployer },
+    tags,
   }) => {
     const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
     const graveyard = get<Abi_Graveyard>("Graveyard");
@@ -42,14 +43,18 @@ export default execute(
       ],
     });
 
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "grantRootRoles",
-      args: [
-        DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
-        migrationController.address,
-      ],
-    });
+    // The phased deploy holds migration closed until go-live, when the v2
+    // registrar opens too.
+    if (!tags.deferMigration) {
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "grantRootRoles",
+        args: [
+          DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+          migrationController.address,
+        ],
+      });
+    }
   },
   {
     tags: ["LockedMigrationController", "migration:phase1:deploy-v2", "v2"],
