@@ -154,7 +154,9 @@ _The token for `eth` is registered to the deployer; `reverse` and `addr.reverse`
 _These are the roles at deploy. Where the owner is not the deployer (mainnet), phase 8 of the
 migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over.
 The owner takes the `RootRegistry` root roles for a probation period and then drops all but
-`CAN_NAME` and `SET_URI`. It also takes the `ETHRegistry` root roles, none of which reaches a name,
+`CAN_NAME`, `SET_URI`, and `REGISTRAR` and `REGISTER_RESERVED` with their admin roles, so it can
+still add top-level names and give reserved ones, such as DNS top-level names, to their operators.
+It also takes the `ETHRegistry` root roles, none of which reaches a name,
 so `.eth` names stay emancipated, and `SET_RESOLVER | SET_SUBREGISTRY` on the `eth` token, which
 nobody can grant or revoke. The deployer drops every role it holds. `phase verify-roles` records
 the roles actually held in `deployments/<namespace>/roles.md`._

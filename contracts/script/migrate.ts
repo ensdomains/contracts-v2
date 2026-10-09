@@ -105,6 +105,7 @@ import {
 } from "./migrations/ownerTx.js";
 import { buildDaoProposal } from "./migrations/daoProposal.js";
 import {
+  EMANCIPATED_OWNER_ROOT_ROLES,
   planRegistryHandover,
   rootEmancipationRoles,
   type RegistryHandoverState,
@@ -3735,11 +3736,17 @@ const EXPECTED_ROOT_ROLES: Record<
     },
     { deployment: "@owner", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER },
     // The handover gives the owner the deployer's root roles for a probation
-    // period, after which the owner drops all but the naming and metadata roles.
+    // period, after which the owner drops all but the naming and metadata roles
+    // and the roles that add top-level names and give reserved ones out.
     {
       deployment: "@owner",
       roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
       stages: ["post-registry-handover"],
+    },
+    {
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_TLD_ISSUER,
+      stages: HANDED_OVER_STAGES,
     },
   ],
   ETHRegistry: [
@@ -4477,8 +4484,10 @@ export async function handOverRegistryAdmin(
 }
 
 /// The owner drops its root registry root roles once the probation period after the
-/// handover ends, keeping only the naming and metadata roles, so top-level names
-/// are emancipated. Then checks nobody holds an admin role on the root registry.
+/// handover ends, so registered top-level names are emancipated. It keeps the naming
+/// and metadata roles, and the roles that add top-level names and give reserved ones
+/// to their operators. Then checks the owner is the only admin left on the root
+/// registry, and only over those last two roles.
 export async function emancipateRootRegistry(opts: RegistryAdminOptions) {
   const ctx = registryAdminContext(opts);
   const held = await ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner);
@@ -4496,23 +4505,29 @@ export async function emancipateRootRegistry(opts: RegistryAdminOptions) {
       args: [roles, ctx.owner],
       receiptLabel: "the owner drops its root registry root roles",
       calldataLabel:
-        "the owner drops its root registry root roles, keeping naming and metadata",
+        "the owner drops its root registry root roles, keeping naming, metadata, and adding and assigning top-level names",
       privateKey: opts.privateKey,
       impersonateAccount: opts.impersonateAccount,
       calldataOnly: opts.calldataOnly,
     });
   }
   if (opts.calldataOnly) return;
+  // Holder counts sit one per role nibble, so they equal the kept admin bitmap only
+  // when each kept admin role has exactly one holder and no other has any.
+  const keptAdmin = EMANCIPATED_OWNER_ROOT_ROLES & ANY_ADMIN_ROLE;
   if (
     (await ctx.assignees(ctx.rootRegistry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !==
-    0n
+      keptAdmin ||
+    ((await ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner)) &
+      keptAdmin) !==
+      keptAdmin
   ) {
     throw new Error(
-      "an account still holds an admin role on the root registry",
+      `an account other than the owner ${ctx.owner} holds an admin role on the root registry, or one beyond adding and assigning top-level names`,
     );
   }
   console.log(
-    "root registry emancipated: no account holds an admin role on it",
+    `root registry emancipated: ${ctx.owner} is its only admin, and only over adding top-level names and assigning reserved ones`,
   );
 }
 
@@ -9382,7 +9397,7 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         addCalldataOnlyOptions(new Command("emancipate-root-registry"))
           .description(
-            "The owner drops its root registry root roles after the handover's probation period, keeping naming and metadata, so top-level names are emancipated",
+            "The owner drops its root registry root roles after the handover's probation period, keeping naming, metadata, and adding and assigning top-level names, so registered top-level names are emancipated",
           )
           .option(
             "--owner <address>",

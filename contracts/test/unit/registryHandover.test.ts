@@ -3,6 +3,7 @@ import { getAddress } from "viem";
 
 import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
 import {
+  EMANCIPATED_OWNER_ROOT_ROLES,
   planRegistryHandover,
   rootEmancipationRoles,
   type RegistryHandoverState,
@@ -160,18 +161,35 @@ describe("planRegistryHandover", () => {
 });
 
 describe("rootEmancipationRoles", () => {
-  it("drops every root role but the regular naming and metadata roles", () => {
+  it("drops every root role but naming, metadata, and adding and assigning top-level names", () => {
     const dropped = rootEmancipationRoles(DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT);
-    expect(dropped & DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER).toBe(0n);
-    expect(dropped | DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER).toBe(
+    expect(dropped & EMANCIPATED_OWNER_ROOT_ROLES).toBe(0n);
+    expect(dropped | EMANCIPATED_OWNER_ROOT_ROLES).toBe(
       DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
     );
     expect(dropped & ROLES.ADMIN.REGISTRY.CAN_NAME).not.toBe(0n);
+    expect(dropped & ROLES.ADMIN.REGISTRY.REGISTRAR).toBe(0n);
+    expect(dropped & ROLES.ADMIN.REGISTRY.REGISTER_RESERVED).toBe(0n);
   });
 
-  it("is nothing once the owner holds only naming and metadata", () => {
-    expect(rootEmancipationRoles(DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER)).toBe(
-      0n,
-    );
+  it("keeps no root role that reaches a registered name", () => {
+    expect(
+      EMANCIPATED_OWNER_ROOT_ROLES &
+        (ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
+          ROLES.REGISTRY.SET_SUBREGISTRY |
+          ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
+          ROLES.REGISTRY.SET_RESOLVER |
+          ROLES.ADMIN.REGISTRY.SET_RESOLVER |
+          ROLES.REGISTRY.UNREGISTER |
+          ROLES.ADMIN.REGISTRY.UNREGISTER |
+          ROLES.REGISTRY.UPGRADE |
+          ROLES.ADMIN.REGISTRY.UPGRADE |
+          ROLES.REGISTRY.RENEW |
+          ROLES.ADMIN.REGISTRY.RENEW),
+    ).toBe(0n);
+  });
+
+  it("is nothing once the owner holds only the roles it keeps", () => {
+    expect(rootEmancipationRoles(EMANCIPATED_OWNER_ROOT_ROLES)).toBe(0n);
   });
 });

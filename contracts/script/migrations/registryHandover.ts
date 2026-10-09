@@ -122,9 +122,15 @@ export function planRegistryHandover(
   return calls;
 }
 
+/// The root registry root roles the owner keeps once the root is emancipated: the
+/// regular naming and metadata roles it was granted at deploy, and the roles that
+/// add top-level names and give reserved ones to their operators.
+export const EMANCIPATED_OWNER_ROOT_ROLES =
+  DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER |
+  DEPLOYMENT_ROLES.ROOT_REGISTRY_TLD_ISSUER;
+
 /// The root roles the owner drops to emancipate root names: everything it holds on
-/// the root registry except the regular naming and metadata roles it was granted at
-/// deploy. Zero once emancipated.
+/// the root registry except the roles it keeps. Zero once emancipated.
 export function rootEmancipationRoles(ownerRootRoles: bigint): bigint {
-  return ownerRootRoles & ~DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER;
+  return ownerRootRoles & ~EMANCIPATED_OWNER_ROOT_ROLES;
 }

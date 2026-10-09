@@ -2,14 +2,20 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getAddress, type Address } from "viem";
+import { getAddress, zeroAddress, type Address } from "viem";
 
-import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
+import {
+  DEPLOYMENT_ROLES,
+  MAX_EXPIRY,
+  ROLES,
+  STATUS,
+} from "../../script/deploy-constants.js";
 import {
   emancipateRootRegistry,
   handOverRegistryAdmin,
   verifyV2Roles,
 } from "../../script/migrate.js";
+import { EMANCIPATED_OWNER_ROOT_ROLES } from "../../script/migrations/registryHandover.js";
 import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
 import { idFromLabel } from "../utils/utils.js";
 
@@ -18,6 +24,8 @@ const NETWORK = "mainnet";
 const NAMESPACE = "mainnet";
 const ROOT_RESOURCE = 0n;
 const STRANGER = getAddress("0x000000000000000000000000000000000000beef");
+// A DNS top-level name the devnet deploy reserves in the root registry.
+const DNS_TLD = "com";
 
 describe("registry handover", () => {
   const { env, setupEnv } = process.TEST_GLOBALS!;
@@ -220,23 +228,78 @@ describe("registry handover", () => {
   );
 
   it(
-    "emancipates the root registry, leaving the owner only naming and metadata",
+    "emancipates the root registry, leaving the owner naming, metadata, and adding and assigning top-level names",
     async () => {
       await handOver();
       await emancipateRootRegistry({
         ...context(),
         impersonateAccount: owner(),
       });
+      const asOwner = { account: env.namedAccounts.owner };
 
       expect(await rootRoles("RootRegistry", owner())).toBe(
-        DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER,
+        EMANCIPATED_OWNER_ROOT_ROLES,
       );
+      expect(await env.v2.RootRegistry.read.isEmancipated()).toBe(true);
       await expect(
         env.v2.RootRegistry.write.grantRootRoles(
-          [ROLES.REGISTRY.REGISTRAR, STRANGER],
-          { account: env.namedAccounts.owner },
+          [ROLES.REGISTRY.RENEW, STRANGER],
+          asOwner,
         ),
       ).rejects.toThrow();
+
+      // The owner gives a reserved DNS top-level name to its operator, keeping the
+      // reservation's expiry, and adds a top-level name nobody reserved.
+      expect(
+        await env.v2.RootRegistry.read.getStatus([idFromLabel(DNS_TLD)]),
+      ).toBe(STATUS.RESERVED);
+      const operatorRoles =
+        ROLES.REGISTRY.SET_SUBREGISTRY | ROLES.REGISTRY.SET_RESOLVER;
+      await env.v2.RootRegistry.write.register(
+        [DNS_TLD, STRANGER, zeroAddress, zeroAddress, operatorRoles, 0n],
+        asOwner,
+      );
+      expect(
+        await env.v2.RootRegistry.read.getStatus([idFromLabel(DNS_TLD)]),
+      ).toBe(STATUS.REGISTERED);
+      expect(
+        await env.v2.RootRegistry.read.getExpiry([idFromLabel(DNS_TLD)]),
+      ).toBe(MAX_EXPIRY);
+      expect(
+        await env.v2.RootRegistry.read.roles([
+          await env.v2.RootRegistry.read.getResource([idFromLabel(DNS_TLD)]),
+          STRANGER,
+        ]),
+      ).toBe(operatorRoles | ROLES.REGISTRY.WAS_RESERVED);
+      await env.v2.RootRegistry.write.register(
+        [
+          "newtld",
+          STRANGER,
+          zeroAddress,
+          zeroAddress,
+          operatorRoles,
+          MAX_EXPIRY,
+        ],
+        asOwner,
+      );
+      expect(
+        await env.v2.RootRegistry.read.getStatus([idFromLabel("newtld")]),
+      ).toBe(STATUS.REGISTERED);
+
+      // Neither role overwrites a registered top-level name.
+      await expect(
+        env.v2.RootRegistry.write.register(
+          ["eth", owner(), zeroAddress, zeroAddress, 0n, 0n],
+          asOwner,
+        ),
+      ).rejects.toThrow();
+
+      // The owner can pass either role to another account, such as a contract that
+      // checks DNS ownership.
+      await env.v2.RootRegistry.write.grantRootRoles(
+        [ROLES.REGISTRY.REGISTER_RESERVED, STRANGER],
+        asOwner,
+      );
 
       const findings = await verifyV2Roles({
         ...context(),
