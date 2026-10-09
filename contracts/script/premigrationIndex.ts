@@ -524,18 +524,37 @@ export async function buildV1NameIndexFromRpc(
   const after = cursor === "" ? -1 : ids.findIndex((id) => id > cursor);
   const resumeAt = cursor === "" ? 0 : after === -1 ? ids.length : after;
 
+  // A batch is read in calls the provider can fail one at a time, and a failed call
+  // leaves every name in it unread. A batch with an unread name is asked again as
+  // `QueryRetry` allows.
+  const readExpiries = async (batch: string[]): Promise<bigint[]> => {
+    for (;;) {
+      try {
+        const expiries = await client.getExpiries(batch, block);
+        const unread = batch.findIndex(
+          (_, index) =>
+            expiries[index] === null || expiries[index] === undefined,
+        );
+        if (unread !== -1) {
+          throw new Error(
+            `could not read nameExpires for ${batch[unread]} at block ${block}; re-run with --resume`,
+          );
+        }
+        retry.served();
+        return expiries as bigint[];
+      } catch (error) {
+        await retry.failed(error);
+      }
+    }
+  };
+
   for (let start = resumeAt; start < ids.length; start += batchSize) {
     const batch = ids.slice(start, start + batchSize);
-    const expiries = await client.getExpiries(batch, block);
+    const expiries = await readExpiries(batch);
 
     const lines: string[] = [];
     for (let index = 0; index < batch.length; index++) {
       const expiry = expiries[index];
-      if (expiry === null || expiry === undefined) {
-        throw new Error(
-          `could not read nameExpires for ${batch[index]} at block ${block}; re-run with --resume`,
-        );
-      }
       // A name released long ago cannot be claimed by its former owner. Dropping it
       // here keeps the index proportional to live names rather than to all history.
       if (expiry === 0n || expiry <= cutoff) continue;

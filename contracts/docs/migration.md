@@ -200,7 +200,7 @@ leaves the rest of the namespace untouched.
 > registrar has code, found on chain by bisecting code lookups against an archive node. It narrows
 > its range whenever a provider refuses the span. A query that fails for any other reason is asked
 > again for a narrower range after a wait that grows with each failure in a row, and the build stops
-> after 8 failures in a row.
+> after 8 failures in a row. An expiry read that leaves a name unread is asked again the same way.
 > So a rate-limited or load-balanced endpoint slows the walk rather than failing it. Both phases
 > checkpoint, so `--resume` continues an interrupted build at a block boundary. A partial index built
 > from one source refuses to resume as the other.
