@@ -622,6 +622,34 @@ describe("createRpcIndexClient log refusals", () => {
   });
 });
 
+describe("createRpcIndexClient expiry reads", () => {
+  it("reads a whole batch in one call", async () => {
+    const requests: unknown[] = [];
+    const client = createRpcIndexClient({
+      client: {
+        getBlockNumber: async () => 1n,
+        getBlock: async () => ({ timestamp: 0n }),
+        request: async () => [],
+        multicall: async (args) => {
+          requests.push(args);
+          const { contracts } = args as { contracts: unknown[] };
+          return contracts.map(() => ({
+            status: "success" as const,
+            result: 7n,
+          }));
+        },
+      },
+      baseRegistrar: "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85",
+    });
+
+    const ids = Array.from({ length: 500 }, (_, i) => labelhash(i + 1));
+    expect(await client.getExpiries(ids, 100)).toEqual(ids.map(() => 7n));
+    expect(requests).toHaveLength(1);
+    // A zero batch size stops the multicall splitting the batch into many calls.
+    expect(requests[0]).toMatchObject({ batchSize: 0, blockNumber: 100n });
+  });
+});
+
 describe("firstBlockWithCode", () => {
   const ADDRESS = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85";
 

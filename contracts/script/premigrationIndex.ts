@@ -654,8 +654,11 @@ export function createRpcIndexClient(opts: {
     },
 
     async getExpiries(ids, block) {
+      // One call per batch: split into many small calls sent at once, a batch
+      // bursts past a provider's rate limit, which then fails whole batches.
       const results = await opts.client.multicall({
         allowFailure: true,
+        batchSize: 0,
         blockNumber: BigInt(block),
         multicallAddress: opts.multicallAddress ?? MULTICALL3_ADDRESS,
         contracts: ids.map((id) => ({
