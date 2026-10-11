@@ -254,6 +254,11 @@ export function httpRpcProvider(rpcUrl: string): RpcProvider {
   };
 }
 
+/// Attempts at a deploy transaction's gas estimate, and the wait that grows between
+/// them, before the last error is surfaced.
+const SEND_ESTIMATE_ATTEMPTS = 6;
+const SEND_ESTIMATE_BACKOFF_MS = 2_000;
+
 export function privateKeyRpcProvider({
   rpcUrl,
   chain,
@@ -264,16 +269,68 @@ export function privateKeyRpcProvider({
   privateKey: `0x${string}`;
 }): RpcProvider {
   const account = privateKeyToAccount(privateKey);
+  const transport = http(rpcUrl, {
+    retryCount: RPC_RETRY_COUNT,
+    fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+  });
+  const pollingInterval = pollingIntervalFor(rpcUrl);
   const client = createWalletClient({
     account,
     chain,
-    transport: http(rpcUrl, {
-      retryCount: RPC_RETRY_COUNT,
-      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
-    }),
-    pollingInterval: pollingIntervalFor(rpcUrl),
+    transport,
+    pollingInterval,
   });
+  const reader = createPublicClient({ chain, transport, pollingInterval });
   const fallback = httpRpcProvider(rpcUrl);
+
+  // A load-balanced endpoint can answer from a node a block or two behind, which
+  // has not seen this account's previous transaction. A gas estimate made there
+  // prices the next call against stale state: a call into a contract deployed a
+  // moment ago looks like a call to an empty address, and one whose cost turns on
+  // state the previous transaction wrote comes in low, so the transaction runs out
+  // of gas. Each estimate is therefore pinned to the block that mined the previous
+  // transaction, which a lagging node refuses rather than answering wrongly, and is
+  // retried until a node that has the block answers. A real revert reproduces on
+  // every attempt and is surfaced as the last error.
+  let previousHash: `0x${string}` | undefined;
+  let nextNonce: number | undefined;
+  const estimateGas = async (transaction: any): Promise<bigint> => {
+    const blockNumber = previousHash
+      ? (await reader.waitForTransactionReceipt({ hash: previousHash }))
+          .blockNumber
+      : undefined;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= SEND_ESTIMATE_ATTEMPTS; attempt++) {
+      try {
+        const estimate = await reader.estimateGas({
+          account,
+          to: transaction.to,
+          data: transaction.data,
+          value:
+            transaction.value === undefined
+              ? undefined
+              : BigInt(transaction.value),
+          blockNumber,
+        });
+        return (estimate * GAS_ESTIMATE_PERCENT) / 100n;
+      } catch (error) {
+        lastError = error;
+        if (attempt < SEND_ESTIMATE_ATTEMPTS) {
+          await sleep(SEND_ESTIMATE_BACKOFF_MS * attempt);
+        }
+      }
+    }
+    throw lastError;
+  };
+  // The nonce a lagging node reports can trail the transactions already sent, so
+  // the next one never goes below what this provider last used.
+  const nonceFor = async (): Promise<number> => {
+    const pending = await reader.getTransactionCount({
+      address: account.address,
+      blockTag: "pending",
+    });
+    return nextNonce === undefined ? pending : Math.max(pending, nextNonce);
+  };
   const normalizeTransaction = (transaction: any) => {
     if (transaction.type === "0x2") {
       return { ...transaction, type: "eip1559" };
@@ -290,7 +347,22 @@ export function privateKeyRpcProvider({
         return [account.address.toLowerCase()];
       if (args.method === "eth_sendTransaction") {
         const [transaction] = (args.params ?? []) as [any];
-        return await client.sendTransaction(normalizeTransaction(transaction));
+        const normalized = normalizeTransaction(transaction);
+        const nonce =
+          normalized.nonce === undefined
+            ? await nonceFor()
+            : Number(normalized.nonce);
+        const hash = await client.sendTransaction({
+          ...normalized,
+          nonce,
+          gas:
+            normalized.gas === undefined
+              ? await estimateGas(normalized)
+              : normalized.gas,
+        });
+        previousHash = hash;
+        nextNonce = nonce + 1;
+        return hash;
       }
       if (args.method === "eth_signTransaction") {
         const [transaction] = (args.params ?? []) as [any];

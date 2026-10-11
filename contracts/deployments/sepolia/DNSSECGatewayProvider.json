@@ -1,5 +1,5 @@
 {
-  "address": "0x5710ee3945caa32287553574fe995c0e8e3d613e",
+  "address": "0xd542a53982fdd0c456f02c5a54734c06073fa915",
   "abi": [
     {
       "inputs": [
@@ -126,7 +126,7 @@
   "deployedLinkReferences": {},
   "immutableReferences": {},
   "inputSourceName": "project/lib/ens-contracts/contracts/ccipRead/GatewayProvider.sol",
-  "buildInfoId": "solc-0_8_25-555a61bb0e64a1101beb8cd0cb29f27cfbefb775",
+  "buildInfoId": "solc-0_8_25-b30e6dc9a03b37f6a0b89af5d02a73d3993944f7",
   "devdoc": {
     "errors": {
       "OwnableInvalidOwner(address)": [
@@ -184,7 +184,7 @@
   "storageLayout": {
     "storage": [
       {
-        "astId": 35256,
+        "astId": 35298,
         "contract": "project/lib/ens-contracts/contracts/ccipRead/GatewayProvider.sol:GatewayProvider",
         "label": "_owner",
         "offset": 0,
@@ -192,7 +192,7 @@
         "type": "t_address"
       },
       {
-        "astId": 1555,
+        "astId": 1597,
         "contract": "project/lib/ens-contracts/contracts/ccipRead/GatewayProvider.sol:GatewayProvider",
         "label": "_urls",
         "offset": 0,
@@ -233,13 +233,13 @@
   },
   "argsData": "0x00000000000000000000000084d3a426d4e12e955d1df95db0b24fe26afe39d3000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002268747470733a2f2f646e737365632d6f7261636c652e656e732e646f6d61696e732f000000000000000000000000000000000000000000000000000000000000",
   "transaction": {
-    "hash": "0xc93baf0340e7f2d61e5e3b7ccc6c1c5e41ed0d3546c713dc18d180eaf8a90589",
-    "nonce": "0x8a6",
+    "hash": "0x4520f332940c5123f658ea9028801cfa35d8029b2a7cdd48e950b085fd95eeac",
+    "nonce": "0xf5b",
     "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
   },
   "receipt": {
-    "blockHash": "0x70288552e94b44cfed5105eb3319f18e82d02c859695a0571d10a11c893566a8",
-    "blockNumber": "0xb2aa34",
-    "transactionIndex": "0x56"
+    "blockHash": "0xe1eb0571498286f7eebb94b3eb3f0caa2fcb5e064e380b310f50b08c5ce515e8",
+    "blockNumber": "0xb45cfc",
+    "transactionIndex": "0xa6"
   }
 }

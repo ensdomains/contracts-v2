@@ -1,5 +1,8 @@
+diff --git a/node_modules/rocketh/.bun-tag-d983e8f7904ffdb4 b/.bun-tag-d983e8f7904ffdb4
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/environment/index.js b/dist/environment/index.js
-index 8322d74aea4cf8dc59b29690836fd7fa97163255..3fd2107192d56a536ee2e6beb6f1442ebacee0ab 100644
+index 8322d74aea4cf8dc59b29690836fd7fa97163255..525caca8afb81f8dc2dcc8e6888a15bd6e2d0a15 100644
 --- a/dist/environment/index.js
 +++ b/dist/environment/index.js
 @@ -334,6 +334,12 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
@@ -15,7 +18,23 @@ index 8322d74aea4cf8dc59b29690836fd7fa97163255..3fd2107192d56a536ee2e6beb6f1442e
          extra: resolvedExecutionParams.extra || {},
      };
      // const signer = {
-@@ -553,6 +559,12 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
+@@ -454,7 +460,14 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
+                         }
+                         catch (e) {
+                             spinner.fail();
+-                            throw e;
++                            // a call that reverted changed nothing on chain, so it is dropped
++                            // and the deploy script, which reads the chain, sends it again if
++                            // it is still needed; failing here would stop every resume on it
++                            if (!e?.reverted) {
++                                throw e;
++                            }
++                            console.log(`  dropping reverted execution ${pendingTransaction.transaction.hash}; its deploy script will send it again if needed`);
++                            await deploymentStore.writeFileWithChainInfo({ chainId, genesisHash }, deploymentsFolder, environmentName, '.pending_transactions.json', JSONToString(existingPendingTansactions, 2));
+                         }
+                     }
+                 }
+@@ -553,6 +566,14 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
          if (!receipt) {
              throw new Error(`receipt for ${hash} not found`);
          }
@@ -23,7 +42,9 @@ index 8322d74aea4cf8dc59b29690836fd7fa97163255..3fd2107192d56a536ee2e6beb6f1442e
 +        // surface it as a failure rather than reporting the transaction as applied
 +        else if (receipt.status != null && Number(receipt.status) === 0) {
 +            spinner.fail();
-+            throw new Error(`transaction ${hash} reverted (status 0) in block ${receipt.blockNumber}`);
++            const error = new Error(`transaction ${hash} reverted (status 0) in block ${receipt.blockNumber}`);
++            error.reverted = true;
++            throw error;
 +        }
          else {
              spinner.succeed();

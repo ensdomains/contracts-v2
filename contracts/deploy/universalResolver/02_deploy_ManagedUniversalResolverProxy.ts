@@ -75,6 +75,6 @@ export default execute(
       "ManagedUniversalResolverProxy",
       "v2",
     ],
-    dependencies: ["UniversalResolverV1"],
+    dependencies: ["UniversalResolverProxyToV1"],
   },
 );

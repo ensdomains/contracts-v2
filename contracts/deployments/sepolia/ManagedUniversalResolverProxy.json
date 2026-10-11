@@ -184,7 +184,7 @@
   "deployedLinkReferences": {},
   "immutableReferences": {},
   "inputSourceName": "project/src/universalResolver/UpgradableUniversalResolverProxy.sol",
-  "buildInfoId": "solc-0_8_25-555a61bb0e64a1101beb8cd0cb29f27cfbefb775",
+  "buildInfoId": "solc-0_8_25-b30e6dc9a03b37f6a0b89af5d02a73d3993944f7",
   "devdoc": {
     "errors": {
       "CallerNotAdmin()": [

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -42,6 +42,10 @@ const SOURCIFY_POLL_TIMEOUT_MS = 300_000;
 const SOURCIFY_SUBMIT_SPACING_MS = 500;
 const SOURCIFY_THROTTLE_BACKOFF_MS = 15_000;
 const SOURCIFY_THROTTLE_RETRIES = 3;
+// Etherscan answers at most a few calls per second per key, and its "already
+// verified" lookups count against the same budget, so requests are spaced out
+// unless the caller passes its own `--min-interval`.
+const ETHERSCAN_MIN_INTERVAL_MS = 500;
 
 type Backend = "etherscan" | "sourcify";
 
@@ -345,13 +349,52 @@ async function verifyOnSourcify({
   return failures;
 }
 
-/// Verifies one deployment set on Etherscan through `rocketh-verify`.
+/// Runs a command with its output passed through, and returns that output.
+async function runEchoed(command: string, args: string[]): Promise<string> {
+  const child = spawn(command, args, {
+    cwd: contractsDir,
+    env: process.env,
+    stdio: ["inherit", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.on("data", (chunk) => {
+    process.stdout.write(chunk);
+    output += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk);
+    output += chunk;
+  });
+  const code = await new Promise<number | null>((done) =>
+    child.on("close", done),
+  );
+  if (code !== 0) {
+    throw new Error(`${command} ${args.join(" ")} exited with ${code}`);
+  }
+  return output;
+}
+
+/// The contracts `rocketh-verify` reports Etherscan refused, other than for being
+/// verified already. It exits 0 either way, so the refusals are read from its output.
+export function etherscanRefusals(output: string): string[] {
+  return output
+    .split("\n")
+    .map((line) => line.match(/contract (\S+) failed to submit\b(.*)/))
+    .filter(
+      (match): match is RegExpMatchArray =>
+        match !== null && !/already verified/i.test(match[2]),
+    )
+    .map((match) => match[1]);
+}
+
+/// Verifies one deployment set on Etherscan through `rocketh-verify`, and returns
+/// the contracts Etherscan refused.
 ///
 /// The set is staged under its own throwaway root and handed over as a flat
 /// environment name. A v1 stack lives at `deployments/v1/<namespace>`, and passing
 /// that path as the environment would put a separator in the name, so the leaf is
 /// staged on its own instead.
-function verifyOnEtherscan({
+async function verifyOnEtherscan({
   srcDir,
   envName,
   label,
@@ -383,21 +426,28 @@ function verifyOnEtherscan({
     }
 
     console.log(`\n=== verifying ${label} on etherscan ===`);
-    execFileSync(
-      "bun",
-      [
-        "run",
-        "rocketh-verify",
-        "--",
-        "-d",
-        stagingRoot,
-        "-e",
-        envName,
-        "etherscan",
-        ...passthrough,
-      ],
-      { cwd: contractsDir, stdio: "inherit", env: process.env },
-    );
+    const spacing = passthrough.includes("--min-interval")
+      ? []
+      : ["--min-interval", String(ETHERSCAN_MIN_INTERVAL_MS)];
+    const output = await runEchoed("bun", [
+      "run",
+      "rocketh-verify",
+      "--",
+      "-d",
+      stagingRoot,
+      "-e",
+      envName,
+      "etherscan",
+      ...spacing,
+      ...passthrough,
+    ]);
+    const refused = etherscanRefusals(output);
+    if (refused.length > 0) {
+      console.log(
+        `etherscan refused ${refused.length} contract(s) on ${label}: ${refused.join(", ")}; re-run to retry them`,
+      );
+    }
+    return refused;
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
   }
@@ -440,7 +490,7 @@ async function main() {
   let failures = 0;
   for (const target of targets) {
     if (backends.includes("etherscan")) {
-      verifyOnEtherscan({ ...target, passthrough });
+      failures += (await verifyOnEtherscan({ ...target, passthrough })).length;
     }
     if (backends.includes("sourcify")) {
       console.log(`\n=== verifying ${target.label} on sourcify ===`);
@@ -453,4 +503,6 @@ async function main() {
   if (failures > 0) process.exitCode = 1;
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}

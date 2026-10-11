@@ -904,16 +904,13 @@ async function* readCSVInBatches(
         );
       }
 
-      const normalized = headerFields.map((f) => f.trim().toLowerCase());
-      const labelNameIdx = normalized.indexOf("labelname");
-      const labelIdx = normalized.indexOf("label");
-      const resolvedIdx = labelNameIdx !== -1 ? labelNameIdx : labelIdx;
+      const resolvedIdx = csvLabelColumnIndex(headerFields);
       if (resolvedIdx === -1) {
         const found = headerFields.map((f) => f.trim()).join(", ");
         throw new CSVFormatError(
-          `CSV header at ${csvFilePath}:1 has no "labelName" or "label" column. ` +
+          `CSV header at ${csvFilePath}:1 has no label column. ` +
             `Found columns: [${found}]. ` +
-            `Expected one of "labelName" or "label" (case-insensitive).`,
+            `Expected "labelName", "label", or a Dune export's "name" beside "full_name" (case-insensitive).`,
         );
       }
       labelColumnIndex = resolvedIdx;
@@ -1005,6 +1002,21 @@ async function* readCSVInBatches(
   if (batch.length > 0) {
     yield batch;
   }
+}
+
+/// Where the label sits in a registration CSV header, or -1 when no column holds it.
+///
+/// `labelName` (the v1 subgraph schema) wins over `label` (the subgraph exporter). A
+/// Dune export carries the bare label in `name` beside the full name in `full_name`;
+/// `name` alone is not taken, because the subgraph schema uses it for the full name.
+/// Matching ignores case and surrounding whitespace.
+export function csvLabelColumnIndex(header: readonly string[]): number {
+  const normalized = header.map((field) => field.trim().toLowerCase());
+  for (const column of ["labelname", "label"]) {
+    const index = normalized.indexOf(column);
+    if (index !== -1) return index;
+  }
+  return normalized.includes("full_name") ? normalized.indexOf("name") : -1;
 }
 
 /// The label in a parsed CSV row, exactly as written, or `undefined` when the cell is

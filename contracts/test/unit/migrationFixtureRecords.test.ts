@@ -39,6 +39,7 @@ import {
   ACTOR_ALIASES,
   fundingTargets,
   loadFixture,
+  withGasBuffer,
 } from "../../script/migrations/fixture/config.js";
 import {
   executePlannedCalls,
@@ -1162,7 +1163,7 @@ describe("a shaping run", () => {
   /// A node that answers what signing and estimating ask of it, applies the
   /// batcher's refusal rule to each batch, and records what was sent.
   const node = () => {
-    const sent: { to: Address; data: Hex }[] = [];
+    const sent: { to: Address; data: Hex; gas: bigint }[] = [];
     const reverted = (data: Hex) => ({
       error: { code: 3, message: "execution reverted", data },
     });
@@ -1197,7 +1198,7 @@ describe("a shaping run", () => {
             });
           case "eth_sendRawTransaction": {
             const tx = parseTransaction(params[0]);
-            sent.push({ to: tx.to!, data: tx.data! });
+            sent.push({ to: tx.to!, data: tx.data!, gas: tx.gas! });
             return answer({ result: HASH });
           }
           case "eth_estimateGas": {
@@ -1256,11 +1257,13 @@ describe("a shaping run", () => {
     const transport = http(url, { retryCount: 0 });
     const reader = createPublicClient({ chain: sepolia, transport });
     const completed: string[] = [];
+    const landed: Record<string, number> = {};
     const ex = {
       opts: { rpcUrl: url },
       chain: sepolia,
       client: {
         estimateContractGas: reader.estimateContractGas,
+        estimateGas: reader.estimateGas,
         waitForTransactionReceipt: async () => ({ status: "success" }),
       },
       wallet: createWalletClient({
@@ -1277,8 +1280,11 @@ describe("a shaping run", () => {
       onNameComplete: (id) => {
         completed.push(id);
       },
+      onCallsLanded: (id, count) => {
+        landed[id] = (landed[id] ?? 0) + count;
+      },
     }).finally(stop);
-    return { outcome, completed, sent };
+    return { outcome, completed, sent, landed };
   };
 
   /// The targets of the calls a sent batch carried.
@@ -1341,6 +1347,37 @@ describe("a shaping run", () => {
     expect(completed).toEqual(["B"]);
     // A's second call never went out.
     expect(sent.map((tx) => tx.to.toLowerCase())).toEqual([ACCEPTS]);
+  });
+
+  // A resumed run continues each name from the first call that had not landed, so
+  // the count must cover batched and owner calls alike and stop at a refusal.
+  it("counts each name's landed calls, up to the one refused", async () => {
+    const { outcome, landed } = await shape({
+      A: [
+        viaBatcher(ACCEPTS, "a1"),
+        asOwner(ACCEPTS, "a2"),
+        viaBatcher(ACCEPTS, "a3"),
+      ],
+      B: [
+        viaBatcher(ACCEPTS, "b1"),
+        asOwner(REFUSES, "b2"),
+        asOwner(ACCEPTS, "b3"),
+      ],
+    });
+
+    expect((await outcome).map((s) => s.fixtureId)).toEqual(["B"]);
+    expect(landed).toEqual({ A: 3, B: 1 });
+  });
+
+  // An estimate answered by a node behind the sender's last transaction can come
+  // in low, so an owner's own transaction carries the same margin as a batch.
+  it("sends an owner's transaction with a margin over the estimate", async () => {
+    const { outcome, sent } = await shape({ A: [asOwner(ACCEPTS, "a1")] });
+
+    expect(await outcome).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].gas).toBe(withGasBuffer(21_000n));
+    expect(sent[0].gas).toBeGreaterThan(21_000n);
   });
 
   it("stops on a failure that is no contract's refusal", async () => {

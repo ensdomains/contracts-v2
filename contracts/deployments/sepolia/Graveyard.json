@@ -1,5 +1,5 @@
 {
-  "address": "0x950b93885b33ce4c7e8571be2c88a1aa93d82f49",
+  "address": "0xb58a90a39d13cce1d0e192b5da5c47640855b04d",
   "abi": [
     {
       "inputs": [
@@ -235,7 +235,7 @@
   "linkReferences": {},
   "deployedLinkReferences": {},
   "immutableReferences": {
-    "61702": [
+    "61765": [
       {
         "length": 32,
         "start": 262
@@ -257,7 +257,7 @@
         "start": 3271
       }
     ],
-    "61706": [
+    "61769": [
       {
         "length": 32,
         "start": 1208
@@ -279,7 +279,7 @@
         "start": 2797
       }
     ],
-    "61710": [
+    "61773": [
       {
         "length": 32,
         "start": 1610
@@ -289,13 +289,13 @@
         "start": 1764
       }
     ],
-    "61713": [
+    "61776": [
       {
         "length": 32,
         "start": 1805
       }
     ],
-    "76314": [
+    "79683": [
       {
         "length": 32,
         "start": 325
@@ -307,7 +307,7 @@
     ]
   },
   "inputSourceName": "project/src/migration/Graveyard.sol",
-  "buildInfoId": "solc-0_8_25-555a61bb0e64a1101beb8cd0cb29f27cfbefb775",
+  "buildInfoId": "solc-0_8_25-b30e6dc9a03b37f6a0b89af5d02a73d3993944f7",
   "devdoc": {
     "errors": {
       "DNSDecodingFailed(bytes)": [
@@ -428,15 +428,15 @@
     "notice": "The ENSv1 ETHRegistrarController for ENSv2 launch which becomes the burn address for migrated tokens. 1. Claim any expired ENSv1 name and assign ownership to this contract. 2. Clear the registry for any owned token.",
     "version": 1
   },
-  "argsData": "0x0000000000000000000000000635513f179d50a207757e05759cbd106d7dfce8000000000000000000000000dab8b3dcb4c2bb181b9215b699b2c3e1fe180ae1",
+  "argsData": "0x0000000000000000000000000635513f179d50a207757e05759cbd106d7dfce8000000000000000000000000606f2453484f4fa85b6e5fdb0e0bf777064bf9f3",
   "transaction": {
-    "hash": "0x48bb61915b1accf733192e3fe05a1d12cecc2eadc19fa72df3531a8b437071fe",
-    "nonce": "0x8f8",
+    "hash": "0x1e1270dd489a9b8db077d309039bee1f71dfbce728cd2c2414cbf46a5819490a",
+    "nonce": "0xfb2",
     "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
   },
   "receipt": {
-    "blockHash": "0x3eece3228ffcf7e207a8787c1c40d682667e54bedbb102a32c80c0e25eb9dbf4",
-    "blockNumber": "0xb2aa98",
-    "transactionIndex": "0x95"
+    "blockHash": "0xa265cd1924360bfd2790466bbb5adfb3e43931c58a8b42ce0e838fa14991fd6e",
+    "blockNumber": "0xb45d93",
+    "transactionIndex": "0x94"
   }
 }

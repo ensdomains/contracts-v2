@@ -152,12 +152,23 @@ export function queriesFromSnapshot(
   });
 }
 
+/// How an answer moved across the cutover: it started resolving, stopped
+/// resolving, came back different, or the whole name went missing.
+export type DifferenceKind = "gained" | "lost" | "changed" | "missing";
+
 export type SnapshotDifference = {
   name: string;
   record: string;
   before: string;
   after: string;
+  kind: DifferenceKind;
 };
+
+/// Whether a difference means the cutover broke something. A record that only starts
+/// resolving does not: a name the old resolver path could not see, such as one
+/// reserved only in the new registry, answers once the cutover points at it.
+export const isRegression = (difference: SnapshotDifference): boolean =>
+  difference.kind !== "gained";
 
 function render(value: Hex | null): string {
   return value === null ? "(reverted)" : value;
@@ -168,7 +179,7 @@ function render(value: Hex | null): string {
 // A record that reverted before and still reverts is unchanged and not reported: the
 // point is to catch answers that *changed*, not to require every name to have every
 // record. A record that stops resolving, starts resolving, or returns different bytes
-// is a difference in all three directions.
+// is a difference in all three directions, each labelled with its kind.
 export function diffResolutionSnapshots(
   before: ResolutionSnapshot,
   after: ResolutionSnapshot,
@@ -184,6 +195,7 @@ export function diffResolutionSnapshots(
         record: "(whole name)",
         before: "present",
         after: "absent from post-cutover snapshot",
+        kind: "missing",
       });
       continue;
     }
@@ -195,6 +207,12 @@ export function diffResolutionSnapshots(
         record,
         before: render(beforeValue),
         after: render(afterValue),
+        kind:
+          beforeValue === null
+            ? "gained"
+            : afterValue === null
+              ? "lost"
+              : "changed",
       });
     }
   }
