@@ -17,7 +17,7 @@ import {
 } from "../utils/utils.js";
 import {
   type NamingInfo,
-  createClaimTransactions,
+  createReverseRegistrarTransactions,
   createDeployResolverTransaction,
   createMigrationTransaction,
   createResolverCalls,
@@ -40,6 +40,8 @@ describe("Contract Names", () => {
     v2Owner: owner.address,
     resolverSaltVersion: 1n, // devnet already deploys a PermissionedResolver for "owner"
     managers: [env.namedAccounts.user.address],
+    wallets: {},
+    chain: env.client.chain,
   };
 
   setupEnv({
@@ -136,7 +138,7 @@ describe("Contract Names", () => {
 
   it("createClaimTransactions()", async () => {
     const names = await getDeployedNames();
-    const trs = createClaimTransactions({ info, v1, v2, names });
+    const trs = createReverseRegistrarTransactions({ info, v1, v2, names });
 
     const client = env.createClient(owner);
     for (const tr of trs) {

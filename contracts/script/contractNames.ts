@@ -3,11 +3,16 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 import {
+  Chain,
   encodeFunctionData,
-  TransactionRequest,
+  type TransactionRequest,
   zeroAddress,
   type Address,
+  createPublicClient,
+  http,
 } from "viem";
+import { readContract } from "viem/actions";
+import { mainnet, sepolia } from "viem/chains";
 import { normalize } from "viem/ens";
 import { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.js";
 import { Abi_PermissionedResolver } from "generated/abis/PermissionedResolver.js";
@@ -39,17 +44,6 @@ import { encodeMigrationData } from "../test/utils/migrationData.js";
 // so after new deployment, the first operation is for owner
 // to claim every contract and update the name and resolver
 
-// [wallets]
-//
-// mainnet:
-// 0x690F0581eCecCf8389c223170778cD9D029606F2 = cold wallet
-// 0x0904Dac3347eA47d208F3Fd67402D039a3b99859 = hot wallet
-// 0xb6E040C9ECAaE172a89bD561c5F73e1C48d28cd9 = hot wallet 2
-// 0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b = registrar sec council
-//
-// sepolia:
-//
-
 const CLAIMS = [
   "ReverseClaimer",
   "Ownable",
@@ -63,7 +57,10 @@ export type ContractInfo = {
   claim?: (typeof CLAIMS)[number];
 };
 
-export type DeployedContractInfo = ContractInfo & { address: Address };
+export type DeployedContractInfo = ContractInfo & {
+  address: Address;
+  v2: boolean;
+};
 
 export type Deployments = Record<string, Address>;
 
@@ -73,7 +70,10 @@ export type NamingInfo = {
   isWrapped: boolean;
   v2Owner: Address;
   resolverSaltVersion?: bigint;
+  wallets: Record<Address, string>;
   managers: Address[];
+  chain: Chain;
+  publicRPC?: string;
 };
 
 export async function getContractNames() {
@@ -121,7 +121,7 @@ export async function getContractNames() {
     });
 }
 
-async function readChainId(dir: string): Promise<number> {
+async function readDeploymentChainId(dir: string): Promise<number> {
   try {
     const json = JSON.parse(await readFile(join(dir, ".chain"), "utf8"));
     const chainId = parseInt(json.chainId);
@@ -134,7 +134,7 @@ async function readChainId(dir: string): Promise<number> {
   }
 }
 
-async function readDeployments(dir: string): Promise<Deployments> {
+async function readDeploymentAddresses(dir: string): Promise<Deployments> {
   const suffix = ".json";
   return Object.fromEntries(
     await Promise.all(
@@ -246,7 +246,7 @@ export function createMigrationTransaction({
       };
 }
 
-export function createClaimTransactions({
+export function createReverseRegistrarTransactions({
   info,
   v1,
   v2,
@@ -302,24 +302,44 @@ export function createResolverCalls(names: DeployedContractInfo[]) {
 function resolveAccounts(chainId: number): NamingInfo {
   const label = "ens";
   switch (chainId) {
-    case 1: {
-      const v1Owner = RockethConfig.accounts.owner.mainnet;
-      const v2Owner = v1Owner;
+    case mainnet.id: {
+      const DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7";
+      const Cold = "0x690F0581eCecCf8389c223170778cD9D029606F2";
+      const v1Owner = DAO;
+      const v2Owner = DAO;
       return {
+        chain: mainnet,
+        publicRPC: "https://eth.drpc.org",
         label,
         v1Owner,
-        v2Owner,
         isWrapped: false,
-        managers: [
-          "0x690F0581eCecCf8389c223170778cD9D029606F2", // ens cold
-          "0x0904Dac3347eA47d208F3Fd67402D039a3b99859", // ens hot
-        ],
+        v2Owner,
+        wallets: {
+          [DAO]: "DAO",
+          [Cold]: "Cold",
+          "0x0904Dac3347eA47d208F3Fd67402D039a3b99859": "Hot",
+          "0x69420f05A11f617B4B74fFe2E04B2D300dFA556F": "swagalicious.eth",
+        },
+        managers: [Cold],
       };
     }
-    case 11155111: {
-      const v1Owner = "0x179A862703a4adfb29896552DF9e307980D19285"; // current ens.eth owner
-      const v2Owner = RockethConfig.accounts.securityCouncil.sepolia;
-      return { label, v1Owner, v2Owner, isWrapped: true, managers: [] };
+    case sepolia.id: {
+      const DAO = "0x0F32b753aFc8ABad9Ca6fE589F707755f4df2353";
+      const Greg = "0x179A862703a4adfb29896552DF9e307980D19285"; // current ens.eth owner
+      return {
+        chain: sepolia,
+        publicRPC: "https://ethereum-sepolia-rpc.publicnode.com",
+        label,
+        v1Owner: Greg,
+        isWrapped: true,
+        v2Owner: DAO,
+        wallets: {
+          [DAO]: "DAO",
+          [Greg]: "gregskril.eth",
+          "0x4Fe4e666Be5752f1FdD210F4Ab5DE2Cc26e3E0e8": "Deployer",
+        },
+        managers: [],
+      };
     }
     default:
       throw new Error(`unknown chain: ${chainId}`);
@@ -338,9 +358,10 @@ export function filterContractInfos({
   const found: DeployedContractInfo[] = [];
   const missing: ContractInfo[] = [];
   for (const x of names) {
-    const address = v2[x.deployment] ?? v1[x.deployment];
+    const address2 = v2[x.deployment];
+    const address = address2 ?? v1[x.deployment];
     if (address) {
-      found.push({ ...x, address });
+      found.push({ ...x, address, v2: !!address2 });
     } else {
       missing.push(x);
     }
@@ -360,41 +381,67 @@ if (import.meta.main) {
         type: "string",
         default: "sepolia", // "mainnet"
       },
-      v1: {
-        type: "string",
-      },
+      v1: { type: "string" },
+      dao: { type: "boolean" },
     },
     strict: true,
     allowPositionals: true,
   });
 
+  const baseDir = fileURLToPath(new URL("../", import.meta.url));
+  const v2Dir = join(baseDir, `./deployments/${values.v2}/`);
+  const v1Slug = values.v1 ?? values.v2.split("-")[0];
+  const v1Dir = join(baseDir, `./lib/ens-contracts/deployments/${v1Slug}/`);
+
   const mode = positionals.shift()?.toLowerCase();
   const names = await getContractNames();
+  const nameMax = names.reduce((a, x) => Math.max(a, x.name.length), 0);
+
   if (mode === "names") {
-    const max = names.reduce((a, x) => Math.max(a, x.name.length), 0);
     console.table(
       names.map(({ name, deployment, claim }) => ({
         deployment,
-        name: name.padStart(max), // align right
+        name: name.padStart(nameMax), // align right
         claim,
       })),
     );
+  } else if (mode === "owners") {
+    const v1 = await readDeploymentAddresses(v1Dir);
+    const info = resolveAccounts(await readDeploymentChainId(v1Dir));
+    const client = createPublicClient({
+      chain: info.chain,
+      transport: http(info.publicRPC),
+    });
+    console.table(
+      await Promise.all(
+        Object.entries(v1).map(async ([name, address]) => {
+          const owner = await readContract(client, {
+            address: v1.ENSRegistry,
+            abi: Abi_ENSRegistry,
+            functionName: "owner",
+            args: [namehash(getReverseName(address))],
+          });
+          return {
+            name,
+            address,
+            owner: owner === zeroAddress ? "" : owner,
+            wallet: info.wallets[owner] ?? "",
+          };
+        }),
+      ),
+    );
   } else if (mode) {
-    const baseDir = fileURLToPath(new URL("../", import.meta.url));
-    const v2Dir = join(baseDir, `./deployments/${values.v2}/`);
-    const v2 = await readDeployments(v2Dir);
+    const v2 = await readDeploymentAddresses(v2Dir);
     if (!v2.RootRegistry) {
-      throw new Error(`invalid V2 deployment: ${v2Dir}`);
+      throw new Error(`not a V2 deployment: ${v2Dir}`);
     }
-    const v1Slug = values.v1 ?? values.v2.split("-")[0];
-    const v1Dir = join(baseDir, `./lib/ens-contracts/deployments/${v1Slug}/`);
-    const v1 = await readDeployments(v1Dir);
+    const v1 = await readDeploymentAddresses(v1Dir);
     if (!v1.ENSRegistry) {
-      throw new Error(`invalid V1 deployment: ${v1Dir}`);
+      throw new Error(`not a V1 deployment: ${v1Dir}`);
     }
     const collisions = Object.keys(v1).filter((x) => v2[x]);
-    const chainId = await readChainId(v2Dir);
-    if (chainId !== (await readChainId(v2Dir))) {
+    const chainId = await readDeploymentChainId(v2Dir);
+    if (chainId !== (await readDeploymentChainId(v1Dir))) {
       throw new Error(`chain mismatch: ${v1.chainId} != ${v2.chainId}`);
     }
     const info = resolveAccounts(chainId);
@@ -414,13 +461,15 @@ if (import.meta.main) {
     function getDeployedNames() {
       const { found, missing } = filterContractInfos({ v1, v2, names });
       if (missing.length) {
-        missing.forEach((x) => console.log(`Cannot name: ${x.deployment}`));
+        missing.forEach((x) => console.error(`Cannot name: ${x.deployment}`));
         console.log();
       }
       return found;
     }
 
-    function createResolverTransactions(names: DeployedContractInfo[]) {
+    function createResolverTransactions(
+      names: DeployedContractInfo[],
+    ): TransactionRequest[] {
       const to = expectedResolverAddress({ info, v2 });
       return createResolverCalls(names).map((data) => ({
         to,
@@ -428,31 +477,48 @@ if (import.meta.main) {
       }));
     }
 
+    function dumpTransactions(trs: TransactionRequest[]) {
+      dump(
+        values.dao
+          ? {
+              to: trs.map((x) => x.to),
+              values: trs.map(() => 0),
+              calldatas: trs.map((x) => x.data),
+            }
+          : trs,
+      );
+    }
+
     switch (mode) {
       case "deploy": {
-        dump(createDeployResolverTransaction({ info, v2 }));
+        dumpTransactions([createDeployResolverTransaction({ info, v2 })]);
         break;
       }
       case "migrate": {
-        dump(createMigrationTransaction({ info, v1, v2 }));
+        dumpTransactions([createMigrationTransaction({ info, v1, v2 })]);
         break;
       }
-      case "claim": {
-        dump(
-          createClaimTransactions({ info, v1, v2, names: getDeployedNames() }),
+      case "reverse": {
+        dumpTransactions(
+          createReverseRegistrarTransactions({
+            info,
+            v1,
+            v2,
+            names: getDeployedNames(),
+          }),
         );
         break;
       }
       case "populate": {
-        dump(createResolverTransactions(getDeployedNames()));
+        dumpTransactions(createResolverTransactions(getDeployedNames()));
         break;
       }
       case "init": {
         const names = getDeployedNames();
-        dump([
+        dumpTransactions([
           createDeployResolverTransaction({ info, v2 }),
           createMigrationTransaction({ info, v1, v2 }),
-          createClaimTransactions({ info, v1, v2, names }),
+          ...createReverseRegistrarTransactions({ info, v1, v2, names }),
           ...createResolverTransactions(names),
         ]);
         break;
@@ -468,12 +534,20 @@ if (import.meta.main) {
         description: "Print contract deployments and names",
       },
       {
+        mode: "owners",
+        description: "Print reverse name owners",
+      },
+      {
         mode: "deploy",
         description: "Transaction data for deploying PermissionedResolver",
       },
       {
         mode: "migrate",
         description: "Transaction data for ens.eth Migration",
+      },
+      {
+        mode: "reverse",
+        description: "Transaction data for populating PermissionedResolver",
       },
       {
         mode: "populate",
@@ -483,10 +557,20 @@ if (import.meta.main) {
         mode: "init",
         description: "Generate calldata for initial deployment",
       },
-      // {
-      //   mode: "diff",
-      //   description: "Generate calldata for a change in deployment",
-      // },
+    ]);
+    console.table([
+      {
+        option: "--v2 {name}",
+        description: "Deployment directory name for v2 contracts",
+      },
+      {
+        option: "--v1 {name}",
+        description: "Deployment directory name for v1 contracts",
+      },
+      {
+        option: "--dao",
+        description: "DAO-style calldata",
+      },
     ]);
   }
 }
