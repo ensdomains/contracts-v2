@@ -9,12 +9,7 @@ import {
 import { Abi_IAddrResolver } from "generated/abis/IAddrResolver.js";
 import { STATUS, MAX_EXPIRY, ROLES } from "../../script/deploy-constants.js";
 import { expect } from "../utils/expectVar.js";
-import {
-  dnsEncodeName,
-  getReverseName,
-  idFromLabel,
-  namehash,
-} from "../utils/utils.js";
+import { dnsEncodeName, idFromLabel, namehash } from "../utils/utils.js";
 import {
   type NamingInfo,
   createReverseRegistrarTransactions,
@@ -29,8 +24,26 @@ import {
 describe("Contract Names", () => {
   const { env, setupEnv } = process.TEST_GLOBALS!;
 
-  const v1 = toAddresses(env.v1);
-  const v2 = toAddresses(env.v2);
+  function toAddresses(
+    contracts: Record<string, { address: Address }>,
+    missing: string[] = [],
+  ) {
+    return Object.fromEntries([
+      ...Object.entries(contracts).map(([k, v]) => [k, v.address] as const),
+      ...missing.map((name) => [name, env.rocketh.get(name).address] as const),
+    ]);
+  }
+
+  const v1 = toAddresses(env.v1, [
+    "ETHRegistrarController",
+    "WrappedETHRegistrarController",
+    "StandaloneHCAFactory",
+    "UniversalResolverV1", // v1.UniversalResolver
+  ]);
+  const v2 = toAddresses(env.v2, [
+    "UniversalResolverV2", // v2.UniversalResolver
+    "PublicResolverV2", // v2.PublicResolver
+  ]);
   const { owner } = env.namedAccounts;
 
   const info: NamingInfo = {
@@ -47,7 +60,7 @@ describe("Contract Names", () => {
   setupEnv({
     resetOnEach: true,
     async initialize() {
-      // register "ens.eth" in v1
+      // register in v1
       await env.v1.RegistrarSecurityController.write.addRegistrarController(
         [env.namedAccounts.deployer.address],
         { account: owner },
@@ -57,6 +70,7 @@ describe("Contract Names", () => {
         info.v1Owner,
         MAX_EXPIRY,
       ]);
+      // premigrate
       await env.v2.ETHRegistry.write.register([
         info.label,
         zeroAddress,
@@ -65,30 +79,6 @@ describe("Contract Names", () => {
         0n,
         MAX_EXPIRY,
       ]);
-
-      // fix some issues:
-      // 1. NameWrapper reverse is owned by deployer
-      await env.v1.ENSRegistry.write.setOwner([
-        namehash(getReverseName(env.v1.NameWrapper.address)),
-        owner.address,
-      ]);
-      // 2. BaseRegistrarImplementation is Ownable but not claimed
-      await env.v1.RegistrarSecurityController.write.transferRegistrarOwnership(
-        [owner.address],
-        { account: owner },
-      );
-      await env.v1.ReverseRegistrar.write.claimForAddr(
-        [
-          env.v1.BaseRegistrarImplementation.address,
-          owner.address,
-          zeroAddress,
-        ],
-        { account: owner },
-      );
-      await env.v1.BaseRegistrarImplementation.write.transferOwnership(
-        [env.v1.RegistrarSecurityController.address],
-        { account: owner },
-      );
     },
   });
 
@@ -177,9 +167,3 @@ describe("Contract Names", () => {
     );
   });
 });
-
-function toAddresses(contracts: Record<string, { address: Address }>) {
-  return Object.fromEntries(
-    Object.entries(contracts).map(([k, v]) => [k, v.address]),
-  );
-}

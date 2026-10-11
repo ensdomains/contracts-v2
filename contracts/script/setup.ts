@@ -11,6 +11,7 @@ import { Abi_ReverseRegistrar } from "generated/abis/ReverseRegistrar.js";
 import { Abi_ReverseRegistrarAdapter } from "generated/abis/ReverseRegistrarAdapter.js";
 import { Abi_DefaultReverseRegistrarAdapter } from "generated/abis/DefaultReverseRegistrarAdapter.js";
 import { Abi_NameCoder } from "generated/abis/NameCoder.js";
+import { Abi_DNSSECImpl } from "generated/abis/DNSSECImpl.js";
 // v1
 import { Abi_Root } from "generated/abis/Root.js";
 import { Abi_ENSRegistry } from "generated/abis/ENSRegistry.js";
@@ -18,7 +19,7 @@ import { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImp
 import { Abi_NameWrapper } from "generated/abis/NameWrapper.js";
 import { Abi_RegistrarSecurityController } from "generated/abis/RegistrarSecurityController.js";
 import { Abi_PublicResolver } from "generated/abis/PublicResolver.js";
-import { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
+import { Abi_UniversalResolverV1 } from "generated/abis/UniversalResolverV1.js";
 // v2
 import { Abi_ContractNamer } from "generated/abis/ContractNamer.js";
 import { Abi_LabelStore } from "generated/abis/LabelStore.js";
@@ -144,11 +145,13 @@ export async function setupDevnet({
   }
   let unquiet = () => {};
   if (quiet) {
-    const { log, table } = console;
+    const { log, error, table } = console;
     console.log = () => {};
+    console.error = () => {};
     console.table = () => {};
     unquiet = () => {
       console.log = log;
+      console.error = error;
       console.table = table;
     };
   }
@@ -392,6 +395,11 @@ export async function setupDevnet({
         address: rocketh.get("NameWrapper").address,
         client,
       }),
+      DNSSECImpl: getContract({
+        abi: Abi_DNSSECImpl,
+        address: rocketh.get("DNSSECImpl").address,
+        client,
+      }),
       RegistrarSecurityController: getContract({
         abi: Abi_RegistrarSecurityController,
         address: rocketh.get("RegistrarSecurityController").address,
@@ -404,8 +412,8 @@ export async function setupDevnet({
         client,
       }),
       UniversalResolver: getContract({
-        abi: Abi_UniversalResolver,
-        address: rocketh.get("UniversalResolver").address,
+        abi: Abi_UniversalResolverV1,
+        address: rocketh.get("UniversalResolverV1").address,
         client,
       }),
       // reverse
@@ -963,6 +971,34 @@ export async function setupDevnet({
     async function setupEnsDotEth() {
       const account = namedAccounts.owner;
       const { resolver } = account;
+
+      // fix V1 deployment issues:
+      // 1. NameWrapper is ReverseClaimer; owned by deployer
+      await v1.ENSRegistry.write.setOwner([
+        namehash(getReverseName(v1.NameWrapper.address)),
+        account.address,
+      ]);
+      // 2. PublicResolver is ReverseClaimer; owned by deployer
+      await v1.ENSRegistry.write.setOwner([
+        namehash(getReverseName(v1.PublicResolver.address)),
+        account.address,
+      ]);
+      // 3. DNSSECImpl is Ownable; owned by deployer
+      await v1.DNSSECImpl.write.setOwner([account.address]);
+      // 4. BaseRegistrarImplementation is Ownable; but has indirect ownership
+      await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
+        [account.address],
+        { account },
+      );
+      await v1.ReverseRegistrar.write.claimForAddr(
+        [v1.BaseRegistrarImplementation.address, account.address, zeroAddress],
+        { account },
+      );
+      await v1.BaseRegistrarImplementation.write.transferOwnership(
+        [v1.RegistrarSecurityController.address],
+        { account },
+      );
+
       // temporary registration of "ens.eth" by deployer
       // (normally would be migrated by current ens.eth owner)
       // Deployer has REGISTRAR_ADMIN but not REGISTRAR; grant self REGISTRAR for setup
@@ -1010,12 +1046,20 @@ export async function setupDevnet({
             if (owner === zeroAddress) {
               throw new Error("unclaimed V1");
             }
+            try {
+              await v1.ENSRegistry.write.setResolver(
+                [namehash(reverseName), resolver.address],
+                { account },
+              );
+            } catch {
+              throw new Error("not owned by DAO");
+            }
           }
         } catch (err) {
           if (err instanceof ContractFunctionExecutionError) {
             err = err.metaMessages?.[0] || err.shortMessage;
           }
-          console.log(`Cannot name: ${x.name}: ${err}`);
+          console.error(`Cannot name: ${x.name}: ${err}`);
         }
       }
       if (writes.length) {

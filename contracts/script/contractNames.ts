@@ -20,7 +20,6 @@ import { Abi_NameWrapper } from "generated/abis/NameWrapper.js";
 import { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImplementation.js";
 import { Abi_ReverseRegistrarAdapter } from "generated/abis/ReverseRegistrarAdapter.js";
 import { Abi_ENSRegistry } from "generated/abis/ENSRegistry.js";
-import { config as RockethConfig } from "../rocketh/config.js";
 import { computeOwnedResolverSalt } from "./salts.js";
 import { ROLES } from "./deploy-constants.js";
 import { computeVerifiableProxyAddress } from "../test/integration/fixtures/deployVerifiableProxy.js";
@@ -44,6 +43,8 @@ import { encodeMigrationData } from "../test/utils/migrationData.js";
 // so after new deployment, the first operation is for owner
 // to claim every contract and update the name and resolver
 
+const KNOWN_CONTRACT_COLLISIONS = new Set(["MigrationHelper"]);
+
 const CLAIMS = [
   "ReverseClaimer",
   "Ownable",
@@ -57,10 +58,7 @@ export type ContractInfo = {
   claim?: (typeof CLAIMS)[number];
 };
 
-export type DeployedContractInfo = ContractInfo & {
-  address: Address;
-  v2: boolean;
-};
+export type DeployedContractInfo = ContractInfo & { address: Address };
 
 export type Deployments = Record<string, Address>;
 
@@ -134,20 +132,30 @@ async function readDeploymentChainId(dir: string): Promise<number> {
   }
 }
 
-async function readDeploymentAddresses(dir: string): Promise<Deployments> {
+async function readDeploymentAddresses(
+  dir: string,
+  v1 = false,
+): Promise<Deployments> {
   const suffix = ".json";
-  return Object.fromEntries(
+  const addresses = Object.fromEntries(
     await Promise.all(
       (await readdir(dir))
         .filter((x) => x.endsWith(suffix) && !x.startsWith("."))
         .sort()
         .map(async (name) => {
           const json = JSON.parse(await readFile(join(dir, name), "utf8"));
-          const slug = name.slice(0, -suffix.length);
+          let slug = name.slice(0, -suffix.length);
+          if (v1 && KNOWN_CONTRACT_COLLISIONS.has(slug)) {
+            slug += "Old";
+          }
           return [slug, json.address as Address];
         }),
     ),
   );
+  if (!addresses[v1 ? "ENSRegistry" : "RootRegistry"]) {
+    throw new Error(`invalid deployment: ${dir}`);
+  }
+  return addresses;
 }
 
 export function createDeployResolverTransaction({
@@ -261,7 +269,7 @@ export function createReverseRegistrarTransactions({
   return names.flatMap((x) => {
     if (!x.claim) return [];
     if (x.claim === "ReverseClaimer") {
-      // the owner is already claimed
+      // the owner is already claimed and should be owned by DAO
       return {
         to: v1.ENSRegistry,
         data: encodeFunctionData({
@@ -358,10 +366,9 @@ export function filterContractInfos({
   const found: DeployedContractInfo[] = [];
   const missing: ContractInfo[] = [];
   for (const x of names) {
-    const address2 = v2[x.deployment];
-    const address = address2 ?? v1[x.deployment];
+    const address = v2[x.deployment] ?? v1[x.deployment];
     if (address) {
-      found.push({ ...x, address, v2: !!address2 });
+      found.push({ ...x, address });
     } else {
       missing.push(x);
     }
@@ -379,7 +386,7 @@ if (import.meta.main) {
     options: {
       v2: {
         type: "string",
-        default: "sepolia", // "mainnet"
+        default: "sepolia-20260915-r1", // "mainnet"
       },
       v1: { type: "string" },
       dao: { type: "boolean" },
@@ -402,67 +409,78 @@ if (import.meta.main) {
       names.map(({ name, deployment, claim }) => ({
         deployment,
         name: name.padStart(nameMax), // align right
+        labels: name.split(".").length,
         claim,
       })),
     );
   } else if (mode === "owners") {
-    const v1 = await readDeploymentAddresses(v1Dir);
+    const v1 = await readDeploymentAddresses(v1Dir, true);
     const info = resolveAccounts(await readDeploymentChainId(v1Dir));
     const client = createPublicClient({
       chain: info.chain,
       transport: http(info.publicRPC),
     });
-    console.table(
-      await Promise.all(
-        Object.entries(v1).map(async ([name, address]) => {
-          const owner = await readContract(client, {
-            address: v1.ENSRegistry,
-            abi: Abi_ENSRegistry,
-            functionName: "owner",
-            args: [namehash(getReverseName(address))],
-          });
-          return {
-            name,
-            address,
-            owner: owner === zeroAddress ? "" : owner,
-            wallet: info.wallets[owner] ?? "",
-          };
-        }),
-      ),
+    const owners = await Promise.all(
+      Object.entries(v1).map(async ([name, address]) => {
+        const owner = await readContract(client, {
+          address: v1.ENSRegistry,
+          abi: Abi_ENSRegistry,
+          functionName: "owner",
+          args: [namehash(getReverseName(address))],
+        });
+        return {
+          name,
+          named: names.find((x) => x.deployment === name) ? "Y" : "",
+          owner: owner === zeroAddress ? "" : (info.wallets[owner] ?? owner),
+          address,
+        };
+      }),
     );
+    console.table(owners);
+    const wrong = owners.filter((x) => x.owner && x.owner !== "DAO");
+    if (wrong.length) {
+      console.error("Incorrect Registry Owners:");
+      console.table(wrong);
+    }
   } else if (mode) {
     const v2 = await readDeploymentAddresses(v2Dir);
-    if (!v2.RootRegistry) {
-      throw new Error(`not a V2 deployment: ${v2Dir}`);
-    }
-    const v1 = await readDeploymentAddresses(v1Dir);
-    if (!v1.ENSRegistry) {
-      throw new Error(`not a V1 deployment: ${v1Dir}`);
-    }
-    const collisions = Object.keys(v1).filter((x) => v2[x]);
+    const v1 = await readDeploymentAddresses(v1Dir, true);
     const chainId = await readDeploymentChainId(v2Dir);
     if (chainId !== (await readDeploymentChainId(v1Dir))) {
       throw new Error(`chain mismatch: ${v1.chainId} != ${v2.chainId}`);
     }
     const info = resolveAccounts(chainId);
     console.log(`Mode: ${mode}`);
+    console.log(`Chain: ${chainId}`);
     console.log(`V1 Deployment: ${relative(baseDir, v1Dir)}`);
     console.log(`V2 Deployment: ${relative(baseDir, v2Dir)}`);
-    if (collisions.length) {
-      console.log(`Collisions[${collisions.length}]: ${collisions}`);
+    function ownerStr(x: Address) {
+      return `${x} ${info.wallets[x] ?? "?"}`;
     }
-    console.log(`V1 Owner: ${info.v2Owner} [wrapper=${info.isWrapped}]`);
-    console.log(`V2 Owner: ${info.v2Owner}`);
+    console.log(
+      `V1 Owner: ${ownerStr(info.v1Owner)} [wrapper=${info.isWrapped}]`,
+    );
+    console.log(`V2 Owner: ${ownerStr(info.v2Owner)}`);
     console.log(
       `Managers[${info.managers.length}]: ${info.managers.join(", ") || "<none>"}`,
     );
     console.log();
 
+    const collisions = Object.keys(v1).filter((x) => v2[x]);
+    if (collisions.length) {
+      collisions.forEach((x, i) =>
+        console.error(`[${i + 1}] Deployment Collision: ${x}`),
+      );
+      throw new Error("unexpected collisions");
+    }
+
     function getDeployedNames() {
       const { found, missing } = filterContractInfos({ v1, v2, names });
       if (missing.length) {
-        missing.forEach((x) => console.error(`Cannot name: ${x.deployment}`));
-        console.log();
+        missing.forEach((x, i) =>
+          console.error(`[${i + 1}] Cannot name: ${x.deployment}`),
+        );
+        console.error();
       }
       return found;
     }
@@ -490,6 +508,15 @@ if (import.meta.main) {
     }
 
     switch (mode) {
+      case "deployed": {
+        console.table(
+          getDeployedNames().map(({ deployment, address }) => ({
+            deployment,
+            address,
+          })),
+        );
+        break;
+      }
       case "deploy": {
         dumpTransactions([createDeployResolverTransaction({ info, v2 })]);
         break;
@@ -536,6 +563,10 @@ if (import.meta.main) {
       {
         mode: "owners",
         description: "Print reverse name owners",
+      },
+      {
+        mode: "deployed",
+        description: "Print named deployment addresses",
       },
       {
         mode: "deploy",

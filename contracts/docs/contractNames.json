@@ -14,8 +14,17 @@
     "comment": "Ownable but by RegistrarSecurityCouncil or ETHRenewerV1"
   },
   {
+    "deployment": "SimplePublicSuffixList",
+    "name": "public-suffix-list.ens.eth"
+  },
+  {
     "deployment": "DNSRegistrar",
-    "name": "dnsregistrar.legacy.ens.eth"
+    "name": "dns-registrar.legacy.ens.eth"
+  },
+  {
+    "deployment": "DNSSECImpl",
+    "name": "dnssec.ens.eth",
+    "claim": "Ownable"
   },
   {
     "deployment": "ExtendedDNSResolver",
@@ -23,12 +32,23 @@
   },
   {
     "deployment": "OffchainDNSResolver",
-    "name": "dns.resolver.legacy.ens.eth"
+    "name": "dns-resolver.legacy.ens.eth"
+  },
+  {
+    "deployment": "ETHRegistrarController",
+    "name": "controller.legacy.ens.eth",
+    "claim": "Ownable"
+  },
+  {
+    "deployment": "WrappedETHRegistrarController",
+    "name": "wrapped-controller.legacy.ens.eth",
+    "claim": "Ownable"
   },
   {
     "deployment": "NameWrapper",
     "name": "wrapper.legacy.ens.eth",
-    "claim": "ReverseClaimer"
+    "claim": "ReverseClaimer",
+    "comment": "also Ownable but disowned on mainnet"
   },
   {
     "deployment": "PublicResolver",
@@ -73,12 +93,12 @@
   },
   {
     "deployment": "ENSURIRenderer",
-    "name": "uri-renderer.registry.ens.eth",
+    "name": "uri-renderer.ens.eth",
     "claim": "Ownable"
   },
   {
     "deployment": "BoxedENSURIRenderer",
-    "name": "boxed-uri-renderer.registry.ens.eth",
+    "name": "boxed-uri-renderer.ens.eth",
     "claim": "Ownable"
   },
   {
@@ -88,12 +108,12 @@
   },
   {
     "deployment": "ENSV1Resolver",
-    "name": "2to1.resolver.ens.eth",
+    "name": "2to1-resolver.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
     "deployment": "ENSV2Resolver",
-    "name": "1to2.resolver.ens.eth",
+    "name": "1to2-resolver.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
@@ -103,17 +123,17 @@
   },
   {
     "deployment": "UniversalHelper",
-    "name": "helper.ens.eth",
+    "name": "universal-helper.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
     "deployment": "PublicResolverV2",
-    "name": "public.resolver.ens.eth",
+    "name": "public-resolver.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
     "deployment": "DNSTLDResolver",
-    "name": "dns.resolver.ens.eth",
+    "name": "dns-resolver.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
@@ -137,28 +157,46 @@
     "claim": "Ownable"
   },
   {
+    "deployment": "ExponentialPremiumPriceOracle",
+    "name": "price-oracle.legacy.ens.eth"
+  },
+  {
     "deployment": "StandardRentPriceOracle",
-    "name": "oracle.ens.eth",
+    "name": "price-oracle.ens.eth",
     "claim": "DelegatedContractNamer"
+  },
+  {
+    "deployment": "ReverseRegistrar",
+    "name": "reverse-registrar.legacy.ens.eth",
+    "claim": "Ownable"
   },
   {
     "deployment": "ReverseRegistrarAdapter",
-    "name": "addr.reverse.ens.eth",
+    "name": "reverse-registrar.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
+    "deployment": "DefaultReverseResolver",
+    "name": "default-reverse-resolver.legacy.ens.eth"
+  },
+  {
+    "deployment": "DefaultReverseRegistrar",
+    "name": "default-reverse-registrar.legacy.ens.eth",
+    "claim": "Ownable"
+  },
+  {
     "deployment": "DefaultReverseRegistrarAdapter",
-    "name": "default.reverse.ens.eth",
+    "name": "default-reverse-registrar.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
     "deployment": "UnlockedMigrationController",
-    "name": "unlocked.migration.ens.eth",
+    "name": "unlocked-migration.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
     "deployment": "LockedMigrationController",
-    "name": "locked.migration.ens.eth",
+    "name": "locked-migration.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
@@ -168,27 +206,27 @@
   },
   {
     "deployment": "MigrationHelper",
-    "name": "helper.migration.ens.eth",
+    "name": "migration-helper.ens.eth",
     "claim": "DelegatedContractNamer"
   },
   {
     "deployment": "RegistryUpgradeSet",
-    "name": "upgradeset.registry.ens.eth",
-    "claim": "DelegatedContractNamer"
+    "name": "registry-upgrade-set.ens.eth",
+    "claim": "IContractNamer"
   },
   {
     "deployment": "PublicResolverSet",
-    "name": "prset.migration.ens.eth",
-    "claim": "DelegatedContractNamer"
+    "name": "migration-pr-set.ens.eth",
+    "claim": "IContractNamer"
   },
   {
     "deployment": "BatchGatewayProvider",
-    "name": "batch.gateways.ens.eth",
+    "name": "batch-gateways.ens.eth",
     "claim": "Ownable"
   },
   {
     "deployment": "DNSSECGatewayProvider",
-    "name": "dnssec.gateways.ens.eth",
+    "name": "dnssec-gateways.ens.eth",
     "claim": "Ownable"
   },
   {
@@ -198,7 +236,12 @@
   },
   {
     "deployment": "StandaloneHCAFactory",
-    "name": "factory.hca.ens.eth",
+    "name": "hca-factory.ens.eth",
     "claim": "Ownable"
+  },
+  {
+    "deployment": "HCAUpgradeSet",
+    "name": "hca-upgrade-set.ens.eth",
+    "claim": "IContractNamer"
   }
 ]

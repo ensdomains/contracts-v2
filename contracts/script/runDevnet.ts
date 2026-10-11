@@ -110,16 +110,15 @@ if (!quiet) {
             // crashing the whole table.
             let primary = "";
             try {
-              const result = await env.v2.UniversalResolver.read.reverse([
+              [primary] = await env.v2.UniversalResolver.read.reverse([
                 address,
                 COIN_TYPE_ETH,
               ]);
-              primary = result[0];
             } catch {}
             return {
               [nameKey]: name,
               "Contract Address": getAddress(address),
-              "Primary Name": !primary && name in env.v2 ? undefined : primary,
+              "Primary Name": primary,
             };
           },
         ),
