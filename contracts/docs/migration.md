@@ -509,26 +509,32 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 - **Prerequisites:** phase 7 complete. Phase 6 needs the deployer's `.eth` registry admin roles,
   and the handover removes them for good.
 - **Env / args:** `DEPLOYER_KEY` signs the handover. `--owner` overrides who takes the root registry
-  (default: the owner the namespace was deployed with).
+  (default: the owner the namespace was deployed with). `--endowment` overrides who takes the `eth`
+  token (default: the network's configured endowment, on mainnet the ENS DAO endowment Safe
+  `endowment.ensdao.eth`, else the owner).
 - **Expected outcome:**
+  - The endowment holds the `eth` token, and with it every role on the entry: setting its child
+    registry and resolver, granting either to another account, and transferring the token. The
+    token was registered with these roles, and a transfer moves the sender's roles with it. It
+    carries no role that could remove `eth`.
   - The owner holds the root registry's root roles, admin roles included, for the probation period.
   - The owner holds the `.eth` registry's root roles, admin roles included: it can authorize or
     remove registrars, renewers and migration controllers, including one that registers names
     still reserved by pre-migration. None of these roles reaches a name, so `.eth` names stay
     emancipated, and the registry still allows safe transfers of them, which it refuses otherwise.
-  - The owner can set the `eth` entry's child registry and resolver. Admin roles on a name cannot
-    be granted, and the owner cannot hold the `eth` token (the DAO timelock does not accept ERC-1155
-    tokens), so nobody can grant or revoke these roles.
-  - The deployer holds no role on either registry or on the `eth` entry. It keeps the `eth` token,
-    which carries no role.
+  - The owner holds no role on the `eth` entry. The DAO timelock cannot hold the `eth` token in any
+    case: it does not accept ERC-1155 tokens.
+  - The deployer holds no role on either registry or on the `eth` entry, and no longer holds the
+    `eth` token.
   - The deployer still owns `BatchRegistrar` and `RootBatchRegistrar`. That ownership gives it no
     power over names. `RootBatchRegistrar` gives up its root registry role as soon as phase 1 has
     registered the DNS top-level names, and `BatchRegistrar` loses its `.eth` registry roles in
     phase 6. Once the deployer has dropped its admin roles, only the owner can grant them one again.
   - The registrar, renewer and migration controllers keep the regular roles they need.
 
-  The command makes every grant to the owner before the deployer drops anything, and sends only the
-  grants and revocations still missing. It then checks the end state from the registries' own role
+  The command first transfers the `eth` token, while the deployer is still the only account with a
+  role on the entry, as a safe transfer requires. It then makes every grant to the owner before the
+  deployer drops anything, and sends only the transfer, grants and revocations still missing. It then checks the end state from the registries' own role
   counts, so a holder it did not look for is caught too, and checks that the `.eth` registry is
   emancipated. `emancipate-root-registry` has the owner drop every root registry root role except
   the regular naming and metadata roles, and `REGISTRAR` and `REGISTER_RESERVED` with their admin
@@ -537,8 +543,43 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   top-level name, to its operator by registering it to them; a zero expiry keeps the reservation's.
   It can also grant either role to another account, such as a contract that checks DNS ownership.
   The command checks that the owner is then the only admin on the root registry, and only over
-  those two roles. It leaves the owner's `.eth` registry roles and its roles on the `eth` entry as
+  those two roles. It leaves the owner's `.eth` registry roles and the endowment's `eth` token as
   they are. `fork full` runs both steps and audits the roles after each.
+
+## Replacing the root registry under a live deployment
+
+A deployment whose root registry registered `eth` without the transfer-admin role cannot hand the
+`eth` token over: admin roles on a name are fixed at registration, and nothing can unregister `eth`.
+`phase redeploy-root` replaces the root registry, with the contracts that hold it as an immutable
+(`ENSV2Resolver`, `UniversalResolverV2`, `UniversalHelper`, `DNSTLDResolver`, `DNSAliasResolver`,
+`PublicResolverV2`, `MigrationHelper`, `RootBatchRegistrar`) and those built on one of them
+(`WrapperRegistryImpl`, `LockedMigrationController`). Everything else is reused, the `.eth`
+registry and its pre-migration reservations above all.
+
+```bash
+bun run migration -- phase redeploy-root  --network mainnet \
+  --defer-v1-owner-transactions --deferred-v1-owner-transactions-file <file>
+bun run migration -- phase verify-deployment --network mainnet
+bun ./script/verify.ts --network mainnet
+bun run migration -- phase set-eth-parent --network mainnet
+```
+
+- `redeploy-root` refuses once the DAO proposal has executed (the v1 `BaseRegistrar` is no longer
+  owned by `RegistrarSecurityController`), once go-live has begun, when the deployer can no longer
+  set the `.eth` registry's parent, and when any contract that should be reused differs from the
+  current build, since the deploy would replace it too. It moves the replaced records to a
+  `<namespace>-root-<date>` archive beside the namespace, reruns phase 1 into the same namespace,
+  and fails unless exactly the root-bound contracts moved. A re-run resumes an interrupted
+  redeploy, and does nothing after a completed one.
+- The new root registers `eth` and `reverse` and the DNS top-level names again. The phase 1 DAO
+  calls are rebuilt with it: `setRegistrarResolver` now names the new `ENSV2Resolver`.
+- The `.eth` registry keeps pointing at the old root until `set-eth-parent`. That command sends
+  nothing unless every contract exposing `ROOT_REGISTRY()` reports the new root, no replaced
+  contract is still recorded, `verify-deployment` passes (so no record points into the archive),
+  every replaced contract's source is verified on Etherscan (`ETHERSCAN_API_KEY`;
+  `--skip-source-verification` on a fork), and the new root's `eth` entry points at the `.eth`
+  registry with the deployer holding its token.
+- The old root registry and the contracts built over it stay on chain, unused.
 
 ## Re-deploying onto an already-migrated network
 
@@ -736,7 +777,8 @@ The phases run in this order:
    execution and phase 6, no `.eth` name can be registered: v1 is frozen and v2 is not yet open.
 6. **After execution**, run the same checks against mainnet, then phase 5 with a CSV exported after
    the freeze — its `premigration reconcile` must pass, since v1 no longer changes — then phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
-7. **Phase 8**, `hand-over-registry-admin`, signed by the deployer. After the probation period
+7. **Phase 8**, `hand-over-registry-admin`, signed by the deployer: the `eth` token goes to the ENS
+   DAO endowment Safe, and the registries' root roles to the DAO. After the probation period
    (30 days), the DAO executes the `emancipate-root-registry` call as a proposal.
 
 ## ENSv1 test fixture corpus
@@ -1087,7 +1129,7 @@ smoke checks interleaved (phase 8 only when the owner is not the deployer):
 - the v2 registrar rejects registrations before phase 6's grant, rejects pre-migrated reserved names
   after it, and accepts a fresh name after enablement;
 - the phase 8 handover leaves the deployer no v2 role, gives the owner both registries' root roles
-  and the `eth` entry's child registry and resolver, and the owner's later emancipation leaves it
+  and the endowment the `eth` token with its roles, and the owner's later emancipation leaves it
   only the naming, metadata, registrar and register-reserved roles on the root registry, each
   audited with `verify-roles`.
 
@@ -1307,7 +1349,9 @@ and idempotency rules.
 | `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 4) |
 | `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
 | `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions, and write `deployments/<namespace>/roles.md` with every role, owner and proxy admin on the namespace's contracts; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`, `root-emancipated`) |
-| `phase hand-over-registry-admin` | Phase 8: the owner takes the root registry's and the `.eth` registry's root roles and the roles that set the `eth` entry's child registry and resolver, then the deployer drops every role it holds on them |
+| `phase hand-over-registry-admin` | Phase 8: the `eth` token, with every role on its entry, goes to the endowment; the owner takes the root registry's and the `.eth` registry's root roles; then the deployer drops every role it holds on them |
+| `phase redeploy-root` | Replace the v2 root registry under a live namespace, with every contract built over it, before the DAO proposal executes and before go-live; the `.eth` registry and its reservations are reused, and its parent is left for `set-eth-parent` |
+| `phase set-eth-parent` | Point the `.eth` registry at the new root registry, once every contract built over the root reports it, `verify-deployment` passes, and every replaced contract's source is verified on Etherscan |
 | `phase emancipate-root-registry` | Phase 8, after probation: the owner drops its root registry roles except naming, metadata, and adding and assigning top-level names |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |

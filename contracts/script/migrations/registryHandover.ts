@@ -1,37 +1,38 @@
 /// Hands the deployer's authority over the v2 registries to its final holders.
 ///
 /// The deploy leaves the deployer holding root roles on `RootRegistry` and
-/// `ETHRegistry`, and the `eth` entry's roles in the root. After the migration:
+/// `ETHRegistry`, and the `eth` token in the root. After the migration:
+/// - the endowment (the ENS DAO endowment Safe on mainnet) holds the `eth` token,
+///   and with it every role on the entry: setting its child registry and resolver,
+///   granting either, and transferring the token;
 /// - the owner (the DAO on mainnet) takes the root registry's root roles, admin
 ///   bits included, for a probation period before it drops them itself;
 /// - the owner takes the `.eth` registry's root roles, so it can authorize
 ///   registrars and migration controllers. None of them reaches a name, so `.eth`
-///   names stay emancipated;
-/// - the owner can set the `eth` entry's child registry and resolver. Admin roles on
-///   a name cannot be granted, so nobody can grant or revoke those roles.
+///   names stay emancipated.
 ///
 /// This module plans the calls from the roles currently held, so a re-run sends only
 /// what is missing. It knows nothing about signing or sending them.
 
-import type { Address } from "viem";
+import type { Address, Hex } from "viem";
 
 import { DEPLOYMENT_ROLES } from "../deploy-constants.js";
 import { sameAddress } from "./plumbing.js";
 
-/// The roles the deployer and the owner currently hold, as the plan reads them.
+/// What the deployer, the owner and the endowment currently hold, as the plan reads it.
 export type RegistryHandoverState = {
   deployer: Address;
   owner: Address;
-  /// Resource id of the `eth` entry in `RootRegistry`.
-  ethResource: bigint;
+  endowment: Address;
+  /// Current token id of the `eth` entry in `RootRegistry`. A role change on the
+  /// entry regenerates it, so it is read just before the plan runs.
+  ethTokenId: bigint;
+  /// Holder of the `eth` token.
+  ethTokenHolder: Address;
   /// `RootRegistry` root roles of the owner.
   ownerRootRoles: bigint;
   /// `RootRegistry` root roles of the deployer.
   deployerRootRoles: bigint;
-  /// Roles the owner holds on the `eth` entry.
-  ownerEthEntryRoles: bigint;
-  /// Roles the deployer holds on the `eth` entry.
-  deployerEthEntryRoles: bigint;
   /// `ETHRegistry` root roles of the owner.
   ownerEthRegistryRoles: bigint;
   /// `ETHRegistry` root roles of the deployer.
@@ -40,17 +41,17 @@ export type RegistryHandoverState = {
 
 export type RegistryHandoverCall = {
   registry: "RootRegistry" | "ETHRegistry";
-  functionName:
-    | "grantRootRoles"
-    | "grantRoles"
-    | "revokeRootRoles"
-    | "revokeRoles";
-  args: readonly [bigint, Address] | readonly [bigint, bigint, Address];
+  functionName: "grantRootRoles" | "revokeRootRoles" | "safeTransferFrom";
+  args:
+    | readonly [bigint, Address]
+    | readonly [Address, Address, bigint, bigint, Hex];
   label: string;
 };
 
 /// The calls that take the registries from `state` to the handed-over end state, in
-/// order. Every grant to the owner comes before the deployer's revocations, while the
+/// order. The `eth` token moves first, while the deployer is still the only account
+/// with a role on the entry, as a safe transfer requires; its roles move with it.
+/// Every grant to the owner comes before the deployer's revocations, while the
 /// deployer still holds the admin roles that make it, so no role passes through a
 /// moment with nobody able to grant it. Empty once handed over.
 export function planRegistryHandover(
@@ -63,8 +64,25 @@ export function planRegistryHandover(
       `the owner ${state.owner} is the deployer: there is no one to hand the registries to`,
     );
   }
+  if (sameAddress(state.endowment, state.deployer)) {
+    throw new Error(
+      `the endowment ${state.endowment} is the deployer: there is no one to hand the eth token to`,
+    );
+  }
 
   const calls: RegistryHandoverCall[] = [];
+  if (sameAddress(state.ethTokenHolder, state.deployer)) {
+    calls.push({
+      registry: "RootRegistry",
+      functionName: "safeTransferFrom",
+      args: [state.deployer, state.endowment, state.ethTokenId, 1n, "0x"],
+      label: `transfer the eth token, and every role on the entry, to the endowment ${state.endowment}`,
+    });
+  } else if (!sameAddress(state.ethTokenHolder, state.endowment)) {
+    throw new Error(
+      `the eth token is held by ${state.ethTokenHolder}, neither the deployer nor the endowment ${state.endowment}`,
+    );
+  }
   const missingRoot =
     DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT & ~state.ownerRootRoles;
   if (missingRoot !== 0n) {
@@ -73,16 +91,6 @@ export function planRegistryHandover(
       functionName: "grantRootRoles",
       args: [missingRoot, state.owner],
       label: `grant the owner ${state.owner} the root registry's root roles`,
-    });
-  }
-  const missingEthEntry =
-    DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR & ~state.ownerEthEntryRoles;
-  if (missingEthEntry !== 0n) {
-    calls.push({
-      registry: "RootRegistry",
-      functionName: "grantRoles",
-      args: [state.ethResource, missingEthEntry, state.owner],
-      label: `let the owner ${state.owner} set the eth entry's child registry and resolver`,
     });
   }
   const missingEthRegistry =
@@ -101,14 +109,6 @@ export function planRegistryHandover(
       functionName: "revokeRootRoles",
       args: [state.deployerRootRoles, state.deployer],
       label: "revoke the deployer's root registry root roles",
-    });
-  }
-  if (state.deployerEthEntryRoles !== 0n) {
-    calls.push({
-      registry: "RootRegistry",
-      functionName: "revokeRoles",
-      args: [state.ethResource, state.deployerEthEntryRoles, state.deployer],
-      label: "revoke the deployer's roles on the eth entry",
     });
   }
   if (state.deployerEthRegistryRoles !== 0n) {

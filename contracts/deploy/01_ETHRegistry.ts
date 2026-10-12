@@ -17,6 +17,7 @@ export default execute(
     get,
     read,
     namedAccounts: { deployer, owner },
+    tags,
   }) => {
     const rootRegistry =
       get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
@@ -57,7 +58,17 @@ export default execute(
         read(ethRegistry, { functionName: "getURI" }),
       ]);
 
+    // A root registry redeployed over a live namespace leaves the parent alone until
+    // the redeploy has been checked; `phase set-eth-parent` sets it then.
     if (
+      (!isAddressEqual(currentParent, rootRegistry.address) ||
+        currentLabel !== "eth") &&
+      tags.deferEthParent
+    ) {
+      console.log(
+        `  - Canonical parent held back: still ${currentParent} (${currentLabel})`,
+      );
+    } else if (
       !isAddressEqual(currentParent, rootRegistry.address) ||
       currentLabel !== "eth"
     ) {

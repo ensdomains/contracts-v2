@@ -134,7 +134,7 @@ Roles granted during core deployment.
 | Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | CAN_NAME | UPGRADE |
 | --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | -------- | ------- |
 | RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       |         |
-| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       |                 | AR           | AR                 |          |         |
+| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       | AR              | AR           | A                  |          |         |
 | RootRegistry    | .reverse | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |          |         |
 | ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       |         |
 | ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |          |         |
@@ -149,7 +149,7 @@ _`ETHRegistrar` and `ETHRenewerV1` use `Ownable`, not `EnhancedAccessControl`. I
 
 _Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller). The `deferMigration` tag, also always set, does the same for the migration controllers' `REGISTER_RESERVED`._
 
-_The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
+_The token for `eth` is registered to the deployer, transferable; `reverse` and `addr.reverse` are reserved._
 
 _These are the roles at deploy. Where the owner is not the deployer (mainnet), phase 8 of the
 migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over.
@@ -157,8 +157,8 @@ The owner takes the `RootRegistry` root roles for a probation period and then dr
 `CAN_NAME`, `SET_URI`, and `REGISTRAR` and `REGISTER_RESERVED` with their admin roles, so it can
 still add top-level names and give reserved ones, such as DNS top-level names, to their operators.
 It also takes the `ETHRegistry` root roles, none of which reaches a name,
-so `.eth` names stay emancipated, and `SET_RESOLVER | SET_SUBREGISTRY` on the `eth` token, which
-nobody can grant or revoke. The deployer drops every role it holds. `phase verify-roles` records
+so `.eth` names stay emancipated. The `eth` token moves to the endowment (the ENS DAO endowment
+Safe on mainnet) with every role it carries. The deployer drops every role it holds. `phase verify-roles` records
 the roles actually held in `deployments/<namespace>/roles.md`._
 
 #### Creating Emancipated Names

@@ -114,16 +114,15 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.CAN_NAME |
     ROLES.REGISTRY.SET_URI |
     ROLES.ADMIN.REGISTRY.SET_URI,
-  // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR
+  // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR, and CAN_TRANSFER A so the token
+  // can move to its final holder. No UNREGISTER: removing `eth` would orphan every
+  // .eth name. These roles travel with the token.
   ETH_TOKEN:
     ROLES.REGISTRY.SET_SUBREGISTRY |
     ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
     ROLES.REGISTRY.SET_RESOLVER |
-    ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  // .eth token once handed over: the owner sets its child registry and resolver. Admin
-  // roles on a name cannot be granted, so nobody can grant or revoke these.
-  ETH_TOKEN_OPERATOR:
-    ROLES.REGISTRY.SET_SUBREGISTRY | ROLES.REGISTRY.SET_RESOLVER,
+    ROLES.ADMIN.REGISTRY.SET_RESOLVER |
+    ROLES.ADMIN.REGISTRY.CAN_TRANSFER,
   // .reverse token: full role bitmap, held by the deployer only while it hands the
   // name over. Some roles (e.g. REGISTRAR) are root-only and don't apply to tokens.
   REVERSE_REGISTRY_ROOT: FLAGS.ALL,

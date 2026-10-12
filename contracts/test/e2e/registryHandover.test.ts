@@ -40,6 +40,7 @@ describe("registry handover", () => {
 
   const deployer = () => getAddress(env.namedAccounts.deployer.address);
   const owner = () => getAddress(env.namedAccounts.owner.address);
+  const endowment = () => getAddress(env.namedAccounts.endowment.address);
 
   function context() {
     rmSync(deploymentsDir, { recursive: true, force: true });
@@ -60,6 +61,7 @@ describe("registry handover", () => {
       deploymentsDir,
       deploymentNetwork: NAMESPACE,
       owner: owner(),
+      endowment: endowment(),
     } as const;
   }
 
@@ -80,7 +82,7 @@ describe("registry handover", () => {
     env.v2.RootRegistry.read.getResource([idFromLabel("eth")]);
 
   it(
-    "leaves the deployer no authority and gives the owner both registries",
+    "leaves the deployer no authority, gives the owner both registries and the endowment the eth token",
     async () => {
       await handOver();
 
@@ -98,7 +100,16 @@ describe("registry handover", () => {
       );
       expect(
         await env.v2.RootRegistry.read.roles([await ethResource(), owner()]),
-      ).toBe(DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR);
+      ).toBe(0n);
+      expect(
+        await env.v2.RootRegistry.read.getOwner([idFromLabel("eth")]),
+      ).toBe(endowment());
+      expect(
+        await env.v2.RootRegistry.read.roles([
+          await ethResource(),
+          endowment(),
+        ]),
+      ).toBe(DEPLOYMENT_ROLES.ETH_TOKEN);
 
       const findings = await verifyV2Roles({
         ...context(),
@@ -127,7 +138,7 @@ describe("registry handover", () => {
       expect(rolesDoc).toContain("### RootRegistry");
       expect(rolesDoc).toMatch(
         new RegExp(
-          `"eth" entry \\| \\*\\*owner[^*]*\\*\\*<br>\\[${owner()}\\]`,
+          `"eth" entry \\| \\*\\*endowment[^*]*\\*\\*<br>\\[${endowment()}\\]`,
         ),
       );
     },
@@ -135,12 +146,13 @@ describe("registry handover", () => {
   );
 
   it(
-    "lets the owner set the eth entry and authorize registrars, keeping .eth names emancipated",
+    "lets the endowment run the eth entry and the owner authorize registrars, keeping .eth names emancipated",
     async () => {
       await handOver();
       const ethId = idFromLabel("eth");
       const asOwner = { account: env.namedAccounts.owner };
       const asDeployer = { account: env.namedAccounts.deployer };
+      const asEndowment = { account: env.namedAccounts.endowment };
 
       // The deployer can no longer touch the eth entry or the .eth registry.
       await expect(
@@ -153,22 +165,31 @@ describe("registry handover", () => {
         ),
       ).rejects.toThrow();
 
-      // The owner sets the eth entry's resolver and child registry, but cannot pass
-      // those roles on: admin roles on a name stay with its token holder.
-      await env.v2.RootRegistry.write.setResolver([ethId, STRANGER], asOwner);
+      // The owner holds no role on the eth entry.
+      await expect(
+        env.v2.RootRegistry.write.setResolver([ethId, STRANGER], asOwner),
+      ).rejects.toThrow();
+
+      // The endowment sets the eth entry's resolver and child registry, and holds
+      // the admin roles to delegate them.
+      await env.v2.RootRegistry.write.setResolver(
+        [ethId, STRANGER],
+        asEndowment,
+      );
       expect(await env.v2.RootRegistry.read.getResolver(["eth"])).toBe(
         STRANGER,
       );
       await env.v2.RootRegistry.write.setSubregistry(
         [ethId, env.v2.ETHRegistry.address],
-        asOwner,
+        asEndowment,
       );
-      await expect(
-        env.v2.RootRegistry.write.grantRoles(
-          [await ethResource(), ROLES.REGISTRY.SET_RESOLVER, STRANGER],
-          asOwner,
-        ),
-      ).rejects.toThrow();
+      await env.v2.RootRegistry.write.grantRoles(
+        [await ethResource(), ROLES.REGISTRY.SET_RESOLVER, STRANGER],
+        asEndowment,
+      );
+      expect(
+        await env.v2.RootRegistry.read.roles([await ethResource(), STRANGER]),
+      ).toBe(ROLES.REGISTRY.SET_RESOLVER);
 
       // The owner can authorize a registrar on the .eth registry, but cannot take a
       // root role that reaches a name, so .eth names stay emancipated.
@@ -206,6 +227,30 @@ describe("registry handover", () => {
           env.v2.ETHRegistrar.address,
         ]),
       ).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "lets the endowment transfer the eth token on, with its roles",
+    async () => {
+      await handOver();
+      const ethId = idFromLabel("eth");
+      const user = getAddress(env.namedAccounts.user.address);
+      await env.v2.RootRegistry.write.safeTransferFrom(
+        [
+          endowment(),
+          user,
+          await env.v2.RootRegistry.read.getTokenId([ethId]),
+          1n,
+          "0x",
+        ],
+        { account: env.namedAccounts.endowment },
+      );
+      expect(await env.v2.RootRegistry.read.getOwner([ethId])).toBe(user);
+      expect(
+        await env.v2.RootRegistry.read.roles([await ethResource(), user]),
+      ).toBe(DEPLOYMENT_ROLES.ETH_TOKEN);
     },
     TEST_TIMEOUT_MS,
   );

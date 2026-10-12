@@ -116,6 +116,14 @@ import {
   type RegistryHandoverState,
 } from "./migrations/registryHandover.js";
 import {
+  archiveRootBoundRecords,
+  driftedReusedRecords,
+  findRootArchive,
+  readNamespaceRecords,
+  ROOT_BOUND_DEPLOYMENTS,
+  rootRedeployDiff,
+} from "./migrations/rootRedeploy.js";
+import {
   assertRejected,
   assertV1Owner,
   assertV2State,
@@ -3848,8 +3856,8 @@ const EXPECTED_TOKEN_ROLES: Record<
   }>
 > = {
   RootRegistry: [
-    // 01_ETHRegistry.ts registers `eth` to the deployer. The handover lets the owner
-    // set its child registry and resolver, and the deployer drops every role on it.
+    // 01_ETHRegistry.ts registers `eth` to the deployer. The handover transfers the
+    // token to the endowment, and the roles on the entry move with it.
     {
       label: "eth",
       deployment: "@deployer",
@@ -3858,8 +3866,8 @@ const EXPECTED_TOKEN_ROLES: Record<
     },
     {
       label: "eth",
-      deployment: "@owner",
-      roles: DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR,
+      deployment: "@endowment",
+      roles: DEPLOYMENT_ROLES.ETH_TOKEN,
       stages: HANDED_OVER_STAGES,
     },
     // 01_ReverseMirror.ts hands the owner every regular role on `reverse`, and
@@ -3913,6 +3921,7 @@ export async function verifyV2Roles(opts: {
   deploymentNetwork?: string;
   deployer?: Address;
   owner?: Address;
+  endowment?: Address;
   fromBlock?: string;
   reportOnly?: boolean;
   // The point in the migration to audit against; after phase 6 by default.
@@ -3933,6 +3942,8 @@ export async function verifyV2Roles(opts: {
     opts.owner ??
     deploymentOwner(deploymentsDir, deploymentNetwork) ??
     NETWORKS[opts.network].defaultOwner;
+  const endowment =
+    opts.endowment ?? NETWORKS[opts.network].defaultEndowment ?? owner;
   // Falling back to the owner here made the audit compare every constructor grant
   // against the wrong address: on a live deployment the deployer and the owner
   // differ, so the real deployer was reported as unexpected and the owner as missing
@@ -3955,6 +3966,7 @@ export async function verifyV2Roles(opts: {
     deploymentNetwork,
     deployer,
     owner,
+    endowment,
     fromBlock:
       opts.fromBlock !== undefined ? BigInt(opts.fromBlock) : undefined,
   });
@@ -3972,6 +3984,7 @@ export async function verifyV2Roles(opts: {
     const resolveAccount = (deployment: string): Address | undefined => {
       if (deployment === "@deployer") return deployer;
       if (deployment === "@owner") return owner;
+      if (deployment === "@endowment") return endowment;
       return maybeLoadV2Deployment(
         deploymentsDir,
         deploymentNetwork,
@@ -4075,6 +4088,8 @@ const ACCOUNT_NAMES: Record<string, string> = {
   [MAINNET_DAO.toLowerCase()]: "ENS DAO timelock",
   [rockethConfig.accounts.securityCouncil.mainnet.toLowerCase()]:
     "ENS Security Council Safe",
+  [rockethConfig.accounts.endowment.mainnet.toLowerCase()]:
+    "ENS DAO endowment Safe",
 };
 type RockethAccountName = keyof typeof rockethConfig.accounts;
 
@@ -4111,6 +4126,7 @@ async function readRoleMap(opts: {
   deploymentNetwork: string;
   deployer: Address;
   owner: Address;
+  endowment?: Address;
   /// Where every event scan starts; each contract's deploy block by default.
   fromBlock?: bigint;
 }): Promise<RoleMap> {
@@ -4157,6 +4173,7 @@ async function readRoleMap(opts: {
   };
   addAccount("deployer", opts.deployer);
   addAccount("owner", opts.owner);
+  addAccount("endowment", opts.endowment);
   addAccount(
     "security council",
     configuredAccount("securityCouncil", environment),
@@ -4302,6 +4319,7 @@ type RegistryAdminOptions = {
   deploymentsDir?: string;
   deploymentNetwork?: string;
   owner?: Address;
+  endowment?: Address;
   privateKey?: `0x${string}`;
   impersonateAccount?: Address;
   calldataOnly?: boolean;
@@ -4320,6 +4338,9 @@ function registryAdminContext(opts: RegistryAdminOptions) {
     opts.owner ??
       deploymentOwner(deploymentsDir, deploymentNetwork) ??
       NETWORKS[opts.network].defaultOwner,
+  );
+  const endowment = getAddress(
+    opts.endowment ?? NETWORKS[opts.network].defaultEndowment ?? owner,
   );
   const read = (
     registry: ContractRef,
@@ -4354,6 +4375,7 @@ function registryAdminContext(opts: RegistryAdminOptions) {
     deploymentsDir,
     deploymentNetwork,
     owner,
+    endowment,
     rootRegistry: registry("RootRegistry"),
     ethRegistry: registry("ETHRegistry"),
     read,
@@ -4368,32 +4390,30 @@ async function readRegistryHandoverState(
   ctx: RegistryAdminContext,
   deployer: Address,
 ): Promise<RegistryHandoverState> {
-  const ethResource = (await ctx.read(ctx.rootRegistry, "getResource", [
-    labelId("eth"),
-  ])) as bigint;
+  const ethId = labelId("eth");
   const [
+    ethTokenId,
+    ethTokenHolder,
     ownerRootRoles,
     deployerRootRoles,
-    ownerEthEntryRoles,
-    deployerEthEntryRoles,
     ownerEthRegistryRoles,
     deployerEthRegistryRoles,
   ] = await Promise.all([
+    ctx.read(ctx.rootRegistry, "getTokenId", [ethId]) as Promise<bigint>,
+    ctx.read(ctx.rootRegistry, "getOwner", [ethId]) as Promise<Address>,
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, deployer),
-    ctx.roles(ctx.rootRegistry, ethResource, ctx.owner),
-    ctx.roles(ctx.rootRegistry, ethResource, deployer),
     ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, deployer),
   ]);
   return {
     deployer,
     owner: ctx.owner,
-    ethResource,
+    endowment: ctx.endowment,
+    ethTokenId,
+    ethTokenHolder: getAddress(ethTokenHolder),
     ownerRootRoles,
     deployerRootRoles,
-    ownerEthEntryRoles,
-    deployerEthEntryRoles,
     ownerEthRegistryRoles,
     deployerEthRegistryRoles,
   };
@@ -4414,14 +4434,19 @@ async function assertRegistryHandoverComplete(
   }
   // A role's assignee count sits in the lowest bit of its nybble, so one holder of
   // each role in a bitmap reads back as the bitmap itself. The plan being empty
-  // says the owner is that holder.
+  // says the endowment holds the eth token and the owner the root roles.
   const failures: string[] = [];
+  const ethResource = (await ctx.read(ctx.rootRegistry, "getResource", [
+    labelId("eth"),
+  ])) as bigint;
   if (
-    (await ctx.assignees(ctx.rootRegistry, state.ethResource, ANY_ROLE)) !==
-    DEPLOYMENT_ROLES.ETH_TOKEN_OPERATOR
+    (await ctx.assignees(ctx.rootRegistry, ethResource, ANY_ROLE)) !==
+      DEPLOYMENT_ROLES.ETH_TOKEN ||
+    (await ctx.roles(ctx.rootRegistry, ethResource, state.endowment)) !==
+      DEPLOYMENT_ROLES.ETH_TOKEN
   ) {
     failures.push(
-      "an account other than the owner holds a role on the eth entry",
+      "the endowment is not the only holder of the eth entry's roles, or lacks some of them",
     );
   }
   if (
@@ -4452,15 +4477,15 @@ async function assertRegistryHandoverComplete(
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${ctx.owner} holds the root registry's and the .eth registry's root roles and can set the eth entry's child registry and resolver; the deployer holds nothing, and .eth names are emancipated`,
+    `registry handover complete: ${state.endowment} holds the eth token and every role on its entry; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, and .eth names are emancipated`,
   );
 }
 
-/// Hands the deployer's authority over the v2 registries to the owner: the owner
-/// takes the root registry's and the `.eth` registry's root roles and the regular
-/// roles that set the `eth` entry's child registry and resolver, then the deployer
-/// drops every role it holds on them. Sends only what is missing, then checks the
-/// end state.
+/// Hands the deployer's authority over the v2 registries to their final holders: the
+/// `eth` token, with every role on its entry, goes to the endowment; the owner takes
+/// the root registry's and the `.eth` registry's root roles; then the deployer drops
+/// every role it holds on them. Sends only what is missing, then checks the end
+/// state.
 export async function handOverRegistryAdmin(
   opts: RegistryAdminOptions & { deployer?: Address },
 ) {
@@ -4485,7 +4510,7 @@ export async function handOverRegistryAdmin(
     await readRegistryHandoverState(ctx, getAddress(deployer)),
   );
   console.log(
-    `registry handover from ${deployer} to ${ctx.owner}: ${calls.length} call(s) to make`,
+    `registry handover from ${deployer} to ${ctx.owner}, eth token to ${ctx.endowment}: ${calls.length} call(s) to make`,
   );
   for (const call of calls) {
     await sendAdminWrite({
@@ -4927,6 +4952,419 @@ export async function verifyDeployment(opts: {
     );
   }
   return { matched, skipped, problems };
+}
+
+// Every contract in the namespace that exposes the root registry it was built over,
+// with the root it reports.
+async function rootRegistryReferences(
+  client: ReturnType<typeof publicClient>,
+  deploymentsDir: string,
+  deploymentNetwork: string,
+): Promise<Array<{ name: string; root: Address }>> {
+  const references: Array<{ name: string; root: Address }> = [];
+  for (const name of readNamespaceRecords(
+    deploymentsDir,
+    deploymentNetwork,
+  ).keys()) {
+    const deployment = loadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      name,
+    );
+    const getter = (deployment.abi as readonly AbiItemLike[]).some(
+      (item) =>
+        item.type === "function" &&
+        item.name === "ROOT_REGISTRY" &&
+        (item.inputs?.length ?? 0) === 0,
+    );
+    if (!getter) continue;
+    const root = (await client.readContract({
+      address: deployment.address,
+      abi: deployment.abi,
+      functionName: "ROOT_REGISTRY",
+    } as never)) as Address;
+    references.push({ name, root: getAddress(root) });
+  }
+  return references;
+}
+
+type AbiItemLike = { type: string; name?: string; inputs?: readonly unknown[] };
+
+// A root registry may only be replaced while nothing yet depends on it beyond this
+// deployment: before the DAO hands v1 over, before go-live, and while the deployer
+// can still repoint the `.eth` registry.
+async function assertRootRedeployAllowed(opts: {
+  client: ReturnType<typeof publicClient>;
+  network: MigrationNetwork;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  deployer: Address;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+}) {
+  const { client } = opts;
+  const failures: string[] = [];
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    V1_BASE_REGISTRAR_NAME,
+    opts,
+  );
+  const registrarSecurityController = requireV1Deployment(
+    opts.network,
+    "RegistrarSecurityController",
+    opts,
+  );
+  const v1Owner = (await client.readContract({
+    address: baseRegistrar.address,
+    abi: RegistrarOwnershipAbi,
+    functionName: "owner",
+  })) as Address;
+  if (!sameAddress(v1Owner, registrarSecurityController.address)) {
+    failures.push(
+      `the v1 BaseRegistrar is owned by ${v1Owner}, not RegistrarSecurityController: the DAO proposal has already executed`,
+    );
+  }
+  const v2 = (name: string) =>
+    loadV2Deployment(opts.deploymentsDir, opts.deploymentNetwork, name);
+  const ethRegistry = v2("ETHRegistry");
+  const hasRootRoles = (roles: bigint, account: Address) =>
+    client.readContract({
+      address: ethRegistry.address,
+      abi: Artifact_PermissionedRegistry.abi,
+      functionName: "hasRootRoles",
+      args: [roles, account],
+    }) as Promise<boolean>;
+  if (
+    !(await hasRootRoles(
+      ROLES.REGISTRY.REGISTRAR,
+      v2("BatchRegistrar").address,
+    ))
+  ) {
+    failures.push(
+      "BatchRegistrar no longer holds the registrar role: go-live has started",
+    );
+  }
+  if (
+    await hasRootRoles(ROLES.REGISTRY.REGISTRAR, v2("ETHRegistrar").address)
+  ) {
+    failures.push(
+      "ETHRegistrar holds the registrar role: v2 registration is open",
+    );
+  }
+  if (!(await hasRootRoles(ROLES.REGISTRY.SET_PARENT, opts.deployer))) {
+    failures.push(
+      `the deployer ${opts.deployer} cannot set the .eth registry's parent`,
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `the root registry cannot be redeployed: ${failures.join("; ")}`,
+    );
+  }
+}
+
+/// Replaces the v2 root registry under a live namespace, with every contract built
+/// over it, and reuses the rest. The `.eth` registry keeps its address and
+/// reservations; its parent is left for `phase set-eth-parent`. Refuses once v1 has
+/// been handed over or go-live has begun, or when a contract that should be reused
+/// has drifted from the build and would be replaced too. Re-running after an
+/// interruption resumes, and after completion does nothing.
+export async function redeployRootRegistry(
+  opts: DeployV2Options & { rpcUrl: string; deployerAddress: Address },
+) {
+  const network = NETWORKS[opts.network];
+  const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+
+  const active = readNamespaceRecords(deploymentsDir, deploymentNetwork);
+  const archive = findRootArchive(deploymentsDir, deploymentNetwork);
+  const archived = archive
+    ? readNamespaceRecords(deploymentsDir, archive)
+    : new Map<string, ReturnType<typeof active.get>>();
+  const replacedAlready = ROOT_BOUND_DEPLOYMENTS.every((name) => {
+    const now = active.get(name)?.address;
+    const old = archived.get(name)?.address;
+    return now && old && !sameAddress(now, old);
+  });
+  if (archive && replacedAlready) {
+    console.log(
+      `the root registry was already redeployed: the replaced records are in ${archive}`,
+    );
+    return;
+  }
+
+  await assertRootRedeployAllowed({
+    client,
+    network: opts.network,
+    deploymentsDir,
+    deploymentNetwork,
+    deployer: opts.deployerAddress,
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork,
+  });
+  const builds = new Map<string, string | undefined>();
+  for (const record of active.values()) {
+    const name = record?.contractName;
+    if (!name || builds.has(name)) continue;
+    const file = resolve(
+      import.meta.dirname,
+      "../generated/artifacts",
+      `${name}.ts`,
+    );
+    builds.set(
+      name,
+      existsSync(file)
+        ? ((await import(file))[`Artifact_${name}`]?.bytecode as
+            | string
+            | undefined)
+        : undefined,
+    );
+  }
+  const drifted = driftedReusedRecords(active, (name) => builds.get(name));
+  if (drifted.length > 0) {
+    throw new Error(
+      `the root registry cannot be redeployed without replacing more than it should: ${drifted.join("; ")}`,
+    );
+  }
+
+  // The namespace as it stood before any part of this redeploy: an interrupted run
+  // has already moved the root-bound records to the archive.
+  const before = new Map(active);
+  for (const name of ROOT_BOUND_DEPLOYMENTS) {
+    const record = archived.get(name);
+    if (record && !active.get(name)) before.set(name, record);
+  }
+  const resuming =
+    archive !== undefined &&
+    ROOT_BOUND_DEPLOYMENTS.some((name) => {
+      const now = active.get(name)?.address;
+      const old = archived.get(name)?.address;
+      return !now || (old !== undefined && !sameAddress(now, old));
+    });
+  if (resuming) {
+    console.log(`resuming the root registry redeploy archived in ${archive}`);
+  } else {
+    const moved = archiveRootBoundRecords(
+      deploymentsDir,
+      deploymentNetwork,
+      new Date(),
+    );
+    console.log(
+      `moved the root-bound records to ${moved}: ${ROOT_BOUND_DEPLOYMENTS.join(", ")}`,
+    );
+  }
+
+  await deployV2({
+    ...opts,
+    fresh: false,
+    saveDeployments: true,
+    deferEthParent: true,
+  });
+
+  const { replaced, problems } = rootRedeployDiff(
+    before,
+    readNamespaceRecords(deploymentsDir, deploymentNetwork),
+  );
+  for (const line of replaced) console.log(`  replaced ${line}`);
+  if (problems.length > 0) {
+    for (const problem of problems) console.error(`  ${problem}`);
+    throw new Error(
+      `the root registry redeploy changed the namespace unexpectedly: ${problems.length} problem(s)`,
+    );
+  }
+  console.log(
+    "root registry redeployed; the .eth registry's parent is unchanged until phase set-eth-parent",
+  );
+}
+
+// Whether Etherscan holds verified source for an address.
+async function isSourceVerifiedOnEtherscan(
+  chainId: number,
+  address: Address,
+  apiKey: string,
+): Promise<boolean> {
+  const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`;
+  for (let attempt = 0; ; attempt++) {
+    const body = (await (await fetch(url)).json()) as {
+      status?: string;
+      result?: Array<{ SourceCode?: string }> | string;
+    };
+    if (body.status === "1" && Array.isArray(body.result)) {
+      return Boolean(body.result[0]?.SourceCode);
+    }
+    if (attempt >= 4) {
+      throw new Error(
+        `etherscan could not report on ${address}: ${typeof body.result === "string" ? body.result : "no result"}`,
+      );
+    }
+    await sleep(1_500 * (attempt + 1));
+  }
+}
+
+/// Points the `.eth` registry at the namespace's root registry, as the last step of
+/// a root registry redeploy. Sends nothing unless every check passes: each contract
+/// built over a root reports the new one and none of the replaced contracts is still
+/// recorded; the deployment check passes, so no record points into the archived
+/// namespace; every replaced contract's source is verified on Etherscan; and the new
+/// root's `eth` entry points at the `.eth` registry with the deployer holding it.
+export async function setEthParent(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  privateKey?: `0x${string}`;
+  impersonateAccount?: Address;
+  skipSourceVerification?: boolean;
+}) {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const deployer = keyAddress(opts.privateKey) ?? opts.impersonateAccount;
+  if (!deployer) {
+    throw new Error(
+      "set-eth-parent needs the deployer: pass --private-key or --impersonate-account",
+    );
+  }
+  const v2 = (name: string) =>
+    loadV2Deployment(deploymentsDir, deploymentNetwork, name);
+  const root = getAddress(v2("RootRegistry").address);
+  const ethRegistry: ContractRef = {
+    address: v2("ETHRegistry").address,
+    abi: Artifact_PermissionedRegistry.abi,
+  };
+  const readRoot = (functionName: string, args: readonly unknown[]) =>
+    client.readContract({
+      address: root,
+      abi: Artifact_PermissionedRegistry.abi,
+      functionName,
+      args,
+    } as never) as Promise<unknown>;
+
+  const [parent, label] = (await client.readContract({
+    address: ethRegistry.address,
+    abi: ethRegistry.abi,
+    functionName: "getParent",
+  })) as [Address, string];
+  if (sameAddress(parent, root) && label === "eth") {
+    console.log(`the .eth registry's parent is already ${root}`);
+    return;
+  }
+
+  const failures: string[] = [];
+  const archive = findRootArchive(deploymentsDir, deploymentNetwork);
+  if (!archive) {
+    failures.push(
+      "no archived root registry namespace: run phase redeploy-root first",
+    );
+  } else {
+    const archived = readNamespaceRecords(deploymentsDir, archive);
+    const active = readNamespaceRecords(deploymentsDir, deploymentNetwork);
+    for (const name of ROOT_BOUND_DEPLOYMENTS) {
+      const now = active.get(name)?.address;
+      const old = archived.get(name)?.address;
+      if (!now) failures.push(`${name} has no record`);
+      else if (old && sameAddress(now, old)) {
+        failures.push(`${name} is still the replaced contract ${now}`);
+      }
+    }
+  }
+  for (const { name, root: built } of await rootRegistryReferences(
+    client,
+    deploymentsDir,
+    deploymentNetwork,
+  )) {
+    if (!sameAddress(built, root)) {
+      failures.push(
+        `${name} is built over ${built}, not the root registry ${root}`,
+      );
+    }
+  }
+  try {
+    await verifyDeployment({ ...opts, deploymentsDir, deploymentNetwork });
+  } catch (error) {
+    failures.push(errorMessageChain(error)[0]);
+  }
+  if (opts.skipSourceVerification) {
+    console.log("source verification on Etherscan: skipped");
+  } else {
+    const apiKey = envValue("ETHERSCAN_API_KEY");
+    if (!apiKey) {
+      failures.push(
+        "ETHERSCAN_API_KEY is not set, so source verification cannot be checked",
+      );
+    } else {
+      for (const name of ROOT_BOUND_DEPLOYMENTS) {
+        const address = v2(name).address;
+        if (!(await isSourceVerifiedOnEtherscan(chain.id, address, apiKey))) {
+          failures.push(
+            `${name} ${address} has no verified source on Etherscan`,
+          );
+        }
+        await sleep(250);
+      }
+    }
+  }
+  const ethId = labelId("eth");
+  const [subregistry, ethOwner, ethResource] = (await Promise.all([
+    readRoot("getSubregistry", ["eth"]),
+    readRoot("getOwner", [ethId]),
+    readRoot("getResource", [ethId]),
+  ])) as [Address, Address, bigint];
+  if (!sameAddress(subregistry, ethRegistry.address)) {
+    failures.push(
+      `the root's eth entry points at ${subregistry}, not the .eth registry`,
+    );
+  }
+  if (!sameAddress(ethOwner, deployer)) {
+    failures.push(
+      `the root's eth token is held by ${ethOwner}, not the deployer`,
+    );
+  }
+  if (
+    ((await readRoot("roles", [ethResource, deployer])) as bigint) !==
+    DEPLOYMENT_ROLES.ETH_TOKEN
+  ) {
+    failures.push("the deployer does not hold exactly the eth token's roles");
+  }
+  if (failures.length > 0) {
+    for (const failure of failures) console.error(`  ${failure}`);
+    throw new Error(
+      `the .eth registry's parent was not changed: ${failures.length} check(s) failed`,
+    );
+  }
+
+  await sendAdminWrite({
+    client,
+    chain,
+    rpcUrl: opts.rpcUrl,
+    provider: opts.provider,
+    target: ethRegistry,
+    functionName: "setParent",
+    args: [root, "eth"],
+    receiptLabel: "point the .eth registry at the root registry",
+    privateKey: opts.privateKey,
+    impersonateAccount: opts.impersonateAccount,
+  });
+  const [newParent, newLabel] = (await client.readContract({
+    address: ethRegistry.address,
+    abi: ethRegistry.abi,
+    functionName: "getParent",
+  })) as [Address, string];
+  if (!sameAddress(newParent, root) || newLabel !== "eth") {
+    throw new Error(
+      `the .eth registry's parent reads ${newParent} (${newLabel}) after the change`,
+    );
+  }
+  console.log(`the .eth registry's parent is now ${root} ("eth")`);
 }
 
 // The reverse adapters are what let v2 write reverse records on the v1 registrars.
@@ -5733,6 +6171,9 @@ type DeployV2Options = {
   rpcCompatibility?: boolean;
   debugRpc?: boolean;
   provider?: RpcProvider;
+  // Leave the `.eth` registry's parent where it is, for `phase set-eth-parent` to
+  // move once a root registry redeploy has been checked.
+  deferEthParent?: boolean;
 };
 
 type DeployV1Options = {
@@ -5780,6 +6221,7 @@ type RunForkFullOptions = {
   deployerPrivateKey?: `0x${string}`;
   owner?: Address;
   ownerPrivateKey?: `0x${string}`;
+  endowment?: Address;
   v1Owner?: Address;
   v1OwnerPrivateKey?: `0x${string}`;
   urManager?: Address;
@@ -6016,6 +6458,7 @@ function buildDeployV2RockethConfig(
     opts.tags?.includes("hca") ? "hca" : undefined,
     "deferV2Registrar",
     "deferMigration",
+    opts.deferEthParent ? "deferEthParent" : undefined,
     opts.tenderly ? "tenderly" : undefined,
     opts.includeTestnetPremigrationRegistrar
       ? "testnet-premigration-registrar"
@@ -6506,7 +6949,7 @@ const SMOKE_CHECKS = {
   freshV2Registration:
     "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
   registryHandover:
-    "the registry handover, leaving the deployer no v2 authority, the owner both registries and the eth entry, and .eth names emancipated",
+    "the registry handover, leaving the deployer no v2 authority, the owner both registries, the endowment the eth token, and .eth names emancipated",
   rootEmancipation:
     "the owner dropping its root registry roles once the handover's probation period ends",
 } as const;
@@ -6799,6 +7242,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
     const v1Owner = opts.v1Owner ?? network.defaultV1Owner;
+    const endowment = opts.endowment ?? network.defaultEndowment ?? owner;
     if (useRpcStateControls) {
       await setBalance(client, DEFAULT_ANVIL_DEPLOYER);
       await setBalance(client, deployer);
@@ -6810,6 +7254,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         { address: deployer, label: "deployer" },
         { address: owner, label: "owner" },
         { address: v1Owner, label: "v1 owner" },
+        { address: endowment, label: "endowment" },
       ]);
     }
     const generatedSmokePrivateKey = useRpcStateControls
@@ -7720,6 +8165,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ...phaseCtx,
       deployer,
       owner,
+      endowment,
       reportOnly: true,
     });
     // An extra grant can be the fixtures' doing, but a grant the deployment set out
@@ -7939,6 +8385,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         ...phaseCtx,
         deployer,
         owner,
+        endowment,
         stage,
         reportOnly: true,
       });
@@ -7971,12 +8418,13 @@ export async function runForkFull(opts: RunForkFullOptions) {
             privateKey: requirePrivateKeyForAddress(deployer, keys, "deployer"),
           };
       console.log(
-        "registry handover: the deployer hands the v2 registries to the owner",
+        "registry handover: the deployer hands the v2 registries to the owner and the eth token to the endowment",
       );
       await handOverRegistryAdmin({
         ...phaseCtx,
         deployer,
         owner,
+        endowment,
         ...deployerSigner,
       });
       await auditRolesAt("post-registry-handover");
@@ -8594,6 +9042,55 @@ type PremigrationVerifyCliOptions = NetworkCliOptions &
     bonusPeriodDays?: string;
   };
 
+// The deploy accounts and the local keys that control them, from the CLI options
+// and the environment.
+function deployV2Signers(opts: DeployV2CliOptions) {
+  const network = withNetwork(opts).network;
+  const deployerKey = envPrivateKey("DEPLOYER_KEY");
+  const deployerAddress = deployerKey
+    ? privateKeyToAccount(deployerKey).address
+    : undefined;
+  // The owner defaults to the DAO on mainnet and to the deployer elsewhere;
+  // urManager defaults to the network's security council, else the deployer.
+  // Only attach a key that controls the resolved account so the deployer key
+  // is never used to act as the mainnet DAO or the security council.
+  const ownerAddress =
+    opts.owner ?? (network === "mainnet" ? MAINNET_DAO : deployerAddress);
+  const urManagerAddress =
+    opts.urManager ?? NETWORKS[network].defaultUrManager ?? deployerAddress;
+  const v1OwnerAddress = opts.v1Owner ?? NETWORKS[network].defaultV1Owner;
+  // Respect an explicit --deployer override (e.g. an impersonated/unlocked
+  // account during a rehearsal or a key rotation): only attach the env key
+  // when it actually controls the requested deployer, so DEPLOYER_KEY never
+  // silently replaces the supplied sender.
+  const deployerAccount = opts.deployer ?? deployerAddress;
+  return {
+    deployerAccount,
+    options: {
+      deployer: opts.deployer,
+      deployerPrivateKey: signerKeyForAccount(deployerAccount, [deployerKey]),
+      ownerPrivateKey: signerKeyForAccount(ownerAddress, [
+        envPrivateKey("OWNER_KEY"),
+        deployerKey,
+      ]),
+      urManagerPrivateKey: signerKeyForAccount(urManagerAddress, [
+        envPrivateKey("UR_MANAGER_KEY"),
+        deployerKey,
+      ]),
+      v1Owner: v1OwnerAddress,
+      // Wire the v1-owner account to a local key when one controls it, so it
+      // is not left as a keyless node-signed address. Signers are keyed by
+      // address, so a keyless v1-owner sharing the deployer's address would
+      // otherwise overwrite the deployer's local signer and route every
+      // deploy transaction through node-side signing the RPC cannot perform.
+      v1OwnerPrivateKey: signerKeyForAccount(v1OwnerAddress, [
+        envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
+        deployerKey,
+      ]),
+    },
+  };
+}
+
 type DeployV2CliOptions = NetworkCliOptions &
   DeploymentCliOptions &
   V1DeploymentOptions & {
@@ -9129,53 +9626,109 @@ export async function main(argv = process.argv): Promise<void> {
         ),
       ),
     ).action(async (opts: DeployV2CliOptions) => {
-      const networkOpts = withNetworkRpc(opts);
-      const network = networkOpts.network;
-      const deployerKey = envPrivateKey("DEPLOYER_KEY");
-      const deployerAddress = deployerKey
-        ? privateKeyToAccount(deployerKey).address
-        : undefined;
-      // The owner defaults to the DAO on mainnet and to the deployer elsewhere;
-      // urManager defaults to the network's security council, else the deployer.
-      // Only attach a key that controls the resolved account so the deployer key
-      // is never used to act as the mainnet DAO or the security council.
-      const ownerAddress =
-        opts.owner ?? (network === "mainnet" ? MAINNET_DAO : deployerAddress);
-      const urManagerAddress =
-        opts.urManager ?? NETWORKS[network].defaultUrManager ?? deployerAddress;
-      const v1OwnerAddress = opts.v1Owner ?? NETWORKS[network].defaultV1Owner;
-      // Respect an explicit --deployer override (e.g. an impersonated/unlocked
-      // account during a rehearsal or a key rotation): only attach the env key
-      // when it actually controls the requested deployer, so DEPLOYER_KEY never
-      // silently replaces the supplied sender.
-      const deployerAccount = opts.deployer ?? deployerAddress;
       await deployV2({
-        ...networkOpts,
-        deployer: opts.deployer,
-        deployerPrivateKey: signerKeyForAccount(deployerAccount, [deployerKey]),
-        ownerPrivateKey: signerKeyForAccount(ownerAddress, [
-          envPrivateKey("OWNER_KEY"),
-          deployerKey,
-        ]),
-        urManagerPrivateKey: signerKeyForAccount(urManagerAddress, [
-          envPrivateKey("UR_MANAGER_KEY"),
-          deployerKey,
-        ]),
-        v1Owner: v1OwnerAddress,
-        // Wire the v1-owner account to a local key when one controls it, so it
-        // is not left as a keyless node-signed address. Signers are keyed by
-        // address, so a keyless v1-owner sharing the deployer's address would
-        // otherwise overwrite the deployer's local signer and route every
-        // deploy transaction through node-side signing the RPC cannot perform.
-        v1OwnerPrivateKey: signerKeyForAccount(v1OwnerAddress, [
-          envPrivateKey("SEPOLIA_V1_OWNER_KEY", "V1_OWNER_KEY"),
-          deployerKey,
-        ]),
+        ...withNetworkRpc(opts),
+        ...deployV2Signers(opts).options,
         fresh: !opts.resume,
         saveDeployments: true,
         tags: opts.tags ? opts.tags.split(",").filter(Boolean) : undefined,
       });
     }),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("redeploy-root")
+            .description(
+              "Replace the v2 root registry under the existing namespace, with every contract built over it, reusing the rest; the .eth registry keeps its address and reservations, and its parent is left for set-eth-parent. Refuses once the DAO proposal has executed or go-live has begun",
+            )
+            .option(
+              "--defer-v1-owner-transactions",
+              "Record v1-owner transactions instead of broadcasting them",
+              false,
+            )
+            .option(
+              "--deferred-v1-owner-transactions-file <path>",
+              "JSONL file for deferred v1-owner transactions",
+            )
+            .option("--deployer <address>", "Deployer account address")
+            .option("--owner <address>", "Owner/admin address")
+            .option(
+              "--ur-manager <address>",
+              "Managed URP admin address (default: the network's security council, else the deployer)",
+            )
+            .option("--v1-owner <address>", "v1 owner address for v1 writes")
+            .option(
+              "--impersonate-v1-owner",
+              "Impersonate v1 owner on a fork",
+              false,
+            )
+            .option(
+              "--rpc-compatibility",
+              "Enable compatibility fallbacks for fork RPCs",
+              false,
+            )
+            .option("--debug-rpc", "Log JSON-RPC error responses", false),
+        ),
+      ),
+    ).action(async (opts: DeployV2CliOptions) => {
+      const networkOpts = withNetworkRpc(opts);
+      const { options, deployerAccount } = deployV2Signers(opts);
+      if (!deployerAccount) {
+        throw new Error(
+          "redeploy-root needs the deployer: set DEPLOYER_KEY or pass --deployer",
+        );
+      }
+      await redeployRootRegistry({
+        ...networkOpts,
+        ...options,
+        // The default phase 1 tags, so every script that wires the root runs.
+        tags: undefined,
+        deployerAddress: getAddress(deployerAccount),
+      });
+    }),
+  );
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        new Command("set-eth-parent")
+          .description(
+            "Point the .eth registry at the namespace's root registry after a root registry redeploy, once every contract built over the root reports the new one, the deployment check passes, every replaced contract's source is verified on Etherscan, and the new root's eth entry is in place",
+          )
+          .option(
+            "--private-key <key>",
+            "Deployer private key; falls back to DEPLOYER_KEY",
+          )
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate the deployer on a fork",
+          )
+          .option(
+            "--skip-source-verification",
+            "Do not require verified source on Etherscan, for a fork whose contracts Etherscan cannot see",
+            false,
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            privateKey?: `0x${string}`;
+            impersonateAccount?: Address;
+            skipSourceVerification?: boolean;
+          },
+      ) => {
+        await setEthParent({
+          ...withNetworkRpc(opts),
+          privateKey:
+            opts.privateKey ??
+            (opts.impersonateAccount
+              ? undefined
+              : envPrivateKey("DEPLOYER_KEY")),
+        });
+      },
+    ),
   );
   phase.addCommand(
     addV1OwnerWriteOptions(
@@ -9340,6 +9893,10 @@ export async function main(argv = process.argv): Promise<void> {
             "Owner address; defaults to the owner the namespace's ETHRegistrar was deployed with, else the network's configured owner",
           )
           .option(
+            "--endowment <address>",
+            "Holder of the eth token after the registry handover; defaults to the network's configured endowment, else the owner",
+          )
+          .option(
             "--from-block <number>",
             "Block to discover role holders from; defaults to the registry's deploy block",
           )
@@ -9359,6 +9916,7 @@ export async function main(argv = process.argv): Promise<void> {
           DeploymentCliOptions & {
             deployer?: Address;
             owner?: Address;
+            endowment?: Address;
             fromBlock?: string;
             reportOnly?: boolean;
             stage?: RoleAuditStage;
@@ -9374,11 +9932,15 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
           .description(
-            "Hand the deployer's v2 registry authority to the owner: the owner takes the root registry's and the .eth registry's root roles and the roles that set the eth entry's child registry and resolver, then the deployer drops every role it holds on them",
+            "Hand the deployer's v2 registry authority to its final holders: the eth token, with every role on its entry, goes to the endowment; the owner takes the root registry's and the .eth registry's root roles; then the deployer drops every role it holds on them",
           )
           .option(
             "--owner <address>",
             "Account to hand the root registry to; defaults to the owner the namespace was deployed with, else the network's configured owner",
+          )
+          .option(
+            "--endowment <address>",
+            "Account to give the eth token to; defaults to the network's configured endowment, else the owner",
           )
           .option(
             "--deployer <address>",
@@ -9398,6 +9960,7 @@ export async function main(argv = process.argv): Promise<void> {
         opts: NetworkCliOptions &
           DeploymentCliOptions & {
             owner?: Address;
+            endowment?: Address;
             deployer?: Address;
             privateKey?: `0x${string}`;
             impersonateAccount?: Address;
@@ -10268,6 +10831,10 @@ export async function main(argv = process.argv): Promise<void> {
               )
               .option("--deployer <address>", "Migration deployer address")
               .option("--owner <address>", "Migration owner/admin address")
+              .option(
+                "--endowment <address>",
+                "Account the registry handover gives the eth token to; defaults to the network's configured endowment, else the owner",
+              )
               .option("--v1-owner <address>", "V1 owner address")
               .option("--ur-manager <address>", "Managed URP admin address")
               .option("--debug-rpc", "Log JSON-RPC error responses", false)
@@ -10343,6 +10910,10 @@ export async function main(argv = process.argv): Promise<void> {
               )
               .option("--deployer <address>", "Migration deployer address")
               .option("--owner <address>", "Migration owner/admin address")
+              .option(
+                "--endowment <address>",
+                "Account the registry handover gives the eth token to; defaults to the network's configured endowment, else the owner",
+              )
               .option("--v1-owner <address>", "V1 owner address")
               .option("--ur-manager <address>", "Managed URP admin address")
               .option(

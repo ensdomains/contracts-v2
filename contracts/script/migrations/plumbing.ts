@@ -83,6 +83,9 @@ export type NetworkConfig = {
   // Admin of the managed URP a deploy creates or adopts, when the network names one;
   // otherwise the deployer administers it.
   defaultUrManager?: Address;
+  // Holder of the root registry's `eth` token after the handover, when the network
+  // names one.
+  defaultEndowment?: Address;
   chainTags: string[];
 };
 
@@ -100,6 +103,7 @@ const SEPOLIA_UR_MANAGER = getAddress(
 const MAINNET_UR_MANAGER = getAddress(
   rockethConfig.accounts.securityCouncil.mainnet,
 );
+const MAINNET_ENDOWMENT = getAddress(rockethConfig.accounts.endowment.mainnet);
 
 export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
   sepolia: {
@@ -120,6 +124,7 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
     defaultOwner: MAINNET_DAO,
     defaultV1Owner: MAINNET_DAO,
     defaultUrManager: MAINNET_UR_MANAGER,
+    defaultEndowment: MAINNET_ENDOWMENT,
     chainTags: ["hasDao"],
   },
 };
