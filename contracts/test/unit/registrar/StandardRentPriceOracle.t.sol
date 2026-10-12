@@ -597,7 +597,7 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     }
 
     function test_getPaymentTokenRatio_staleOracle() external {
-        vm.warp(block.timestamp + staleOracle.DELAY()); // prevent underflow
+        vm.warp(block.timestamp + staleOracle.MAX_AGE()); // prevent underflow
         PaymentConfigWithToken[] memory v = new PaymentConfigWithToken[](1);
         v[0] = PaymentConfigWithToken(NATIVE_ETH, 1, 1, staleOracle, false, 0);
         StandardRentPriceOracle oracle =

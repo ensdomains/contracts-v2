@@ -1,4 +1,5 @@
 import { execute } from "@rocketh";
+import { Artifact_MockChainlinkAggregator } from "generated/artifacts/MockChainlinkAggregator.js";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 
 export default execute(
@@ -21,16 +22,17 @@ export default execute(
 
     await deploy("MockWETH", {
       account: deployer,
-      artifact: MockERC20,
+      artifact: Artifact_MockERC20,
       args: ["WETH", 18],
     });
 
     const ethPrice = 2000;
     const decimals = 8; // arbitrary, matches mainnet
+    const maxAge = 3600n; // arbitrary
     await deploy("MockChainlinkETHUSD", {
       account: deployer,
-      artifact: artifacts.MockChainlinkAggregator,
-      args: [BigInt(ethPrice) * 10n ** BigInt(decimals), decimals],
+      artifact: Artifact_MockChainlinkAggregator,
+      args: [BigInt(ethPrice) * 10n ** BigInt(decimals), maxAge, decimals],
     });
     console.log(`USD/ETH = $${ethPrice}`);
   },

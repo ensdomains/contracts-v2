@@ -1,5 +1,5 @@
 import { execute } from "@rocketh";
-import { zeroAddress, type Address } from "viem";
+import { formatGwei, zeroAddress, type Address } from "viem";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import {
@@ -139,24 +139,23 @@ export default execute(
 
     // sync ratios
     for (const cfg of paymentConfigs) {
-      const [numer, denom] = (await read(standardRentPriceOracle, {
-        functionName: "getPaymentTokenRatio",
+      const cfg0 = await read(standardRentPriceOracle, {
+        functionName: "getPaymentTokenConfiguration",
         args: [cfg.paymentToken],
-      })) as [bigint, bigint];
-      if (numer === cfg.numer && denom === cfg.denom) {
+      });
+      if (
+        cfg0.numer === cfg.numer &&
+        cfg0.denom === cfg.denom &&
+        cfg0.oracle === cfg.oracle &&
+        cfg0.flip === cfg.flip &&
+        cfg0.maxAge === cfg.maxAge
+      ) {
         continue;
       }
       await write(standardRentPriceOracle, {
         account: owner,
         functionName: "updatePaymentToken",
-        args: [
-          cfg.paymentToken,
-          cfg.numer,
-          cfg.denom,
-          cfg.oracle,
-          cfg.flip,
-          cfg.maxAge,
-        ],
+        args: [cfg.paymentToken, cfg],
       });
     }
 
