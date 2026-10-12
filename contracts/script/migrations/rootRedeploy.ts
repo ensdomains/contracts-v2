@@ -181,6 +181,21 @@ export function archiveRootBoundRecords(
   return archive;
 }
 
+/// The namespace as it stood before a root redeploy: the archived originals of the
+/// root-bound deployments, which an interrupted run may already have replaced in the
+/// namespace, and the namespace's own records for everything else.
+export function namespaceBeforeRedeploy(
+  active: Map<string, DeploymentRecord>,
+  archived: Map<string, DeploymentRecord>,
+): Map<string, DeploymentRecord> {
+  const before = new Map(active);
+  for (const name of ROOT_BOUND_DEPLOYMENTS) {
+    const record = archived.get(name);
+    if (record) before.set(name, record);
+  }
+  return before;
+}
+
 /// Compares the namespace after a root redeploy with the records before it: every
 /// root-bound deployment must be at a new address, and every other one where it was.
 export function rootRedeployDiff(

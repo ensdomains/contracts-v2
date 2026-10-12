@@ -14,6 +14,7 @@ import {
   bytecodeWithoutMetadata,
   driftedReusedRecords,
   findRootArchive,
+  namespaceBeforeRedeploy,
   readNamespaceRecords,
   ROOT_BOUND_DEPLOYMENTS,
   rootRedeployDiff,
@@ -159,5 +160,22 @@ describe("rootRedeployDiff", () => {
       `RootRegistry: still at ${address(100)}, not redeployed`,
       `ETHRegistry: moved from ${address(1)} to ${address(7)}`,
     ]);
+  });
+});
+
+describe("namespaceBeforeRedeploy", () => {
+  it("takes the root-bound originals from the archive, even where an interrupted run replaced them", () => {
+    const active = new Map([
+      ["ETHRegistry", { address: address(1) }],
+      // Already redeployed by an interrupted run.
+      ["RootRegistry", { address: address(9) }],
+    ]);
+    const archived = new Map([["RootRegistry", { address: address(2) }]]);
+    const before = namespaceBeforeRedeploy(active, archived);
+    expect(before.get("RootRegistry")?.address).toBe(address(2));
+    expect(before.get("ETHRegistry")?.address).toBe(address(1));
+    expect(rootRedeployDiff(before, active).problems).not.toContain(
+      `RootRegistry: still at ${address(9)}, not redeployed`,
+    );
   });
 });

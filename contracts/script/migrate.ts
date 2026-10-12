@@ -119,6 +119,7 @@ import {
   archiveRootBoundRecords,
   driftedReusedRecords,
   findRootArchive,
+  namespaceBeforeRedeploy,
   readNamespaceRecords,
   ROOT_BOUND_DEPLOYMENTS,
   rootRedeployDiff,
@@ -5084,13 +5085,24 @@ export async function redeployRootRegistry(
   const archive = findRootArchive(deploymentsDir, deploymentNetwork);
   const archived = archive
     ? readNamespaceRecords(deploymentsDir, archive)
-    : new Map<string, ReturnType<typeof active.get>>();
+    : (new Map() as typeof active);
   const replacedAlready = ROOT_BOUND_DEPLOYMENTS.every((name) => {
     const now = active.get(name)?.address;
     const old = archived.get(name)?.address;
     return now && old && !sameAddress(now, old);
   });
   if (archive && replacedAlready) {
+    const { replaced, problems } = rootRedeployDiff(
+      namespaceBeforeRedeploy(active, archived),
+      active,
+    );
+    for (const line of replaced) console.log(`  replaced ${line}`);
+    if (problems.length > 0) {
+      for (const problem of problems) console.error(`  ${problem}`);
+      throw new Error(
+        `the root registry redeploy left the namespace in an unexpected state: ${problems.length} problem(s)`,
+      );
+    }
     console.log(
       `the root registry was already redeployed: the replaced records are in ${archive}`,
     );
@@ -5160,13 +5172,7 @@ export async function redeployRootRegistry(
     );
   }
 
-  // The namespace as it stood before any part of this redeploy: an interrupted run
-  // has already moved the root-bound records to the archive.
-  const before = new Map(active);
-  for (const name of ROOT_BOUND_DEPLOYMENTS) {
-    const record = archived.get(name);
-    if (record && !active.get(name)) before.set(name, record);
-  }
+  const before = namespaceBeforeRedeploy(active, archived);
   const resuming =
     archive !== undefined &&
     ROOT_BOUND_DEPLOYMENTS.some((name) => {
