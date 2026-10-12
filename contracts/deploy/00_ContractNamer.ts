@@ -19,6 +19,6 @@ export default execute(
     );
   },
   {
-    tags: ["ContractNamer", "v2"],
+    tags: ["ContractNamer", "v2", "migration:phase1:deploy-v2"],
   },
 );

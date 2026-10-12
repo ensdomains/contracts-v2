@@ -16,6 +16,18 @@ interface IRentPriceOracle {
     /// @dev Error selector: `0x02e2ae9e`
     error PaymentTokenNotSupported(address paymentToken);
 
+    /// @notice Response from Chainlink Oracle was invalid.
+    /// @dev Error selector: `0xb921f2fc`
+    error InvalidOracleResponse(address paymentToken, int256 answer);
+
+    /// @notice Response from Chainlink Oracle was stale.
+    /// @dev Error selector: `0x53a7d644`
+    error StaleOracleResponse(
+        address paymentToken,
+        uint256 responseTimestamp,
+        uint256 blockTimestamp
+    );
+
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////

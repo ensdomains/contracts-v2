@@ -427,6 +427,8 @@ FORK_URL=<mainnet-rpc> bun run devnet         # or --forkUrl <mainnet-rpc>
 FORK_URL=<mainnet-rpc> FORK_BLOCK=<block> bun run devnet   # pin the fork block (or --forkBlock)
 ```
 
+On a fork the v1 contracts belong to the ENS DAO, so deploy steps that write as the v1 owner are sent as the DAO multisig through anvil's auto-impersonation. The devnet's test-mnemonic accounts carry EIP-7702 delegations on mainnet; the fork clears that code first, so the accounts can receive ERC-721 and ERC-1155 tokens like plain accounts.
+
 On a fork you can also **pre-migrate** a curated set of real names — reserving them on the v2 registry (RESERVED state, `ENSV1Resolver` fallback) once the devnet is up, mirroring the DAO's pre-migration so the frontend can drive the v1 → v2 migrate flow:
 
 ```sh

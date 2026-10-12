@@ -16,7 +16,7 @@ export default execute(
     execute: write,
     get,
     getV1,
-    namedAccounts: { deployer, owner },
+    namedAccounts: { deployer, owner, fees },
   }) => {
     const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
     const rentPriceOracle = get<Abi_IRentPriceOracle>(
@@ -33,7 +33,7 @@ export default execute(
       args: [
         owner,
         ethRegistry.address,
-        owner, // TODO: beneficiary,
+        fees,
         rentPriceOracle.address,
         GRACE_PERIOD_V2,
         PREMIGRATION_BONUS_PERIOD,

@@ -18,16 +18,19 @@ import {
     Grant
 } from "~src/access-control/interfaces/IEACGrantInitializable.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
 
 contract UserRegistryTest is Test, ERC1155Holder {
     // Contracts
     VerifiableFactory factory;
     LabelStore labelStore;
+    MockURIRenderer uriRenderer;
     UserRegistry implementation;
     UserRegistry proxy;
 
@@ -39,11 +42,12 @@ contract UserRegistryTest is Test, ERC1155Holder {
     function setUp() public {
         factory = new VerifiableFactory();
         labelStore = new LabelStore(IContractNamer(address(0)));
+        uriRenderer = new MockURIRenderer("mock");
 
         // Deploy the implementation
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        implementation = new UserRegistry(labelStore, address(this));
+        implementation = new UserRegistry(labelStore, uriRenderer, address(this));
 
         // Create initialization data
         Grant[] memory grants = new Grant[](1);
@@ -53,6 +57,15 @@ contract UserRegistryTest is Test, ERC1155Holder {
         bytes memory initData = abi.encodeCall(IEACGrantInitializable.initialize, (grants));
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(
+            0 /*ROOT_RESOURCE*/,
+            grants[0].account,
+            0 /*old roles*/,
+            grants[0].roleBitmap
+        );
+        vm.expectEmit();
+        emit IRegistryEvents.URIUpdated("", address(uriRenderer), address(0));
         vm.prank(admin);
         proxy = UserRegistry(
             factory.deployProxy(address(implementation), uint256(keccak256(initData)), initData)
@@ -93,6 +106,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
             address(implementation),
             "Proxy should be verified"
         );
+
+        (string memory uri, IRegistryURIRenderer renderer) = proxy.getURI();
+        assertEq(uri, "", "uri");
+        assertEq(address(renderer), address(uriRenderer), "renderer");
 
         // Verify admin has the expected roles
         assertTrue(
@@ -294,7 +311,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
     // Test for contract upgradeability
     function test_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(labelStore, address(this));
+        UserRegistryV2Mock newImplementation =
+            new UserRegistryV2Mock(labelStore, uriRenderer, address(this));
 
         // Upgrade the proxy
         vm.prank(admin);
@@ -307,7 +325,8 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_Revert_unauthorized_upgrade() public {
         // Deploy a new implementation
-        UserRegistryV2Mock newImplementation = new UserRegistryV2Mock(labelStore, address(this));
+        UserRegistryV2Mock newImplementation =
+            new UserRegistryV2Mock(labelStore, uriRenderer, address(this));
 
         // User1 tries to upgrade without permission
         vm.expectRevert(
@@ -369,7 +388,9 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(ILabelStore labelStore, address namer) UserRegistry(labelStore, namer) {}
+    constructor(ILabelStore labelStore, IRegistryURIRenderer uriRenderer, address namer)
+        UserRegistry(labelStore, uriRenderer, namer)
+    {}
 
     function version() public pure returns (uint256) {
         return 2;

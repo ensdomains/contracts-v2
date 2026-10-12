@@ -63,7 +63,7 @@ contract LibENSIP15Test is Test {
 
     function test_normalize_cannotNormalize_empty() external {
         string memory name = "\u00AD";
-        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector, name));
+        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
         this.normalize(name);
     }
 

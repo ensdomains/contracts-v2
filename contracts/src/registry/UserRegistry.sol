@@ -13,6 +13,7 @@ import {
 import {InvalidOwner} from "../CommonErrors.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
+import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
@@ -29,20 +30,28 @@ contract UserRegistry is
     IEACGrantInitializable
 {
     ////////////////////////////////////////////////////////////////////////
+    // Immutables
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Default URI renderer.
+    IRegistryURIRenderer public immutable URI_RENDERER;
+
+    ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
     /// @param labelStore The shared label database.
+    /// @param uriRenderer The default URI renderer.
     /// @param namer The implementation namer.
-    constructor(ILabelStore labelStore, address namer)
+    constructor(ILabelStore labelStore, IRegistryURIRenderer uriRenderer, address namer)
         PermissionedRegistry(
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         )
     {
-        // This disables initialization for the implementation contract
         _disableInitializers();
+        URI_RENDERER = uriRenderer;
     }
 
     /// @inheritdoc IEACGrantInitializable
@@ -55,6 +64,8 @@ contract UserRegistry is
         if (roleCount(ROOT_RESOURCE) == 0) {
             revert InvalidOwner();
         }
+        _uriRenderer = URI_RENDERER;
+        emit URIUpdated("", address(URI_RENDERER), address(0));
     }
 
     /// @inheritdoc IERC165
@@ -86,6 +97,10 @@ contract UserRegistry is
     {
         return true;
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Restricts UUPS upgrades to accounts holding the upgrade role on the root resource.
     /// @param newImplementation The address of the new implementation contract.

@@ -5,7 +5,6 @@ import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -51,6 +50,16 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
 
     /// @notice ENSv1 `ETHRegistrarController` that is an active `NameWrapper` controller.
     IWrappedETHRegistrarController public immutable WRAPPED_CONTROLLER;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Modifiers
+    ////////////////////////////////////////////////////////////////////////
+
+    modifier withWrapper() {
+        BASE_REGISTRAR.addController(address(NAME_WRAPPER));
+        _;
+        BASE_REGISTRAR.removeController(address(NAME_WRAPPER));
+    }
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -116,42 +125,51 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
     }
 
     /// @inheritdoc IETHRenewer
-    function renew(RenewData calldata rd, address paymentToken) public override {
+    function renew(RenewData calldata rd, address paymentToken) public override withWrapper {
         super.renew(rd, paymentToken);
-        string[] memory labels = new string[](1);
-        labels[0] = rd.label;
-        syncWrapper(labels);
     }
 
     /// @inheritdoc IETHRenewer
-    function renewBatch(RenewData[] calldata rds, address paymentToken) public override {
+    function renewWithETH(RenewData calldata rd, address refundTo)
+        public
+        payable
+        override
+        withWrapper
+    {
+        super.renewWithETH(rd, refundTo);
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renewBatch(RenewData[] calldata rds, address paymentToken) public override withWrapper {
         super.renewBatch(rds, paymentToken);
-        if (rds.length > 0) {
-            string[] memory labels = new string[](rds.length);
-            for (uint256 i; i < rds.length; ++i) {
-                labels[i] = rds[i].label;
-            }
-            syncWrapper(labels);
-        }
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renewBatchWithETH(RenewData[] calldata rds, address refundTo)
+        public
+        payable
+        override
+        withWrapper
+    {
+        super.renewBatchWithETH(rds, refundTo);
     }
 
     /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.
     /// @param labels The labels to sync.
-    function syncWrapper(string[] memory labels) public {
-        BASE_REGISTRAR.addController(address(NAME_WRAPPER));
+    function syncWrapper(string[] memory labels) public withWrapper {
         for (uint256 i; i < labels.length; ++i) {
             WRAPPED_CONTROLLER.renew(labels[i], 0);
         }
-        BASE_REGISTRAR.removeController(address(NAME_WRAPPER));
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Update ENSv1 during renew.
+    /// @dev Update ENSv1 and NameWrapper (if wrapped) during renew.
     function _onRenew(string calldata label, uint64 duration) internal override {
         BASE_REGISTRAR.renew(LibLabel.id(label), duration);
+        WRAPPED_CONTROLLER.renew(label, 0);
     }
 
     /// @dev Determine if `RESERVED` or in grace was `RESERVED`.

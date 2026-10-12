@@ -119,17 +119,20 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
         if (hcaImplementation == address(0)) {
             revert HCAImplementationCannotBeZero();
         }
+
+        uint256 salt = deploymentSalt(owner, hcaImplementation, userSalt);
+        hca = VERIFIABLE_FACTORY.predictProxyAddress(address(this), salt);
+        if (hcaOwners[hca] == owner) {
+            return hca;
+        }
+
         if (!approvedImplementations[hcaImplementation]) {
             revert HCAImplementationNotApproved(hcaImplementation);
         }
 
         bytes memory initData =
             abi.encodeCall(StandaloneSingleOwnerHCA.initializeAccount, (abi.encode(owner)));
-        hca = VERIFIABLE_FACTORY.deployProxy(
-            hcaImplementation,
-            deploymentSalt(owner, hcaImplementation, userSalt),
-            initData
-        );
+        hca = VERIFIABLE_FACTORY.deployProxy(hcaImplementation, salt, initData);
 
         (, address deployedImplementation) = IUUPSProxy(hca).getVerifiableProxyData();
         if (deployedImplementation != hcaImplementation) {

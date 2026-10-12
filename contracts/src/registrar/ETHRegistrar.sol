@@ -3,7 +3,9 @@ pragma solidity 0.8.25;
 
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {NATIVE_ETH} from "../utils/ERC7528.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
@@ -117,20 +119,51 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
+    function register(
+        string calldata label,
+        address owner,
+        bytes32 secret,
+        IRegistry subregistry,
+        address resolver,
+        uint64 duration,
+        address paymentToken,
+        bytes32 referrer
+    )
+        external
+        returns (uint256 tokenId)
+    {
+        uint256 amount;
+        (amount, tokenId) = _register(
+            CommitData(label, owner, secret, subregistry, resolver, duration, referrer),
+            paymentToken
+        );
+        _transferERC20(paymentToken, amount);
+    }
+
+    /// @inheritdoc IETHRegistrar
     function register(CommitData calldata cd, address paymentToken)
+        external
+        returns (uint256 tokenId)
+    {
+        uint256 amount;
+        (amount, tokenId) = _register(cd, paymentToken);
+        _transferERC20(paymentToken, amount);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function registerWithETH(CommitData calldata cd, address refundTo)
         external
         payable
         returns (uint256 tokenId)
     {
         uint256 amount;
-        (amount, tokenId) = _register(cd, paymentToken);
-        _transferPayment(paymentToken, amount);
+        (amount, tokenId) = _register(cd, NATIVE_ETH);
+        _transferETH(amount, refundTo);
     }
 
     /// @inheritdoc IETHRegistrar
     function registerBatch(CommitData[] calldata cds, address paymentToken)
         external
-        payable
         returns (uint256[] memory tokenIds)
     {
         tokenIds = new uint256[](cds.length);
@@ -140,7 +173,23 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
             (amount, tokenIds[i]) = _register(cds[i], paymentToken);
             total += amount;
         }
-        _transferPayment(paymentToken, total);
+        _transferERC20(paymentToken, total);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function registerBatchWithETH(CommitData[] calldata cds, address refundTo)
+        external
+        payable
+        returns (uint256[] memory tokenIds)
+    {
+        tokenIds = new uint256[](cds.length);
+        uint256 total;
+        for (uint256 i; i < cds.length; ++i) {
+            uint256 amount;
+            (amount, tokenIds[i]) = _register(cds[i], NATIVE_ETH);
+            total += amount;
+        }
+        _transferETH(total, refundTo);
     }
 
     /// @inheritdoc IETHRegistrar
@@ -175,18 +224,34 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
-    function makeCommitment(CommitData calldata cd) public pure override returns (bytes32) {
+    function makeCommitment(
+        string memory label,
+        address owner,
+        bytes32 secret,
+        IRegistry subregistry,
+        address resolver,
+        uint64 duration,
+        bytes32 referrer
+    )
+        public
+        pure
+        returns (bytes32)
+    {
         return
-            keccak256(
-                abi.encode(
-                    cd.label,
-                    cd.owner,
-                    cd.secret,
-                    cd.subregistry,
-                    cd.resolver,
-                    cd.duration,
-                    cd.referrer
-                )
+            keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function makeCommitment(CommitData memory cd) public pure override returns (bytes32) {
+        return
+            makeCommitment(
+                cd.label,
+                cd.owner,
+                cd.secret,
+                cd.subregistry,
+                cd.resolver,
+                cd.duration,
+                cd.referrer
             );
     }
 
@@ -195,7 +260,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Register a name and return the amount of `paymentToken` and token ID.
-    function _register(CommitData calldata cd, address paymentToken)
+    function _register(CommitData memory cd, address paymentToken)
         internal
         returns (uint256 amount, uint256 tokenId)
     {
@@ -252,7 +317,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @dev Ensure name is registerable.
-    function _requireAvailable(string calldata label, uint64 duration)
+    function _requireAvailable(string memory label, uint64 duration)
         internal
         view
         returns (IPermissionedRegistry.State memory state)

@@ -22,6 +22,8 @@ import { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
 // v2
 import { Abi_ContractNamer } from "generated/abis/ContractNamer.js";
 import { Abi_LabelStore } from "generated/abis/LabelStore.js";
+import { Abi_StaticURIRenderer } from "generated/abis/StaticURIRenderer.js";
+import { Abi_BoxedURIRenderer } from "generated/abis/BoxedURIRenderer.js";
 import { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.js";
 import { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.js";
 import { Abi_StandardRentPriceOracle } from "generated/abis/StandardRentPriceOracle.js";
@@ -274,6 +276,17 @@ export async function setupDevnet({
       ],
     });
 
+    if (isFork) {
+      // The well-known test mnemonic accounts carry EIP-7702 delegations on
+      // mainnet, which makes them contracts to ERC1155/ERC721 receiver checks.
+      for (const { address } of accounts) {
+        await client.request({
+          method: "anvil_setCode" as any,
+          params: [address, "0x"],
+        });
+      }
+    }
+
     console.log("Deploying contracts");
     const deploymentName = `devnet-${activeChainId}`;
     const deploymentsDirURL = new URL(
@@ -303,11 +316,15 @@ export async function setupDevnet({
         askBeforeProceeding: false,
         saveDeployments,
         defaultPollingInterval: 0.001, // cannot be zero
+        // A fork reads v1 contracts from the canonical mainnet set, including the
+        // references the bootstrap does not copy.
+        ...(isFork ? { extra: { v1DeploymentNetwork: "mainnet" } } : {}),
       },
       {
-        accounts: Object.fromEntries(
-          accounts.map((x) => [x.name, x.address]),
-        ) as never,
+        accounts: {
+          ...Object.fromEntries(accounts.map((x) => [x.name, x.address])),
+          ...(isFork ? { v1Owner: ENS_DAO_MULTISIG.toLowerCase() } : {}),
+        } as never,
         chains: {
           [activeChainId]: {
             info: chain,
@@ -317,7 +334,10 @@ export async function setupDevnet({
               "v2",
               "local",
               "use_root", // deploy root contracts
-              "allow_unsafe", // state hacks
+              // `allow_unsafe` is deliberately absent: it widens the DNS suffix
+              // batches past what the fixed gas cap on the TLD-enabling batch can
+              // pay for, which leaves no suffix enabled. The narrow batches
+              // estimate their own gas and check each suffix before sending it.
               "legacy", // legacy registry
               "tenderly", // let ENS deploy scripts run full setup on chain id 1 forks
             ],
@@ -443,6 +463,17 @@ export async function setupDevnet({
       ETHRegistry: getContract({
         abi: [...Abi_PermissionedRegistry, ...Abi_NameCoderErrors],
         address: rocketh.get("ETHRegistry").address,
+        client,
+      }),
+      // uri renderers
+      ENSURIRenderer: getContract({
+        abi: Abi_StaticURIRenderer,
+        address: rocketh.get("ENSURIRenderer").address,
+        client,
+      }),
+      BoxedENSURIRenderer: getContract({
+        abi: Abi_BoxedURIRenderer,
+        address: rocketh.get("BoxedENSURIRenderer").address,
         client,
       }),
       // eth registrar
@@ -986,7 +1017,12 @@ export async function setupDevnet({
       await setName("root", v2.RootRegistry.address);
       await setName("registry", v2.ETHRegistry.address);
       await setName("impl.registry", v2.UserRegistryImpl.address);
+      await setName("uri-renderer.registry", v2.ENSURIRenderer.address);
       await setName("impl.wrapper-registry", v2.WrapperRegistryImpl.address);
+      await setName(
+        "boxed-uri-renderer.registry",
+        v2.BoxedENSURIRenderer.address,
+      );
 
       await setName("2to1.resolver", v2.ENSV1Resolver.address);
       await setName("1to2.resolver", v2.ENSV2Resolver.address);

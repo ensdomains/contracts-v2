@@ -12,12 +12,25 @@ function idFromLabel(label: string): bigint {
   return BigInt(keccak256(stringToBytes(label)));
 }
 
-const CSV_HEADER =
+// The v1 subgraph column layout the pre-migration reader parses. Only the label
+// column carries a value; the rest exist so the row shape matches the header.
+export const PREMIGRATION_CSV_HEADER =
   "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate";
 
+// Quote a field containing a delimiter, quote, or newline so a label with such
+// a character survives a round-trip through the pre-migration reader.
+function escapeCsvField(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+// A pre-migration CSV row carrying nothing but a label.
+export function premigrationCsvRow(label: string): string {
+  return `,,,,,,${escapeCsvField(label)},,`;
+}
+
 export function createCSVFile(filePath: string, labels: string[]) {
-  const rows = labels.map((label) => `,,,,,,${label},,`);
-  const content = [CSV_HEADER, ...rows].join("\n");
+  const rows = labels.map(premigrationCsvRow);
+  const content = [PREMIGRATION_CSV_HEADER, ...rows].join("\n");
   writeFileSync(filePath, content);
 }
 
@@ -32,10 +45,17 @@ export function buildMainArgs(
     batchSize?: number;
     useEnvVarForPrivateKey?: boolean;
     omitPrivateKey?: boolean;
+    /// Defaults to the devnet's own Graveyard.
+    graveyards?: readonly string[];
+    /// A registry and its BatchRegistrar other than the devnet's own.
+    registry?: Address;
+    batchRegistrar?: Address;
+    /// Gas price limit in gwei. Left out, the chain's default applies.
+    maxGasPrice?: string;
   } = {},
 ): string[] {
   const rpcUrl = `http://${env.hostPort}`;
-  const registryAddress = env.v2.ETHRegistry.address;
+  const registryAddress = overrides.registry ?? env.v2.ETHRegistry.address;
 
   const args = [
     "node",
@@ -45,7 +65,7 @@ export function buildMainArgs(
     "--registry",
     registryAddress,
     "--batch-registrar",
-    env.rocketh.get("BatchRegistrar").address,
+    overrides.batchRegistrar ?? env.rocketh.get("BatchRegistrar").address,
     "--csv-file",
     csvFilePath,
     "--v1-resolver",
@@ -56,6 +76,8 @@ export function buildMainArgs(
     String(overrides.bonusPeriodDays ?? 0),
     "--v1-base-registrar",
     env.v1.BaseRegistrar.address,
+    "--graveyards",
+    (overrides.graveyards ?? [env.v2.Graveyard.address]).join(","),
   ];
 
   if (overrides.useEnvVarForPrivateKey) {
@@ -75,6 +97,9 @@ export function buildMainArgs(
   }
   if (overrides.batchSize !== undefined) {
     args.push("--batch-size", String(overrides.batchSize));
+  }
+  if (overrides.maxGasPrice !== undefined) {
+    args.push("--max-gas-price", overrides.maxGasPrice);
   }
 
   return args;

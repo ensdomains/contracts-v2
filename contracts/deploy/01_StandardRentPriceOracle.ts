@@ -1,5 +1,5 @@
 import { execute } from "@rocketh";
-import { type Address } from "viem";
+import { zeroAddress, type Address } from "viem";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import {
@@ -20,6 +20,7 @@ import {
   SEPOLIA_WETH,
   SEPOLIA_ETH_ORACLE,
   NATIVE_ETH,
+  ratioFromDecimals,
 } from "../script/deploy-constants.js";
 
 export default execute(
@@ -36,21 +37,41 @@ export default execute(
     // deployed (and only accepted) on test/dev networks. The ERC20 metadata
     // reads below (symbol/decimals) work against the real tokens too.
 
+    type OracleConfig = { oracle: Address; flip: boolean; maxAge: bigint };
+
     const paymentTokens: Address[] = [];
+    const oracles: Record<Address, OracleConfig> = {};
+    const noOracle: OracleConfig = {
+      oracle: zeroAddress,
+      flip: false,
+      maxAge: 0n,
+    };
+    const maxAge = 3600n; // 1 hour
     let wethAddress: Address;
-    let ethOracleAddress: Address;
     if (tags.hasDao) {
-      ethOracleAddress = MAINNET_ETH_ORACLE;
       wethAddress = MAINNET_WETH;
+      oracles[wethAddress] = {
+        oracle: MAINNET_ETH_ORACLE,
+        flip: true,
+        maxAge,
+      };
       paymentTokens.push(MAINNET_USDC);
       paymentTokens.push(MAINNET_DAI);
     } else if (tags.sepolia || tags["clean-testnet"]) {
-      ethOracleAddress = SEPOLIA_ETH_ORACLE;
       wethAddress = SEPOLIA_WETH;
+      oracles[wethAddress] = {
+        oracle: SEPOLIA_ETH_ORACLE,
+        flip: true,
+        maxAge,
+      };
       paymentTokens.push(SEPOLIA_USDC);
     } else {
-      ethOracleAddress = get("MockChainlinkETHUSD").address;
       wethAddress = get("MockWETH").address;
+      oracles[wethAddress] = {
+        oracle: get("MockChainlinkETHUSD").address,
+        flip: true,
+        maxAge,
+      };
       paymentTokens.push(get("MockUSDC").address);
       paymentTokens.push(get("MockDAI").address);
     }
@@ -61,7 +82,7 @@ export default execute(
       return rate ? { cp: 1 + i, rate, yearly } : [];
     }).reverse();
 
-    const paymentFactors = await Promise.all(
+    const paymentConfigs = await Promise.all(
       paymentTokens.map(async (address) => {
         const { abi } = Artifact_MockERC20;
         const [symbol, decimalsResult] = await Promise.all([
@@ -69,27 +90,29 @@ export default execute(
           read({ address, abi }, { functionName: "decimals" }),
         ]);
         const decimals = Number(decimalsResult);
+        const [numer, denom] = ratioFromDecimals(decimals);
         return {
           MockERC20: symbol,
           paymentToken: address,
           decimals,
           Δ: decimals - PRICE_DECIMALS,
-          numer: 10n ** BigInt(Math.max(decimals - PRICE_DECIMALS, 0)),
-          denom: 10n ** BigInt(Math.max(PRICE_DECIMALS - decimals, 0)),
+          numer,
+          denom,
+          ...(oracles[address] ?? noOracle),
         };
       }),
     );
 
     const wethIndex = paymentTokens.indexOf(wethAddress);
     if (wethIndex >= 0) {
-      paymentFactors.push({
-        ...paymentFactors[wethIndex],
+      paymentConfigs.push({
+        ...paymentConfigs[wethIndex],
         MockERC20: "[ether]",
         paymentToken: NATIVE_ETH,
       });
     }
 
-    console.table(paymentFactors);
+    console.table(paymentConfigs);
 
     console.table(
       baseRates.map((x) => ({ ...x, yearly: x.yearly.toFixed(2) })),
@@ -110,28 +133,29 @@ export default execute(
           PREMIUM_PRICE_INITIAL,
           PREMIUM_HALVING_PERIOD,
           PREMIUM_PERIOD,
-          paymentFactors,
-          wethAddress,
-          ethOracleAddress,
+          paymentConfigs,
         ],
       }));
 
     // sync ratios
-    for (const paymentFactor of paymentFactors) {
+    for (const cfg of paymentConfigs) {
       const [numer, denom] = (await read(standardRentPriceOracle, {
         functionName: "getPaymentTokenRatio",
-        args: [paymentFactor.paymentToken],
+        args: [cfg.paymentToken],
       })) as [bigint, bigint];
-      if (numer === paymentFactor.numer && denom === paymentFactor.denom) {
+      if (numer === cfg.numer && denom === cfg.denom) {
         continue;
       }
       await write(standardRentPriceOracle, {
         account: owner,
         functionName: "updatePaymentToken",
         args: [
-          paymentFactor.paymentToken,
-          paymentFactor.numer,
-          paymentFactor.denom,
+          cfg.paymentToken,
+          cfg.numer,
+          cfg.denom,
+          cfg.oracle,
+          cfg.flip,
+          cfg.maxAge,
         ],
       });
     }

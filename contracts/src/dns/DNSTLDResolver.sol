@@ -12,7 +12,7 @@ import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeRe
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IVerifiableResolver} from "@ens/contracts/resolvers/profiles/IVerifiableResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
-import {RegistryUtils as RegistryUtilsV1} from "@ens/contracts/universalResolver/RegistryUtils.sol";
+import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
@@ -21,7 +21,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @dev DNS resource-record class for the Internet (`IN`), as defined in RFC 1035 section 3.2.4.
@@ -303,9 +303,11 @@ contract DNSTLDResolver is
     /// @param name The DNS-encoded name to look up.
     /// @return resolver The v1 resolver address, or `address(0)` if none is applicable.
     function _getResolverV1(bytes memory name) internal view returns (address resolver) {
-        (resolver, , ) = RegistryUtilsV1.findResolver(ENS_REGISTRY_V1, name, 0);
+        uint256 offset;
+        (resolver, , offset) = RegistryUtils.findResolver(ENS_REGISTRY_V1, name, 0);
+        resolver = LibResolution.validateResolver(resolver, offset == 0);
         if (resolver == DNS_TLD_RESOLVER_V1 || resolver == address(this)) {
-            resolver = address(0);
+            resolver = address(0); // prevent trivial loops
         }
     }
 
@@ -354,7 +356,7 @@ contract DNSTLDResolver is
             }
         }
         bytes memory name = NameCoder.encode(string(v));
-        (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, address r, , ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);
         if (r != address(0)) {
             // in ENSv1, this was immediate only, but now supports IExtendedResolver
             // does not support offchain

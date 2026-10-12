@@ -14,6 +14,7 @@ import {Execution} from "nexus/types/DataTypes.sol";
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
 import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
+import {HCARegistrarPolicyLib} from "~src/hca/libraries/HCARegistrarPolicyLib.sol";
 import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -185,7 +186,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
 
         Execution[] memory executions = new Execution[](1);
         executions[0] = Execution({target: ethRegistrar, value: 0, callData: abi.encodePacked(
-            IETHRegistrar.register.selector,
+            HCARegistrarPolicyLib.REGISTER_SELECTOR,
             bytes2(0)
         )});
         _assertFirstPermit2OperationRevert(

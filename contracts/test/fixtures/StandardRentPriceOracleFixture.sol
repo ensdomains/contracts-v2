@@ -7,8 +7,11 @@ import {Test} from "forge-std/Test.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {StandardRentPriceOracle, PaymentConfig} from "~src/registrar/StandardRentPriceOracle.sol";
-import {NATIVE_ETH} from "~src/registrar/interfaces/IETHRenewer.sol";
+import {
+    StandardRentPriceOracle,
+    PaymentConfigWithToken
+} from "~src/registrar/StandardRentPriceOracle.sol";
+import {NATIVE_ETH} from "~src/utils/ERC7528.sol";
 import {MockChainlinkAggregator} from "~test/mocks/MockChainlinkAggregator.sol";
 import {
     MockERC20,
@@ -23,6 +26,7 @@ contract StandardRentPriceOracleFixture is Test {
     StandardRentPriceOracle rentPriceOracle;
     MockChainlinkAggregator ethOracle;
     MockChainlinkAggregator invalidOracle;
+    MockChainlinkAggregator staleOracle;
 
     MockERC20 tokenWETH;
     MockERC20 tokenUSDC;
@@ -33,7 +37,7 @@ contract StandardRentPriceOracleFixture is Test {
     MockERC20FalseReturn tokenFalse;
 
     MockERC20[] paymentTokens;
-    PaymentConfig[] paymentConfigs;
+    PaymentConfigWithToken[] paymentConfigs;
 
     address beneficiary = makeAddr("beneficiary");
     address refundTo = makeAddr("refundTo");
@@ -49,10 +53,13 @@ contract StandardRentPriceOracleFixture is Test {
         tokenFalse = new MockERC20FalseReturn();
 
         uint8 decimals = 8; // arbitrary
+        uint64 maxAge = 3600; // arbitrary
         uint256 ethPrice = StandardRegistrar.USD_PER_ETH;
-        ethOracle = new MockChainlinkAggregator(int256(ethPrice * 10 ** decimals), decimals);
-        invalidOracle = new MockChainlinkAggregator(0, 0);
+        ethOracle = new MockChainlinkAggregator(int256(ethPrice * 10 ** decimals), 0, decimals);
+        invalidOracle = new MockChainlinkAggregator(0, 0, decimals);
+        staleOracle = new MockChainlinkAggregator(1, maxAge + 1, decimals);
 
+        uint256 wethIndex = 6;
         paymentTokens = new MockERC20[](7);
         paymentTokens[0] = tokenUSDC;
         paymentTokens[1] = tokenDAI;
@@ -60,20 +67,24 @@ contract StandardRentPriceOracleFixture is Test {
         paymentTokens[3] = tokenBlack;
         paymentTokens[4] = tokenVoid;
         paymentTokens[5] = tokenFalse;
-        paymentTokens[6] = tokenWETH;
+        paymentTokens[wethIndex] = tokenWETH;
 
         for (uint256 i; i < paymentTokens.length; ++i) {
             MockERC20 token = paymentTokens[i];
-            PaymentConfig memory pc = StandardRegistrar.configFromParts(token, token.decimals());
+            PaymentConfigWithToken memory pc;
+            pc.paymentToken = address(token);
+            (pc.numer, pc.denom) = StandardRegistrar.ratioFromDecimals(token.decimals());
             if (address(token) == address(tokenWETH)) {
                 pc.oracle = ethOracle;
                 pc.flip = true;
+                pc.maxAge = 3600;
             }
+            paymentConfigs.push(pc);
         }
         {
-            PaymentConfig memory pc = StandardRegistrar.configFromParts(NATIVE_ETH, 18);
-            pc.oracle = ethOracle;
-            pc.flip = true;
+            PaymentConfigWithToken memory pc = paymentConfigs[wethIndex];
+            pc.paymentToken = NATIVE_ETH;
+            (pc.numer, pc.denom) = StandardRegistrar.ratioFromDecimals(18);
             paymentConfigs.push(pc);
         }
 

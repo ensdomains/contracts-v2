@@ -3,7 +3,6 @@ pragma solidity 0.8.27;
 
 import {Execution} from "nexus/types/DataTypes.sol";
 
-import {IETHRegistrar} from "../../registrar/interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "../../registrar/interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "../../registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "../../registry/interfaces/IPermissionedRegistry.sol";
@@ -15,6 +14,10 @@ import {HCAExecutionLib} from "./HCAExecutionLib.sol";
 /// @notice Identifies authorized registrars and the payment tokens their rent oracles accept.
 /// @dev Fails closed when registrar authorization or oracle discovery is unavailable.
 library HCARegistrarPolicyLib {
+    /// @dev Function selector for the parameterized `IETHRegistry.register()`.
+    bytes4 internal constant REGISTER_SELECTOR =
+        bytes4(keccak256("register(string,address,bytes32,address,address,uint64,address,bytes32)"));
+
     /// @notice Returns whether a registry currently authorizes an account to register names.
     /// @dev Checks the registrar role at the registry root.
     /// @param registry The permissioned ENS registry.
@@ -70,7 +73,7 @@ library HCARegistrarPolicyLib {
         address registrar;
         bool seenRegistration;
         for (uint256 i; i < executions.length; ++i) {
-            if (HCAExecutionLib.selector(executions[i].callData) != IETHRegistrar.register.selector) {
+            if (HCAExecutionLib.selector(executions[i].callData) != REGISTER_SELECTOR) {
                 continue;
             }
             if (!seenRegistration) {
@@ -83,17 +86,19 @@ library HCARegistrarPolicyLib {
         return !seenRegistration || isPaymentToken(registrar, token);
     }
 
-    /// @notice Reads the registrant and resolver from an encoded registration call.
+    /// @notice Reads the registrant, subregistry, and resolver from an encoded registration call.
     /// @dev Reads fixed ABI head words without decoding the dynamic label argument.
     /// @param callData ABI-encoded registrar call data.
     /// @return registrant The owner argument of the registration.
+    /// @return subregistry The initial subregistry argument of the registration.
     /// @return resolver The resolver argument of the registration.
     function registrationFields(bytes memory callData)
         internal
         pure
-        returns (address registrant, address resolver)
+        returns (address registrant, address subregistry, address resolver)
     {
         registrant = HCAExecutionLib.readAddress(callData, 4 + 32);
+        subregistry = HCAExecutionLib.readAddress(callData, 4 + 96);
         resolver = HCAExecutionLib.readAddress(callData, 4 + 128);
     }
 }

@@ -31,10 +31,11 @@ import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {LibRegistry} from "~src/universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "~src/universalResolver/libraries/LibResolution.sol";
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {IWrapperRegistry} from "~src/registry/interfaces/IWrapperRegistry.sol";
@@ -66,6 +67,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(ensV1Resolver),
             registryUpgradeSet,
             labelStore,
+            boxedRenderer,
             publicResolverSet,
             address(publicResolver),
             address(this) // namer
@@ -121,6 +123,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "VERIFIABLE_FACTORY"
         );
         assertEq(wrapperRegistryImpl.V1_RESOLVER(), address(ensV1Resolver), "V1_RESOLVER");
+        assertEq(address(wrapperRegistryImpl.URI_RENDERER()), address(boxedRenderer), "URI_RENDERER");
     }
 
     function test_supportsInterface_controller() external view {
@@ -445,6 +448,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_CAN_NAME |
             RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         );
+        vm.expectEmit();
+        emit IRegistryEvents.URIUpdated("", address(boxedRenderer), address(0));
         // emit Initializable.Initialized()
         vm.expectEmit();
         emit IVerifiableFactory.ProxyDeployed(
@@ -518,7 +523,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(subregistry.getWrappedNode(), node, "getWrappedNode");
         assertEq(subregistry.getWrappedName(), name, "getWrappedName");
-        assertEq(LibRegistry.findCanonicalName(rootRegistry, subregistry), name, "findCanonicalName");
+        assertEq(
+            LibResolution.findCanonicalName(rootRegistry, subregistry),
+            name,
+            "findCanonicalName"
+        );
+        assertEq(subregistry.uri(tokenId), boxedRenderer.renderURI(subregistry, tokenId), "uri");
     }
 
     function test_migrateBatch(uint8 count) external {
@@ -663,10 +673,26 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.prank(testOwner);
         registry.grantRootRoles(rootRoles, friend);
 
-        // transfer token
+        // owner can grant non-owner roles
+        vm.prank(testOwner);
+        ethRegistry.grantRoles(LibLabel.id(md.label), RegistryRolesLib.ROLE_SET_RESOLVER, friend);
+
         uint256 tokenId = ethRegistry.findTokenId(md.label);
+
+        // safe transfer rejected because of outstanding grants
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,
+                tokenId,
+                testOwner
+            )
+        );
         vm.prank(testOwner);
         ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
+
+        // unsafe transfer is required
+        vm.prank(testOwner);
+        ethRegistry.unsafeTransfer(friend, tokenId, "");
 
         // effective roles have "transferred"
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");
@@ -1367,6 +1393,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 address(ensV1Resolver),
                 registryUpgradeSet,
                 labelStore,
+                boxedRenderer,
                 publicResolverSet,
                 address(publicResolver),
                 address(this)
@@ -1383,6 +1410,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         address ensV1Resolver,
         IAddressSet upgradeSet,
         ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
         IAddressSet publicResolverSet,
         address publicResolver,
         address namer
@@ -1394,6 +1422,7 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
             ensV1Resolver,
             upgradeSet,
             labelStore,
+            uriRenderer,
             publicResolverSet,
             publicResolver,
             namer

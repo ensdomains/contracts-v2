@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-import {PaymentConfig, DiscountPoint} from "~src/registrar/StandardRentPriceOracle.sol";
+import {DiscountPoint} from "~src/registrar/StandardRentPriceOracle.sol";
 
 library StandardRegistrar {
     uint64 internal constant SEC_PER_YEAR = 365 * 1 days; // 31536000
@@ -84,18 +82,13 @@ library StandardRegistrar {
         return uint128((DISCOUNT_DENOMINATOR * numer + denom - 1) / denom); // round up
     }
 
-    function configFromParts(IERC20 paymentToken, uint8 decimals)
-        internal
-        pure
-        returns (PaymentConfig memory pc)
-    {
-        pc.paymentToken = paymentToken;
+    function ratioFromDecimals(uint8 decimals) internal pure returns (uint128 numer, uint128 denom) {
         if (decimals > PRICE_DECIMALS) {
-            pc.numer = uint128(10) ** (decimals - PRICE_DECIMALS);
-            pc.denom = 1;
+            numer = uint128(10) ** (decimals - PRICE_DECIMALS);
+            denom = 1;
         } else {
-            pc.numer = 1
-            pc.denom = uint128(10) ** (PRICE_DECIMALS - decimals);
+            numer = 1;
+            denom = uint128(10) ** (PRICE_DECIMALS - decimals);
         }
     }
 }

@@ -23,7 +23,7 @@ struct CommitData {
 }
 
 /// @notice Interface for registering ".eth" names.
-/// @dev Interface selector: `0x432eb5d9`
+/// @dev Interface selector: `0xb5318d8e`
 interface IETHRegistrar is IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -86,20 +86,58 @@ interface IETHRegistrar is IETHRenewer {
     /// @param commitment The commitment hash.
     function commit(bytes32 commitment) external;
 
-    /// @notice Register a name.
+    /// @notice Register a name using an ERC-20.
+    /// @dev Backwards-compatible with `0x432eb5d9` interface.
+    /// @param label The name from commitment.
+    /// @param owner The owner from commitment.
+    /// @param secret The secret from commitment.
+    /// @param subregistry The registry from commitment.
+    /// @param resolver The resolver from commitment.
+    /// @param duration The registration from commitment.
+    /// @param paymentToken The payment token.
+    /// @param referrer The referrer hash.
+    /// @return The registered token ID.
+    function register(
+        string memory label,
+        address owner,
+        bytes32 secret,
+        IRegistry subregistry,
+        address resolver,
+        uint64 duration,
+        address paymentToken,
+        bytes32 referrer
+    )
+        external
+        returns (uint256);
+
+    /// @notice Register a name using an ERC-20.
     /// @param cd The commit data.
     /// @param paymentToken The payment token (or refund address if ether is supplied).
     /// @return The registered token ID.
-    function register(CommitData calldata cd, address paymentToken)
+    function register(CommitData calldata cd, address paymentToken) external returns (uint256);
+
+    /// @notice Register a name using ether.
+    /// @param cd The commit data.
+    /// @param refundTo The refund address.
+    /// @return The registered token ID.
+    function registerWithETH(CommitData calldata cd, address refundTo)
         external
         payable
         returns (uint256);
 
-    /// @notice Register multiple names.
+    /// @notice Register multiple names using an ERC-20.
     /// @param cds The commit data.
-    /// @param paymentToken The payment token (or refund address if ether is supplied).
+    /// @param paymentToken The payment token.
     /// @return The registered token IDs.
     function registerBatch(CommitData[] calldata cds, address paymentToken)
+        external
+        returns (uint256[] memory);
+
+    /// @notice Register multiple names using ether.
+    /// @param cds The commit data.
+    /// @param refundTo The refund address.
+    /// @return The registered token IDs.
+    function registerBatchWithETH(CommitData[] calldata cds, address refundTo)
         external
         payable
         returns (uint256[] memory);
@@ -129,4 +167,27 @@ interface IETHRegistrar is IETHRenewer {
     /// @param cd The commit data.
     /// @return The commitment hash.
     function makeCommitment(CommitData calldata cd) external pure returns (bytes32);
+
+    /// @notice Compute hash of registration parameters.
+    /// @dev Backwards-compatible with `0x432eb5d9` interface.
+    /// @param label The name to register.
+    /// @param owner The owner address.
+    /// @param secret The secret for the registration.
+    /// @param subregistry The initial registry address.
+    /// @param resolver The initial resolver address.
+    /// @param duration The registration duration, in seconds.
+    /// @param referrer The referrer hash.
+    /// @return The commitment hash.
+    function makeCommitment(
+        string memory label,
+        address owner,
+        bytes32 secret,
+        IRegistry subregistry,
+        address resolver,
+        uint64 duration,
+        bytes32 referrer
+    )
+        external
+        pure
+        returns (bytes32);
 }

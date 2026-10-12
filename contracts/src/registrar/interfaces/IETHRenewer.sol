@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-address constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // https://eips.ethereum.org/EIPS/eip-7528
-
 struct RenewData {
     /// @param label The name to renew.
     string label;
@@ -13,7 +11,7 @@ struct RenewData {
 }
 
 /// @notice Interface for renewing ".eth" names.
-/// @dev Interface selector: `0xca53b3c9`
+/// @dev Interface selector: `0x17d34731`
 interface IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -50,8 +48,8 @@ interface IETHRenewer {
     error NameNotRenewable(string label);
 
     /// @notice `account` unable to recieve ether.
-    /// @dev Error selector: `0x1c988062`
-    error ETHTransferFailed(address account);
+    /// @dev Error selector: `0xcd68bc51`
+    error UnableToReceiveETH(address account);
 
     /// @notice `supplied` ether less than `required` ether.
     /// @dev Error selector: `0x1fbeaea0`
@@ -61,15 +59,25 @@ interface IETHRenewer {
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Renew a name.
+    /// @notice Renew a name using an ERC-20.
     /// @param rd The renew data.
-    /// @param paymentToken The payment token (or refund address if ether is supplied).
-    function renew(RenewData calldata rd, address paymentToken) external payable;
+    /// @param paymentToken The payment token.
+    function renew(RenewData calldata rd, address paymentToken) external;
 
-    /// @notice Renew multiple names.
+    /// @notice Renew a name using ether.
+    /// @param rd The renew data.
+    /// @param refundTo The refund address.
+    function renewWithETH(RenewData calldata rd, address refundTo) external payable;
+
+    /// @notice Renew multiple names using an ERC-20.
     /// @param rds The renew data.
-    /// @param paymentToken The payment token (or refund address if ether is supplied).
-    function renewBatch(RenewData[] calldata rds, address paymentToken) external payable;
+    /// @param paymentToken The payment token.
+    function renewBatch(RenewData[] calldata rds, address paymentToken) external;
+
+    /// @notice Renew multiple names using ether.
+    /// @param rds The renew data.
+    /// @param refundTo The refund address.
+    function renewBatchWithETH(RenewData[] calldata rds, address refundTo) external payable;
 
     /// @notice Determine renew price for a name.
     /// @param label The name to renew.
