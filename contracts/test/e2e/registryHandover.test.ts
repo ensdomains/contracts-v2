@@ -1,8 +1,20 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getAddress, zeroAddress, type Address } from "viem";
+import {
+  createPublicClient,
+  getAddress,
+  http,
+  zeroAddress,
+  type Address,
+} from "viem";
 
 import {
   DEPLOYMENT_ROLES,
@@ -17,6 +29,10 @@ import {
 } from "../../script/migrate.js";
 import { EMANCIPATED_OWNER_ROOT_ROLES } from "../../script/migrations/registryHandover.js";
 import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
+import {
+  registerV1Name,
+  setupBaseRegistrarController,
+} from "../utils/mockPreMigration.js";
 import { idFromLabel } from "../utils/utils.js";
 
 const TEST_TIMEOUT_MS = 120_000;
@@ -31,8 +47,31 @@ describe("registry handover", () => {
   const { env, setupEnv } = process.TEST_GLOBALS!;
   const workDir = mkdtempSync(join(tmpdir(), "registry-handover-"));
   const deploymentsDir = join(workDir, "v2");
+  const v1DeploymentsDir = join(workDir, "v1");
+  // on.eth's expiry on v1, which the handover registers it with on v2.
+  let onV1Expiry = 0n;
 
-  setupEnv({ resetOnEach: true });
+  setupEnv({
+    resetOnEach: true,
+    async initialize() {
+      await setupBaseRegistrarController(env);
+      onV1Expiry = await registerV1Name(
+        env,
+        "on",
+        env.namedAccounts.owner.address,
+        365 * 24 * 60 * 60,
+      );
+      const dir = join(v1DeploymentsDir, NAMESPACE);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "BaseRegistrarImplementation.json"),
+        JSON.stringify({
+          address: env.v1.BaseRegistrar.address,
+          abi: env.v1.BaseRegistrar.abi,
+        }),
+      );
+    },
+  });
 
   afterAll(() => {
     rmSync(workDir, { recursive: true, force: true });
@@ -47,12 +86,18 @@ describe("registry handover", () => {
     writeDeploymentNamespace(
       deploymentsDir,
       NAMESPACE,
-      (["RootRegistry", "ETHRegistry", "ETHRegistrar"] as const).flatMap(
-        (name) => {
-          const deployment = env.rocketh.deployments[name];
-          return deployment ? [[name, deployment] as const] : [];
-        },
-      ),
+      (
+        [
+          "RootRegistry",
+          "ETHRegistry",
+          "ETHRegistrar",
+          "BatchRegistrar",
+          "RootBatchRegistrar",
+        ] as const
+      ).flatMap((name) => {
+        const deployment = env.rocketh.deployments[name];
+        return deployment ? [[name, deployment] as const] : [];
+      }),
     );
     return {
       network: NETWORK,
@@ -60,6 +105,8 @@ describe("registry handover", () => {
       chainId: "1",
       deploymentsDir,
       deploymentNetwork: NAMESPACE,
+      v1DeploymentsDir,
+      v1DeploymentNetwork: NAMESPACE,
       owner: owner(),
       endowment: endowment(),
     } as const;
@@ -110,6 +157,34 @@ describe("registry handover", () => {
           endowment(),
         ]),
       ).toBe(DEPLOYMENT_ROLES.ETH_TOKEN);
+
+      // on.eth, registered by the deployer with its v1 expiry and every role, now
+      // belongs to the endowment with those roles.
+      const onId = idFromLabel("on");
+      expect(await env.v2.ETHRegistry.read.getOwner([onId])).toBe(endowment());
+      expect(await env.v2.ETHRegistry.read.getExpiry([onId])).toBe(onV1Expiry);
+      const onResource = await env.v2.ETHRegistry.read.getResource([onId]);
+      expect(
+        await env.v2.ETHRegistry.read.roles([onResource, endowment()]),
+      ).toBe(DEPLOYMENT_ROLES.ON_ETH_TOKEN);
+      expect(
+        await env.v2.ETHRegistry.read.roles([onResource, deployer()]),
+      ).toBe(0n);
+
+      // Neither batch registrar has an owner left to send through it.
+      const client = createPublicClient({
+        transport: http(`http://${env.hostPort}`),
+      });
+      for (const name of ["BatchRegistrar", "RootBatchRegistrar"] as const) {
+        const deployment = env.rocketh.deployments[name]!;
+        expect(
+          await client.readContract({
+            address: deployment.address,
+            abi: deployment.abi,
+            functionName: "owner",
+          } as never),
+        ).toBe(zeroAddress);
+      }
 
       const findings = await verifyV2Roles({
         ...context(),

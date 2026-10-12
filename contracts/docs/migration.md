@@ -517,6 +517,10 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
     registry and resolver, granting either to another account, and transferring the token. The
     token was registered with these roles, and a transfer moves the sender's roles with it. It
     carries no role that could remove `eth`.
+  - The endowment holds `on.eth`, with every role and admin role. The deployer registers it at the
+    handover, with the expiry it has on v1, where v1 holds it live: through the registrar role if
+    `on` is available on v2, or the register-reserved role if pre-migration reserved it, granting
+    itself whichever it lacks. The transfer to the endowment then moves those roles with it.
   - The owner holds the root registry's root roles, admin roles included, for the probation period.
   - The owner holds the `.eth` registry's root roles, admin roles included: it can authorize or
     remove registrars, renewers and migration controllers, including one that registers names
@@ -526,14 +530,14 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
     case: it does not accept ERC-1155 tokens.
   - The deployer holds no role on either registry or on the `eth` entry, and no longer holds the
     `eth` token.
-  - The deployer still owns `BatchRegistrar` and `RootBatchRegistrar`. That ownership gives it no
-    power over names. `RootBatchRegistrar` gives up its root registry role as soon as phase 1 has
-    registered the DNS top-level names, and `BatchRegistrar` loses its `.eth` registry roles in
-    phase 6. Once the deployer has dropped its admin roles, only the owner can grant them one again.
+  - `BatchRegistrar` and `RootBatchRegistrar` have no owner: the deployer renounces both, so no
+    account can send through them again, even if a registry later grants them a role.
+    `RootBatchRegistrar` already gives up its root registry role once phase 1 has registered the
+    DNS top-level names, and `BatchRegistrar` loses its `.eth` registry roles in phase 6.
   - The registrar, renewer and migration controllers keep the regular roles they need.
 
-  The command first transfers the `eth` token, while the deployer is still the only account with a
-  role on the entry, as a safe transfer requires. It then makes every grant to the owner before the
+  The command first registers `on.eth`, then transfers the `eth` token and `on.eth`, while the
+  deployer is still the only account with a role on either, as a safe transfer requires. It then makes every grant to the owner before the
   deployer drops anything, and sends only the transfer, grants and revocations still missing. It then checks the end state from the registries' own role
   counts, so a holder it did not look for is caught too, and checks that the `.eth` registry is
   emancipated. `emancipate-root-registry` has the owner drop every root registry root role except
@@ -779,7 +783,8 @@ The phases run in this order:
    the freeze — its `premigration reconcile` must pass, since v1 no longer changes — then phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
 7. **Phase 8**, `hand-over-registry-admin`, signed by the deployer: the `eth` token goes to the ENS
    DAO endowment Safe, and the registries' root roles to the DAO. After the probation period
-   (30 days), the DAO executes the `emancipate-root-registry` call as a proposal.
+   (30 days), the DAO executes the `emancipate-root-registry` call as a proposal. The handover also
+   registers `on.eth` for the endowment and renounces both batch registrars.
 
 ## ENSv1 test fixture corpus
 
@@ -1349,7 +1354,7 @@ and idempotency rules.
 | `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 4) |
 | `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
 | `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions, and write `deployments/<namespace>/roles.md` with every role, owner and proxy admin on the namespace's contracts; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`, `root-emancipated`) |
-| `phase hand-over-registry-admin` | Phase 8: the `eth` token, with every role on its entry, goes to the endowment; the owner takes the root registry's and the `.eth` registry's root roles; then the deployer drops every role it holds on them |
+| `phase hand-over-registry-admin` | Phase 8: the deployer registers `on.eth` with its v1 expiry; the `eth` token and `on.eth`, with every role on them, go to the endowment; the owner takes the root registry's and the `.eth` registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars |
 | `phase redeploy-root` | Replace the v2 root registry under a live namespace, with every contract built over it, before the DAO proposal executes and before go-live; the `.eth` registry and its reservations are reused, and its parent is left for `set-eth-parent` |
 | `phase set-eth-parent` | Point the `.eth` registry at the new root registry, once every contract built over the root reports it, `verify-deployment` passes, and every replaced contract's source is verified on Etherscan |
 | `phase emancipate-root-registry` | Phase 8, after probation: the owner drops its root registry roles except naming, metadata, and adding and assigning top-level names |

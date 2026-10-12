@@ -123,6 +123,9 @@ export const DEPLOYMENT_ROLES = {
     ROLES.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.CAN_TRANSFER,
+  // on.eth token: every role and admin role, held by the deployer only until the
+  // handover moves it, with those roles, to the endowment.
+  ON_ETH_TOKEN: FLAGS.ALL,
   // .reverse token: full role bitmap, held by the deployer only while it hands the
   // name over. Some roles (e.g. REGISTRAR) are root-only and don't apply to tokens.
   REVERSE_REGISTRY_ROOT: FLAGS.ALL,

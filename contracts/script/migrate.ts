@@ -111,6 +111,11 @@ import {
 import { buildDaoProposal } from "./migrations/daoProposal.js";
 import {
   EMANCIPATED_OWNER_ROOT_ROLES,
+  handsOverOnEth,
+  type HandoverContract,
+  type RegistryHandoverCall,
+  ON_ETH_LABEL,
+  planOnEthRegistration,
   planRegistryHandover,
   rootEmancipationRoles,
   type RegistryHandoverState,
@@ -192,6 +197,7 @@ import {
 import { dnsEncodeName } from "../test/utils/utils.js";
 import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
+  BaseRegistrar as BaseRegistrarFragments,
   PermissionedRegistry as PermissionedRegistryFragments,
   RegistrarOwnershipAbi,
 } from "./migrations/abis.js";
@@ -4312,7 +4318,7 @@ const ETH_ENTRY_ROOT_ROLES =
   ROLES.REGISTRY.UNREGISTER |
   ROLES.ADMIN.REGISTRY.UNREGISTER;
 
-type RegistryAdminOptions = {
+type RegistryAdminOptions = V1DeploymentOptions & {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -4387,14 +4393,47 @@ function registryAdminContext(opts: RegistryAdminOptions) {
 
 type RegistryAdminContext = ReturnType<typeof registryAdminContext>;
 
+// The batch registrars this namespace deployed, as the handover writes to them.
+function handoverBatchRegistrars(ctx: RegistryAdminContext) {
+  return (["BatchRegistrar", "RootBatchRegistrar"] as const).flatMap(
+    (contract) => {
+      const deployment = maybeLoadV2Deployment(
+        ctx.deploymentsDir,
+        ctx.deploymentNetwork,
+        contract,
+      );
+      return deployment
+        ? [
+            {
+              contract,
+              ref: { address: deployment.address, abi: deployment.abi },
+            },
+          ]
+        : [];
+    },
+  );
+}
+
 async function readRegistryHandoverState(
   ctx: RegistryAdminContext,
   deployer: Address,
+  opts: RegistryAdminOptions,
 ): Promise<RegistryHandoverState> {
   const ethId = labelId("eth");
+  const onId = labelId(ON_ETH_LABEL);
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    V1_BASE_REGISTRAR_NAME,
+    opts,
+  );
   const [
     ethTokenId,
     ethTokenHolder,
+    onStatus,
+    onTokenId,
+    onTokenHolder,
+    onV1Expiry,
+    block,
     ownerRootRoles,
     deployerRootRoles,
     ownerEthRegistryRoles,
@@ -4402,17 +4441,45 @@ async function readRegistryHandoverState(
   ] = await Promise.all([
     ctx.read(ctx.rootRegistry, "getTokenId", [ethId]) as Promise<bigint>,
     ctx.read(ctx.rootRegistry, "getOwner", [ethId]) as Promise<Address>,
+    ctx.read(ctx.ethRegistry, "getStatus", [onId]) as Promise<number>,
+    ctx.read(ctx.ethRegistry, "getTokenId", [onId]) as Promise<bigint>,
+    ctx.read(ctx.ethRegistry, "getOwner", [onId]) as Promise<Address>,
+    ctx.client.readContract({
+      address: baseRegistrar.address,
+      abi: BaseRegistrarFragments.nameExpires,
+      functionName: "nameExpires",
+      args: [onId],
+    }) as Promise<bigint>,
+    ctx.client.getBlock(),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, deployer),
     ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, deployer),
   ]);
+  const batchRegistrars = await Promise.all(
+    handoverBatchRegistrars(ctx).map(async ({ contract, ref }) => ({
+      contract,
+      owner: getAddress(
+        (await ctx.client.readContract({
+          address: ref.address,
+          abi: ref.abi,
+          functionName: "owner",
+        } as never)) as Address,
+      ),
+    })),
+  );
   return {
     deployer,
     owner: ctx.owner,
     endowment: ctx.endowment,
     ethTokenId,
     ethTokenHolder: getAddress(ethTokenHolder),
+    onStatus: Number(onStatus),
+    onTokenId,
+    onTokenHolder: getAddress(onTokenHolder),
+    onV1Expiry,
+    chainNow: block.timestamp,
+    batchRegistrars,
     ownerRootRoles,
     deployerRootRoles,
     ownerEthRegistryRoles,
@@ -4425,8 +4492,9 @@ async function readRegistryHandoverState(
 async function assertRegistryHandoverComplete(
   ctx: RegistryAdminContext,
   deployer: Address,
+  opts: RegistryAdminOptions,
 ) {
-  const state = await readRegistryHandoverState(ctx, deployer);
+  const state = await readRegistryHandoverState(ctx, deployer, opts);
   const remaining = planRegistryHandover(state);
   if (remaining.length > 0) {
     throw new Error(
@@ -4449,6 +4517,29 @@ async function assertRegistryHandoverComplete(
     failures.push(
       "the endowment is not the only holder of the eth entry's roles, or lacks some of them",
     );
+  }
+  if (handsOverOnEth(state)) {
+    const onResource = (await ctx.read(ctx.ethRegistry, "getResource", [
+      labelId(ON_ETH_LABEL),
+    ])) as bigint;
+    if (
+      (await ctx.assignees(ctx.ethRegistry, onResource, ANY_ROLE)) !==
+        DEPLOYMENT_ROLES.ON_ETH_TOKEN ||
+      (await ctx.roles(ctx.ethRegistry, onResource, state.endowment)) !==
+        DEPLOYMENT_ROLES.ON_ETH_TOKEN
+    ) {
+      failures.push(
+        "the endowment is not the only holder of every role on on.eth",
+      );
+    }
+    const onExpiry = (await ctx.read(ctx.ethRegistry, "getExpiry", [
+      labelId(ON_ETH_LABEL),
+    ])) as bigint;
+    if (onExpiry !== state.onV1Expiry) {
+      failures.push(
+        `on.eth expires at ${onExpiry} on v2 but ${state.onV1Expiry} on v1`,
+      );
+    }
   }
   if (
     (await ctx.assignees(
@@ -4478,15 +4569,16 @@ async function assertRegistryHandoverComplete(
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${state.endowment} holds the eth token and every role on its entry; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, and .eth names are emancipated`,
+    `registry handover complete: ${state.endowment} holds the eth token and every role on its entry${handsOverOnEth(state) ? ", and on.eth with every role" : ""}; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, the batch registrars have no owner, and .eth names are emancipated`,
   );
 }
 
 /// Hands the deployer's authority over the v2 registries to their final holders: the
-/// `eth` token, with every role on its entry, goes to the endowment; the owner takes
-/// the root registry's and the `.eth` registry's root roles; then the deployer drops
-/// every role it holds on them. Sends only what is missing, then checks the end
-/// state.
+/// deployer first registers `on.eth` to itself, where v1 holds it live; the `eth`
+/// token and `on.eth`, with every role on them, go to the endowment; the owner takes
+/// the root registry's and the `.eth` registry's root roles; the deployer drops every
+/// role it holds on them and renounces both batch registrars. Sends only what is
+/// missing, then checks the end state.
 export async function handOverRegistryAdmin(
   opts: RegistryAdminOptions & { deployer?: Address },
 ) {
@@ -4507,32 +4599,64 @@ export async function handOverRegistryAdmin(
     );
   }
 
+  const batchRegistrars = handoverBatchRegistrars(ctx);
+  const targets: Record<HandoverContract, ContractRef | undefined> = {
+    RootRegistry: ctx.rootRegistry,
+    ETHRegistry: ctx.ethRegistry,
+    BatchRegistrar: batchRegistrars.find((b) => b.contract === "BatchRegistrar")
+      ?.ref,
+    RootBatchRegistrar: batchRegistrars.find(
+      (b) => b.contract === "RootBatchRegistrar",
+    )?.ref,
+  };
+  const send = async (calls: RegistryHandoverCall[]) => {
+    for (const call of calls) {
+      const target = targets[call.contract];
+      if (!target) throw new Error(`no ${call.contract} in the namespace`);
+      await sendAdminWrite({
+        client: ctx.client,
+        chain: ctx.chain,
+        rpcUrl: opts.rpcUrl,
+        provider: opts.provider,
+        target,
+        functionName: call.functionName,
+        args: call.args,
+        receiptLabel: call.label,
+        calldataLabel: call.label,
+        privateKey: opts.privateKey,
+        impersonateAccount: opts.impersonateAccount,
+        calldataOnly: opts.calldataOnly,
+      });
+      if (!opts.calldataOnly) console.log(`  ${call.label}: done`);
+    }
+  };
+
+  // on.eth is registered first: its token id only exists once it is, and the
+  // transfer that follows needs it.
+  const registration = planOnEthRegistration(
+    await readRegistryHandoverState(ctx, getAddress(deployer), opts),
+  );
+  if (registration.length > 0) {
+    console.log(
+      `registering on.eth to the deployer ${deployer}: ${registration.length} call(s) to make`,
+    );
+    await send(registration);
+    if (opts.calldataOnly) {
+      console.log(
+        "send these first, then run again for the rest of the handover, which transfers on.eth by its new token id",
+      );
+      return;
+    }
+  }
   const calls = planRegistryHandover(
-    await readRegistryHandoverState(ctx, getAddress(deployer)),
+    await readRegistryHandoverState(ctx, getAddress(deployer), opts),
   );
   console.log(
-    `registry handover from ${deployer} to ${ctx.owner}, eth token to ${ctx.endowment}: ${calls.length} call(s) to make`,
+    `registry handover from ${deployer} to ${ctx.owner}, eth token and on.eth to ${ctx.endowment}: ${calls.length} call(s) to make`,
   );
-  for (const call of calls) {
-    await sendAdminWrite({
-      client: ctx.client,
-      chain: ctx.chain,
-      rpcUrl: opts.rpcUrl,
-      provider: opts.provider,
-      target:
-        call.registry === "RootRegistry" ? ctx.rootRegistry : ctx.ethRegistry,
-      functionName: call.functionName,
-      args: call.args,
-      receiptLabel: call.label,
-      calldataLabel: call.label,
-      privateKey: opts.privateKey,
-      impersonateAccount: opts.impersonateAccount,
-      calldataOnly: opts.calldataOnly,
-    });
-    if (!opts.calldataOnly) console.log(`  ${call.label}: done`);
-  }
+  await send(calls);
   if (opts.calldataOnly) return;
-  await assertRegistryHandoverComplete(ctx, getAddress(deployer));
+  await assertRegistryHandoverComplete(ctx, getAddress(deployer), opts);
 }
 
 /// The owner drops its root registry root roles once the probation period after the
@@ -8456,7 +8580,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         "registry handover: the deployer hands the v2 registries to the owner and the eth token to the endowment",
       );
       await handOverRegistryAdmin({
-        ...phaseCtx,
+        ...phaseV1Ctx,
         deployer,
         owner,
         endowment,
@@ -9963,32 +10087,34 @@ export async function main(argv = process.argv): Promise<void> {
   );
 
   phase.addCommand(
-    addDeploymentOptions(
-      addNetworkOptions(
-        addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
-          .description(
-            "Hand the deployer's v2 registry authority to its final holders: the eth token, with every role on its entry, goes to the endowment; the owner takes the root registry's and the .eth registry's root roles; then the deployer drops every role it holds on them",
-          )
-          .option(
-            "--owner <address>",
-            "Account to hand the root registry to; defaults to the owner the namespace was deployed with, else the network's configured owner",
-          )
-          .option(
-            "--endowment <address>",
-            "Account to give the eth token to; defaults to the network's configured endowment, else the owner",
-          )
-          .option(
-            "--deployer <address>",
-            "Account holding the roles; defaults to the signer, else the account that sent the namespace's deploy transactions",
-          )
-          .option(
-            "--private-key <key>",
-            "Deployer private key; falls back to DEPLOYER_KEY",
-          )
-          .option(
-            "--impersonate-account <address>",
-            "Impersonate the deployer on a fork",
-          ),
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
+            .description(
+              "Hand the deployer's v2 registry authority to its final holders: the deployer registers on.eth with its v1 expiry, where v1 holds it live; the eth token and on.eth, with every role on them, go to the endowment; the owner takes the root registry's and the .eth registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars",
+            )
+            .option(
+              "--owner <address>",
+              "Account to hand the root registry to; defaults to the owner the namespace was deployed with, else the network's configured owner",
+            )
+            .option(
+              "--endowment <address>",
+              "Account to give the eth token to; defaults to the network's configured endowment, else the owner",
+            )
+            .option(
+              "--deployer <address>",
+              "Account holding the roles; defaults to the signer, else the account that sent the namespace's deploy transactions",
+            )
+            .option(
+              "--private-key <key>",
+              "Deployer private key; falls back to DEPLOYER_KEY",
+            )
+            .option(
+              "--impersonate-account <address>",
+              "Impersonate the deployer on a fork",
+            ),
+        ),
       ),
     ).action(
       async (
