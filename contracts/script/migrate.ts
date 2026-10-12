@@ -5096,6 +5096,35 @@ export async function redeployRootRegistry(
     );
     return;
   }
+  // A root that already registers `eth` transferable needs no replacing; every
+  // deploy since the token became transferable makes one.
+  if (!archive) {
+    const root = loadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      "RootRegistry",
+    );
+    const readRoot = (functionName: string, args: readonly unknown[]) =>
+      client.readContract({
+        address: root.address,
+        abi: Artifact_PermissionedRegistry.abi,
+        functionName,
+        args,
+      } as never) as Promise<unknown>;
+    const ethResource = (await readRoot("getResource", [
+      labelId("eth"),
+    ])) as bigint;
+    const ethRoles = (await readRoot("roles", [
+      ethResource,
+      opts.deployerAddress,
+    ])) as bigint;
+    if ((ethRoles & ROLES.ADMIN.REGISTRY.CAN_TRANSFER) !== 0n) {
+      console.log(
+        `the root registry ${root.address} already registers eth transferable; nothing to replace`,
+      );
+      return;
+    }
+  }
 
   await assertRootRedeployAllowed({
     client,
