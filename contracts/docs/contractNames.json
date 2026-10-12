@@ -56,10 +56,16 @@
     "claim": "ReverseClaimer"
   },
   {
+    "deployment": "ManagedUniversalResolverProxy",
+    "name": "managed-universal-proxy.ens.eth",
+    "claim": "DelegatedContractNamer",
+    "comment": "middle proxy"
+  },
+  {
     "deployment": "UpgradableUniversalResolverProxy",
     "name": "universal.ens.eth",
     "claim": "DelegatedContractNamer",
-    "comment": "top proxy => UniversalResolverV2"
+    "comment": "top proxy"
   },
   {
     "deployment": "UniversalResolverV1",
@@ -243,5 +249,17 @@
     "deployment": "HCAUpgradeSet",
     "name": "hca-upgrade-set.ens.eth",
     "claim": "IContractNamer"
+  },
+  {
+    "deployment": "StandaloneHCAImplementation",
+    "name": "impl.hca.ens.eth"
+  },
+  {
+    "deployment": "HCAOwnerAndSessionValidator",
+    "name": "hca-validator.ens.eth"
+  },
+  {
+    "deployment": "VerifiableFactory",
+    "name": "verifiable-factory.ens.eth"
   }
 ]

@@ -43,7 +43,7 @@ import { encodeMigrationData } from "../test/utils/migrationData.js";
 // so after new deployment, the first operation is for owner
 // to claim every contract and update the name and resolver
 
-const KNOWN_CONTRACT_COLLISIONS = new Set(["MigrationHelper"]);
+const KNOWN_COLLISIONS = new Set(["MigrationHelper"]);
 
 const CLAIMS = [
   "ReverseClaimer",
@@ -144,7 +144,7 @@ async function readDeploymentAddresses(
         .map(async (name) => {
           const json = JSON.parse(await readFile(join(dir, name), "utf8"));
           let slug = name.slice(0, -suffix.length);
-          if (v1 && KNOWN_CONTRACT_COLLISIONS.has(slug)) {
+          if (v1 && KNOWN_COLLISIONS.has(slug)) {
             slug += "Old";
           }
           return [slug, json.address as Address];
@@ -164,7 +164,7 @@ export function createDeployResolverTransaction({
   info: NamingInfo;
   v2: Deployments;
 }): TransactionRequest {
-  const managerRoles = ROLES.REGULAR & ~ROLES.RESOLVER.UPGRADE; // ?
+  const managerRoles = ROLES.REGULAR & ~ROLES.RESOLVER.UPGRADE; // TODO
   const initData = encodeFunctionData({
     abi: Abi_PermissionedResolver,
     functionName: "initialize",
@@ -498,6 +498,14 @@ if (import.meta.main) {
     }
 
     switch (mode) {
+      case "unnamed": {
+        console.table(
+          Object.keys(v2).flatMap((name) =>
+            names.find((x) => x.deployment === name) ? [] : name,
+          ),
+        );
+        break;
+      }
       case "deployed": {
         console.table(
           getDeployedNames().map(({ deployment, address }) => ({
@@ -553,6 +561,10 @@ if (import.meta.main) {
       {
         mode: "owners",
         description: "Print reverse name owners",
+      },
+      {
+        mode: "unnamed",
+        description: "Print unnamed v2 deployments",
       },
       {
         mode: "deployed",
