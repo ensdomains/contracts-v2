@@ -34,6 +34,7 @@ describe("Contract Names", () => {
     ]);
   }
 
+  // some contracts aren't referenced in v2
   const v1 = toAddresses(env.v1, [
     "ETHRegistrarController",
     "WrappedETHRegistrarController",
@@ -48,9 +49,8 @@ describe("Contract Names", () => {
 
   const info: NamingInfo = {
     label: "ensv2", // devnet already does setupEnsDotEth()
-    v1Owner: owner.address,
+    owner: owner.address,
     isWrapped: false,
-    v2Owner: owner.address,
     resolverSaltVersion: 1n, // devnet already deploys a PermissionedResolver for "owner"
     managers: [env.namedAccounts.user.address],
     wallets: {},
@@ -67,7 +67,7 @@ describe("Contract Names", () => {
       );
       await env.v1.BaseRegistrarImplementation.write.register([
         idFromLabel(info.label),
-        info.v1Owner,
+        info.owner,
         MAX_EXPIRY,
       ]);
       // premigrate
@@ -106,9 +106,9 @@ describe("Contract Names", () => {
     expect(resolver.address).toEqualAddress(
       expectedResolverAddress({ info, v2 }),
     );
-    await expect(
-      resolver.read.roles([0n, info.v2Owner]),
-    ).resolves.toStrictEqual(ROLES.ALL);
+    await expect(resolver.read.roles([0n, info.owner])).resolves.toStrictEqual(
+      ROLES.ALL,
+    );
   });
 
   it("createMigrationTransaction()", async () => {
@@ -126,17 +126,13 @@ describe("Contract Names", () => {
     ).resolves.toEqualAddress(expectedResolverAddress({ info, v2 }));
   });
 
-  it("createClaimTransactions()", async () => {
+  it("createReverseRegistrarTransactions()", async () => {
     const names = await getDeployedNames();
     const trs = createReverseRegistrarTransactions({ info, v1, v2, names });
 
     const client = env.createClient(owner);
     for (const tr of trs) {
-      try {
-        await env.waitFor(client.sendTransaction(tr));
-      } catch (err) {
-        console.log(tr);
-      }
+      await env.waitFor(client.sendTransaction(tr));
     }
   });
 

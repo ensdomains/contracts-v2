@@ -64,9 +64,8 @@ export type Deployments = Record<string, Address>;
 
 export type NamingInfo = {
   label: string;
-  v1Owner: Address;
+  owner: Address;
   isWrapped: boolean;
-  v2Owner: Address;
   resolverSaltVersion?: bigint;
   wallets: Record<Address, string>;
   managers: Address[];
@@ -153,7 +152,7 @@ async function readDeploymentAddresses(
     ),
   );
   if (!addresses[v1 ? "ENSRegistry" : "RootRegistry"]) {
-    throw new Error(`invalid deployment: ${dir}`);
+    throw new Error(`invalid ${v1 ? "v1" : "v2"} deployment: ${dir}`);
   }
   return addresses;
 }
@@ -171,7 +170,7 @@ export function createDeployResolverTransaction({
     functionName: "initialize",
     args: [
       [
-        { account: info.v2Owner, roleBitmap: ROLES.ALL },
+        { account: info.owner, roleBitmap: ROLES.ALL },
         ...info.managers.map((account) => ({
           account,
           roleBitmap: managerRoles,
@@ -187,7 +186,7 @@ export function createDeployResolverTransaction({
       functionName: "deployProxy",
       args: [
         v2.PermissionedResolverImpl,
-        computeOwnedResolverSalt(info.v2Owner, info.resolverSaltVersion),
+        computeOwnedResolverSalt(info.owner, info.resolverSaltVersion),
         initData,
       ],
     }),
@@ -203,8 +202,8 @@ export function expectedResolverAddress({
 }): Address {
   return computeVerifiableProxyAddress({
     factoryAddress: v2.VerifiableFactory,
-    deployer: info.v2Owner,
-    salt: computeOwnedResolverSalt(info.v2Owner, info.resolverSaltVersion),
+    deployer: info.owner,
+    salt: computeOwnedResolverSalt(info.owner, info.resolverSaltVersion),
   });
 }
 
@@ -220,7 +219,7 @@ export function createMigrationTransaction({
   const resolver = expectedResolverAddress({ info, v2 });
   const migrationData = encodeMigrationData({
     label: info.label,
-    owner: info.v2Owner,
+    owner: info.owner,
     resolver,
     subregistry: zeroAddress,
   });
@@ -231,7 +230,7 @@ export function createMigrationTransaction({
           abi: Abi_NameWrapper,
           functionName: "safeTransferFrom",
           args: [
-            info.v2Owner,
+            info.owner,
             v2.UnlockedMigrationController,
             BigInt(namehash(`${info.label}.eth`)),
             1n,
@@ -245,7 +244,7 @@ export function createMigrationTransaction({
           abi: Abi_BaseRegistrarImplementation,
           functionName: "safeTransferFrom",
           args: [
-            info.v2Owner,
+            info.owner,
             v2.UnlockedMigrationController,
             BigInt(labelhash(info.label)),
             migrationData,
@@ -313,15 +312,12 @@ function resolveAccounts(chainId: number): NamingInfo {
     case mainnet.id: {
       const DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7";
       const Cold = "0x690F0581eCecCf8389c223170778cD9D029606F2";
-      const v1Owner = DAO;
-      const v2Owner = DAO;
       return {
         chain: mainnet,
         publicRPC: "https://eth.drpc.org",
         label,
-        v1Owner,
+        owner: DAO,
         isWrapped: false,
-        v2Owner,
         wallets: {
           [DAO]: "DAO",
           [Cold]: "Cold",
@@ -333,17 +329,15 @@ function resolveAccounts(chainId: number): NamingInfo {
     }
     case sepolia.id: {
       const DAO = "0x0F32b753aFc8ABad9Ca6fE589F707755f4df2353";
-      const Greg = "0x179A862703a4adfb29896552DF9e307980D19285"; // current ens.eth owner
       return {
         chain: sepolia,
         publicRPC: "https://ethereum-sepolia-rpc.publicnode.com",
         label,
-        v1Owner: Greg,
         isWrapped: true,
-        v2Owner: DAO,
+        owner: DAO,
         wallets: {
           [DAO]: "DAO",
-          [Greg]: "gregskril.eth",
+          "0x179A862703a4adfb29896552DF9e307980D19285": "gregskril.eth", // current ens.eth owner
           "0x4Fe4e666Be5752f1FdD210F4Ab5DE2Cc26e3E0e8": "Deployer",
         },
         managers: [],
@@ -454,13 +448,9 @@ if (import.meta.main) {
     console.log(`Chain: ${chainId}`);
     console.log(`V1 Deployment: ${relative(baseDir, v1Dir)}`);
     console.log(`V2 Deployment: ${relative(baseDir, v2Dir)}`);
-    function ownerStr(x: Address) {
-      return `${x} ${info.wallets[x] ?? "?"}`;
-    }
     console.log(
-      `V1 Owner: ${ownerStr(info.v1Owner)} [wrapper=${info.isWrapped}]`,
+      `Owner: ${info.owner} ${info.wallets[info.owner] ?? ""} [wrapper=${info.isWrapped}]`,
     );
-    console.log(`V2 Owner: ${ownerStr(info.v2Owner)}`);
     console.log(
       `Managers[${info.managers.length}]: ${info.managers.join(", ") || "<none>"}`,
     );
