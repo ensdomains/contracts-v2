@@ -129,6 +129,42 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
   },
 };
 
+/// A `.eth` name registered straight to its owner on v2, outside pre-migration.
+export type DirectRegistration = {
+  label: string;
+  owner: Address;
+  /// The resolver to register with: a fixed address, or `"v1"` for the resolver the
+  /// name has on v1 when it is registered.
+  resolver: Address | "v1";
+  /// The expiry to register with: a fixed time, or `"v1"` for the expiry the name
+  /// has on v1 when it is registered.
+  expiry: bigint | "v1";
+};
+
+/// Names each network registers directly on v2. They skip pre-migration because no
+/// export carries their label and no registrar prices them, and the DAO chooses
+/// their owner. A v2 name cannot be owned by the DAO timelock, which has no ERC-1155
+/// receiver, so a DAO name goes to the endowment Safe.
+export const DIRECT_REGISTRATIONS: Partial<
+  Record<MigrationNetwork, DirectRegistration[]>
+> = {
+  mainnet: [
+    {
+      label: "on",
+      owner: MAINNET_ENDOWMENT,
+      resolver: "v1",
+      expiry: "v1",
+    },
+  ],
+};
+
+/// The names a network registers directly on v2; none where it lists none.
+export function directRegistrations(
+  network: MigrationNetwork,
+): DirectRegistration[] {
+  return DIRECT_REGISTRATIONS[network] ?? [];
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Deployment artifact roots
 ////////////////////////////////////////////////////////////////////////

@@ -1,14 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { getAddress, zeroAddress } from "viem";
 
-import {
-  DEPLOYMENT_ROLES,
-  ROLES,
-  STATUS,
-} from "../../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
 import {
   EMANCIPATED_OWNER_ROOT_ROLES,
-  planOnEthRegistration,
   planRegistryHandover,
   rootEmancipationRoles,
   type RegistryHandoverState,
@@ -18,22 +13,14 @@ const DEPLOYER = getAddress("0x00000000000000000000000000000000000000d1");
 const OWNER = getAddress("0x00000000000000000000000000000000000000a1");
 const ENDOWMENT = getAddress("0x00000000000000000000000000000000000000e1");
 const ETH_TOKEN_ID = 123n;
-const ON_TOKEN_ID = 456n;
-const NOW = 1_800_000_000n;
-const ON_V1_EXPIRY = 2_088_583_991n;
 
-// The registries as the deploy leaves them, once on.eth is registered.
+// The registries as the deploy leaves them.
 const deployed: RegistryHandoverState = {
   deployer: DEPLOYER,
   owner: OWNER,
   endowment: ENDOWMENT,
   ethTokenId: ETH_TOKEN_ID,
   ethTokenHolder: DEPLOYER,
-  onStatus: STATUS.REGISTERED,
-  onTokenId: ON_TOKEN_ID,
-  onTokenHolder: DEPLOYER,
-  onV1Expiry: ON_V1_EXPIRY,
-  chainNow: NOW,
   batchRegistrars: [
     { contract: "BatchRegistrar", owner: DEPLOYER },
     { contract: "RootBatchRegistrar", owner: DEPLOYER },
@@ -48,7 +35,6 @@ const deployed: RegistryHandoverState = {
 const handedOver: RegistryHandoverState = {
   ...deployed,
   ethTokenHolder: ENDOWMENT,
-  onTokenHolder: ENDOWMENT,
   batchRegistrars: [
     { contract: "BatchRegistrar", owner: zeroAddress },
     { contract: "RootBatchRegistrar", owner: zeroAddress },
@@ -59,77 +45,14 @@ const handedOver: RegistryHandoverState = {
   deployerEthRegistryRoles: 0n,
 };
 
-describe("planOnEthRegistration", () => {
-  const unregistered = {
-    ...deployed,
-    onStatus: STATUS.AVAILABLE,
-    onTokenHolder: zeroAddress,
-  };
-
-  it("lets the deployer register an available on.eth to itself with every role and its v1 expiry", () => {
-    expect(planOnEthRegistration(unregistered)).toEqual([
-      {
-        contract: "ETHRegistry",
-        functionName: "grantRootRoles",
-        args: [ROLES.REGISTRY.REGISTRAR, DEPLOYER],
-        label: expect.stringContaining("available"),
-      },
-      {
-        contract: "ETHRegistry",
-        functionName: "register",
-        args: [
-          "on",
-          DEPLOYER,
-          zeroAddress,
-          zeroAddress,
-          DEPLOYMENT_ROLES.ON_ETH_TOKEN,
-          ON_V1_EXPIRY,
-        ],
-        label: expect.any(String),
-      },
-    ]);
-    expect(DEPLOYMENT_ROLES.ON_ETH_TOKEN).toBe(ROLES.ALL);
-  });
-
-  it("registers a reserved on.eth through the register-reserved role", () => {
-    const [grant] = planOnEthRegistration({
-      ...unregistered,
-      onStatus: STATUS.RESERVED,
-    });
-    expect(grant.args).toEqual([ROLES.REGISTRY.REGISTER_RESERVED, DEPLOYER]);
-  });
-
-  it("grants nothing the deployer already holds", () => {
-    const calls = planOnEthRegistration({
-      ...unregistered,
-      deployerEthRegistryRoles:
-        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT | ROLES.REGISTRY.REGISTRAR,
-    });
-    expect(calls.map((call) => call.functionName)).toEqual(["register"]);
-  });
-
-  it("registers nothing once on.eth is registered, or where v1 holds no live on.eth", () => {
-    expect(planOnEthRegistration(deployed)).toEqual([]);
-    expect(
-      planOnEthRegistration({ ...unregistered, onV1Expiry: NOW - 1n }),
-    ).toEqual([]);
-  });
-});
-
 describe("planRegistryHandover", () => {
-  it("moves the eth token and on.eth first, grants the owner its roles before the deployer drops everything, then renounces the batch registrars", () => {
+  it("moves the eth token first, grants the owner its roles before the deployer drops everything, then renounces the batch registrars", () => {
     expect(planRegistryHandover(deployed)).toEqual([
       {
         contract: "RootRegistry",
         functionName: "safeTransferFrom",
         args: [DEPLOYER, ENDOWMENT, ETH_TOKEN_ID, 1n, "0x"],
         label: expect.stringContaining("endowment"),
-      },
-      {
-        contract: "ETHRegistry",
-        functionName: "safeTransferFrom",
-        args: [DEPLOYER, ENDOWMENT, ON_TOKEN_ID, 1n, "0x"],
-        label: expect.stringContaining("on.eth"),
       },
       {
         contract: "RootRegistry",
@@ -219,39 +142,10 @@ describe("planRegistryHandover", () => {
     ]);
   });
 
-  it("leaves on.eth out where v1 holds no live on.eth", () => {
-    const calls = planRegistryHandover({
-      ...deployed,
-      onStatus: STATUS.AVAILABLE,
-      onTokenHolder: zeroAddress,
-      onV1Expiry: 0n,
-    });
-    expect(
-      calls.some(
-        (call) =>
-          call.contract === "ETHRegistry" &&
-          call.functionName === "safeTransferFrom",
-      ),
-    ).toBe(false);
-  });
-
-  it("refuses to plan before on.eth is registered", () => {
-    expect(() =>
-      planRegistryHandover({
-        ...deployed,
-        onStatus: STATUS.AVAILABLE,
-        onTokenHolder: zeroAddress,
-      }),
-    ).toThrow(/on.eth is not registered yet/);
-  });
-
   it("refuses a token held by neither the deployer nor the endowment", () => {
     expect(() =>
       planRegistryHandover({ ...deployed, ethTokenHolder: OWNER }),
     ).toThrow(/eth token is held by/);
-    expect(() =>
-      planRegistryHandover({ ...deployed, onTokenHolder: OWNER }),
-    ).toThrow(/on.eth is held by/);
   });
 
   it("refuses a batch registrar owned by someone other than the deployer", () => {

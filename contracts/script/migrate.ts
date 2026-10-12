@@ -111,15 +111,16 @@ import {
 import { buildDaoProposal } from "./migrations/daoProposal.js";
 import {
   EMANCIPATED_OWNER_ROOT_ROLES,
-  handsOverOnEth,
   type HandoverContract,
-  type RegistryHandoverCall,
-  ON_ETH_LABEL,
-  planOnEthRegistration,
   planRegistryHandover,
   rootEmancipationRoles,
   type RegistryHandoverState,
 } from "./migrations/registryHandover.js";
+import {
+  directRegistrationStanding,
+  type DirectRegistrationState,
+  type ResolvedDirectRegistration,
+} from "./migrations/directRegistrations.js";
 import {
   archiveRootBoundRecords,
   driftedReusedRecords,
@@ -193,11 +194,14 @@ import {
   sameAddress,
   type RpcProvider,
   type V1DeploymentOptions,
+  directRegistrations,
+  type DirectRegistration,
 } from "./migrations/plumbing.js";
 import { dnsEncodeName } from "../test/utils/utils.js";
 import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
   BaseRegistrar as BaseRegistrarFragments,
+  EnsRegistry as EnsRegistryFragments,
   PermissionedRegistry as PermissionedRegistryFragments,
   RegistrarOwnershipAbi,
 } from "./migrations/abis.js";
@@ -956,6 +960,12 @@ async function verifyPreMigration(opts: {
   let invalid = 0;
   let verifiedActive = 0;
   let verifiedExpiredBonus = 0;
+  // A name registered directly is not a pre-migration reservation; the direct
+  // registration check judges it instead.
+  const directLabels = new Set(
+    directRegistrations(opts.network).map((entry) => entry.label),
+  );
+  let direct = 0;
 
   for (
     let start = 0;
@@ -964,6 +974,10 @@ async function verifyPreMigration(opts: {
   ) {
     const batch = labels.slice(start, start + PREMIGRATION_VERIFY_BATCH_SIZE);
     const validBatch = batch.filter((label) => {
+      if (directLabels.has(label)) {
+        direct++;
+        return false;
+      }
       if (isValidLabel(label)) return true;
       invalid++;
       return false;
@@ -1084,6 +1098,7 @@ async function verifyPreMigration(opts: {
 
   console.log(`labels scanned: ${labels.length}`);
   console.log(`invalid labels: ${invalid}`);
+  console.log(`registered directly, checked by verify-direct-names: ${direct}`);
   console.log(`eligible v1 names: ${eligible}`);
   console.log(`skipped ineligible names: ${skipped}`);
   console.log(`  of them, v1 registrant is a Graveyard: ${skippedGraveyard}`);
@@ -1243,6 +1258,9 @@ type ReconcileResult = {
   /// reserved from that CSV, so they are listed on their own rather than counted as
   /// missing.
   unreservable: Array<{ id: string; label: string }>;
+  /// Claimable names the network registers directly to their owners, found
+  /// registered as its table says rather than reserved.
+  directlyRegistered: Array<{ id: string; label: string }>;
   /// Seeded fixture names pre-migration leaves out on purpose, with the v2 state
   /// their scenario declares. They are live v1 names, so without the list they would
   /// read as missing and keep the gate shut.
@@ -1299,6 +1317,9 @@ export async function reconcilePreMigration(opts: {
   // block the renewal is not in, so their v2 expiry is checked for extension rather
   // than for equality with what the index reports.
   renewedIds?: readonly Hex[];
+  // Names registered directly to their owners rather than reserved; the network's
+  // table by default.
+  directRegistrations?: readonly DirectRegistration[];
 }): Promise<ReconcileResult> {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
@@ -1370,6 +1391,7 @@ export async function reconcilePreMigration(opts: {
     registered: 0,
     missing: [],
     unreservable: [],
+    directlyRegistered: [],
     keptUnreserved: [],
     expiryMismatched: [],
     unexpected: [],
@@ -1486,6 +1508,15 @@ export async function reconcilePreMigration(opts: {
   // does not hold, so neither may be read as a fault.
   const migrationOpen = expectedStatus === "reserved-or-registered";
 
+  const directById = new Map(
+    (opts.directRegistrations ?? directRegistrations(opts.network)).map(
+      (entry) => [
+        toLabelhashHex(canonicalLabelId(keccak256(stringToHex(entry.label)))),
+        entry,
+      ],
+    ),
+  );
+
   // Forward: every claimable v1 name must exist on v2 with the bonus-adjusted expiry.
   const claimableStates = await readV2StatesInBatches(
     client,
@@ -1500,6 +1531,29 @@ export async function reconcilePreMigration(opts: {
     } = claimableStates.get(entry.id)!;
 
     const canonicalId = toLabelhashHex(canonicalLabelId(entry.id));
+    // A name registered directly must be registered to its table owner, with the
+    // table's expiry or, for one taken from v1, the v1 expiry the index holds.
+    const direct = directById.get(canonicalId);
+    if (direct) {
+      const expectedExpiry =
+        direct.expiry === "v1" ? entry.expiry : direct.expiry;
+      if (
+        status === STATUS.REGISTERED &&
+        sameAddress(latestOwner, direct.owner) &&
+        actualExpiry === expectedExpiry
+      ) {
+        result.directlyRegistered.push({ id: entry.id, label: direct.label });
+      } else if (status !== STATUS.REGISTERED) {
+        result.missing.push(
+          `${entry.id} (${direct.label}.eth) is not registered yet: run phase register-direct-names`,
+        );
+      } else {
+        result.unexpected.push(
+          `${entry.id} (${direct.label}.eth) is registered to ${latestOwner} expiring ${actualExpiry}, not to ${direct.owner} expiring ${expectedExpiry}`,
+        );
+      }
+      continue;
+    }
     const fixture = keptOut.get(canonicalId);
     // Nothing on v2 at all: the name was never seeded.
     if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
@@ -1614,6 +1668,8 @@ export async function reconcilePreMigration(opts: {
   for (const [labelhash, { label, reserved }] of seeded) {
     const canonicalId = toLabelhashHex(canonicalLabelId(labelhash));
     if (claimableIds.has(canonicalId)) continue;
+    // Judged by the forward pass, or registered directly with no live v1 name.
+    if (directById.has(canonicalId)) continue;
     // Registered through the registrar with no reservation behind it: once
     // migration has opened that is someone registering a name v1 no longer holds,
     // not a seed. Before then nothing may register, so it is still reported.
@@ -1764,6 +1820,14 @@ export async function reconcilePreMigration(opts: {
       console.log(`  ${id} ${shown}.eth`);
     }
   }
+  if (result.directlyRegistered.length > 0) {
+    console.log(
+      `registered directly to their owners: ${result.directlyRegistered.length}`,
+    );
+    for (const { id, label } of result.directlyRegistered) {
+      console.log(`  ${id} ${label}.eth`);
+    }
+  }
   console.log(`expiry mismatches: ${result.expiryMismatched.length}`);
   console.log(`unexpected on v2: ${result.unexpected.length}`);
 
@@ -1829,6 +1893,7 @@ export async function reconcilePreMigration(opts: {
         reserved: result.reserved,
         registered: result.registered,
         unreservable: result.unreservable.length,
+        directlyRegistered: result.directlyRegistered.length,
         keptUnreserved: result.keptUnreserved.length,
         rpcHead: (await client.getBlockNumber()).toString(),
       },
@@ -4417,23 +4482,11 @@ function handoverBatchRegistrars(ctx: RegistryAdminContext) {
 async function readRegistryHandoverState(
   ctx: RegistryAdminContext,
   deployer: Address,
-  opts: RegistryAdminOptions,
 ): Promise<RegistryHandoverState> {
   const ethId = labelId("eth");
-  const onId = labelId(ON_ETH_LABEL);
-  const baseRegistrar = requireV1Deployment(
-    opts.network,
-    V1_BASE_REGISTRAR_NAME,
-    opts,
-  );
   const [
     ethTokenId,
     ethTokenHolder,
-    onStatus,
-    onTokenId,
-    onTokenHolder,
-    onV1Expiry,
-    block,
     ownerRootRoles,
     deployerRootRoles,
     ownerEthRegistryRoles,
@@ -4441,16 +4494,6 @@ async function readRegistryHandoverState(
   ] = await Promise.all([
     ctx.read(ctx.rootRegistry, "getTokenId", [ethId]) as Promise<bigint>,
     ctx.read(ctx.rootRegistry, "getOwner", [ethId]) as Promise<Address>,
-    ctx.read(ctx.ethRegistry, "getStatus", [onId]) as Promise<number>,
-    ctx.read(ctx.ethRegistry, "getTokenId", [onId]) as Promise<bigint>,
-    ctx.read(ctx.ethRegistry, "getOwner", [onId]) as Promise<Address>,
-    ctx.client.readContract({
-      address: baseRegistrar.address,
-      abi: BaseRegistrarFragments.nameExpires,
-      functionName: "nameExpires",
-      args: [onId],
-    }) as Promise<bigint>,
-    ctx.client.getBlock(),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, deployer),
     ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, ctx.owner),
@@ -4474,11 +4517,6 @@ async function readRegistryHandoverState(
     endowment: ctx.endowment,
     ethTokenId,
     ethTokenHolder: getAddress(ethTokenHolder),
-    onStatus: Number(onStatus),
-    onTokenId,
-    onTokenHolder: getAddress(onTokenHolder),
-    onV1Expiry,
-    chainNow: block.timestamp,
     batchRegistrars,
     ownerRootRoles,
     deployerRootRoles,
@@ -4492,9 +4530,8 @@ async function readRegistryHandoverState(
 async function assertRegistryHandoverComplete(
   ctx: RegistryAdminContext,
   deployer: Address,
-  opts: RegistryAdminOptions,
 ) {
-  const state = await readRegistryHandoverState(ctx, deployer, opts);
+  const state = await readRegistryHandoverState(ctx, deployer);
   const remaining = planRegistryHandover(state);
   if (remaining.length > 0) {
     throw new Error(
@@ -4517,29 +4554,6 @@ async function assertRegistryHandoverComplete(
     failures.push(
       "the endowment is not the only holder of the eth entry's roles, or lacks some of them",
     );
-  }
-  if (handsOverOnEth(state)) {
-    const onResource = (await ctx.read(ctx.ethRegistry, "getResource", [
-      labelId(ON_ETH_LABEL),
-    ])) as bigint;
-    if (
-      (await ctx.assignees(ctx.ethRegistry, onResource, ANY_ROLE)) !==
-        DEPLOYMENT_ROLES.ON_ETH_TOKEN ||
-      (await ctx.roles(ctx.ethRegistry, onResource, state.endowment)) !==
-        DEPLOYMENT_ROLES.ON_ETH_TOKEN
-    ) {
-      failures.push(
-        "the endowment is not the only holder of every role on on.eth",
-      );
-    }
-    const onExpiry = (await ctx.read(ctx.ethRegistry, "getExpiry", [
-      labelId(ON_ETH_LABEL),
-    ])) as bigint;
-    if (onExpiry !== state.onV1Expiry) {
-      failures.push(
-        `on.eth expires at ${onExpiry} on v2 but ${state.onV1Expiry} on v1`,
-      );
-    }
   }
   if (
     (await ctx.assignees(
@@ -4569,20 +4583,15 @@ async function assertRegistryHandoverComplete(
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${state.endowment} holds the eth token and every role on its entry${handsOverOnEth(state) ? ", and on.eth with every role" : ""}; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, the batch registrars have no owner, and .eth names are emancipated`,
+    `registry handover complete: ${state.endowment} holds the eth token and every role on its entry; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, the batch registrars have no owner, and .eth names are emancipated`,
   );
 }
 
-/// Hands the deployer's authority over the v2 registries to their final holders: the
-/// deployer first registers `on.eth` to itself, where v1 holds it live; the `eth`
-/// token and `on.eth`, with every role on them, go to the endowment; the owner takes
-/// the root registry's and the `.eth` registry's root roles; the deployer drops every
-/// role it holds on them and renounces both batch registrars. Sends only what is
-/// missing, then checks the end state.
-export async function handOverRegistryAdmin(
+// The deployer behind a registry admin command, and the signer that must be it.
+function registryAdminDeployer(
+  ctx: RegistryAdminContext,
   opts: RegistryAdminOptions & { deployer?: Address },
-) {
-  const ctx = registryAdminContext(opts);
+): Address {
   const signer = keyAddress(opts.privateKey) ?? opts.impersonateAccount;
   const deployer =
     opts.deployer ??
@@ -4595,10 +4604,22 @@ export async function handOverRegistryAdmin(
   }
   if (!opts.calldataOnly && signer && !sameAddress(signer, deployer)) {
     throw new Error(
-      `the signer ${signer} is not the deployer ${deployer}, which holds the roles to hand over`,
+      `the signer ${signer} is not the deployer ${deployer}, which holds the roles this needs`,
     );
   }
+  return getAddress(deployer);
+}
 
+/// Hands the deployer's authority over the v2 registries to their final holders: the
+/// `eth` token, with every role on its entry, goes to the endowment; the owner takes
+/// the root registry's and the `.eth` registry's root roles; the deployer drops every
+/// role it holds on them and renounces both batch registrars. Sends only what is
+/// missing, then checks the end state.
+export async function handOverRegistryAdmin(
+  opts: RegistryAdminOptions & { deployer?: Address },
+) {
+  const ctx = registryAdminContext(opts);
+  const deployer = registryAdminDeployer(ctx, opts);
   const batchRegistrars = handoverBatchRegistrars(ctx);
   const targets: Record<HandoverContract, ContractRef | undefined> = {
     RootRegistry: ctx.rootRegistry,
@@ -4609,54 +4630,248 @@ export async function handOverRegistryAdmin(
       (b) => b.contract === "RootBatchRegistrar",
     )?.ref,
   };
-  const send = async (calls: RegistryHandoverCall[]) => {
-    for (const call of calls) {
-      const target = targets[call.contract];
-      if (!target) throw new Error(`no ${call.contract} in the namespace`);
-      await sendAdminWrite({
-        client: ctx.client,
-        chain: ctx.chain,
-        rpcUrl: opts.rpcUrl,
-        provider: opts.provider,
-        target,
-        functionName: call.functionName,
-        args: call.args,
-        receiptLabel: call.label,
-        calldataLabel: call.label,
-        privateKey: opts.privateKey,
-        impersonateAccount: opts.impersonateAccount,
-        calldataOnly: opts.calldataOnly,
-      });
-      if (!opts.calldataOnly) console.log(`  ${call.label}: done`);
-    }
-  };
-
-  // on.eth is registered first: its token id only exists once it is, and the
-  // transfer that follows needs it.
-  const registration = planOnEthRegistration(
-    await readRegistryHandoverState(ctx, getAddress(deployer), opts),
-  );
-  if (registration.length > 0) {
-    console.log(
-      `registering on.eth to the deployer ${deployer}: ${registration.length} call(s) to make`,
-    );
-    await send(registration);
-    if (opts.calldataOnly) {
-      console.log(
-        "send these first, then run again for the rest of the handover, which transfers on.eth by its new token id",
-      );
-      return;
-    }
-  }
   const calls = planRegistryHandover(
-    await readRegistryHandoverState(ctx, getAddress(deployer), opts),
+    await readRegistryHandoverState(ctx, deployer),
   );
   console.log(
-    `registry handover from ${deployer} to ${ctx.owner}, eth token and on.eth to ${ctx.endowment}: ${calls.length} call(s) to make`,
+    `registry handover from ${deployer} to ${ctx.owner}, eth token to ${ctx.endowment}: ${calls.length} call(s) to make`,
   );
-  await send(calls);
+  for (const call of calls) {
+    const target = targets[call.contract];
+    if (!target) throw new Error(`no ${call.contract} in the namespace`);
+    await sendAdminWrite({
+      client: ctx.client,
+      chain: ctx.chain,
+      rpcUrl: opts.rpcUrl,
+      provider: opts.provider,
+      target,
+      functionName: call.functionName,
+      args: call.args,
+      receiptLabel: call.label,
+      calldataLabel: call.label,
+      privateKey: opts.privateKey,
+      impersonateAccount: opts.impersonateAccount,
+      calldataOnly: opts.calldataOnly,
+    });
+    if (!opts.calldataOnly) console.log(`  ${call.label}: done`);
+  }
   if (opts.calldataOnly) return;
-  await assertRegistryHandoverComplete(ctx, getAddress(deployer), opts);
+  await assertRegistryHandoverComplete(ctx, deployer);
+}
+
+// The network's directly registered names, with any value the table takes from v1
+// read from it now. A name with no live v1 registration has no expiry to copy.
+async function resolveDirectRegistrations(
+  ctx: RegistryAdminContext,
+  opts: RegistryAdminOptions & {
+    directRegistrations?: readonly DirectRegistration[];
+  },
+): Promise<ResolvedDirectRegistration[]> {
+  const entries = opts.directRegistrations ?? directRegistrations(opts.network);
+  if (entries.length === 0) return [];
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    V1_BASE_REGISTRAR_NAME,
+    opts,
+  );
+  const ensRegistry = requireV1Deployment(opts.network, "ENSRegistry", opts);
+  const now = (await ctx.client.getBlock()).timestamp;
+  return Promise.all(
+    entries.map(async (entry) => {
+      const expiry =
+        entry.expiry === "v1"
+          ? ((await ctx.client.readContract({
+              address: baseRegistrar.address,
+              abi: BaseRegistrarFragments.nameExpires,
+              functionName: "nameExpires",
+              args: [labelId(entry.label)],
+            })) as bigint)
+          : entry.expiry;
+      if (expiry <= now) {
+        throw new Error(
+          `${entry.label}.eth has no live v1 registration to take its expiry from`,
+        );
+      }
+      const resolver =
+        entry.resolver === "v1"
+          ? ((await ctx.client.readContract({
+              address: ensRegistry.address,
+              abi: EnsRegistryFragments.resolver,
+              functionName: "resolver",
+              args: [namehash(`${entry.label}.eth`)],
+            })) as Address)
+          : entry.resolver;
+      return {
+        label: entry.label,
+        owner: getAddress(entry.owner),
+        resolver: getAddress(resolver),
+        expiry,
+      };
+    }),
+  );
+}
+
+async function readDirectRegistrationState(
+  ctx: RegistryAdminContext,
+  label: string,
+): Promise<DirectRegistrationState> {
+  const [state, resolver] = await Promise.all([
+    ctx.read(ctx.ethRegistry, "getState", [labelId(label)]) as Promise<{
+      status: number;
+      expiry: bigint;
+      latestOwner: Address;
+    }>,
+    ctx.read(ctx.ethRegistry, "getResolver", [label]) as Promise<Address>,
+  ]);
+  return {
+    status: Number(state.status),
+    latestOwner: getAddress(state.latestOwner),
+    resolver: getAddress(resolver),
+    expiry: state.expiry,
+  };
+}
+
+/// Registers the network's directly registered names straight to their owners, with
+/// every role and admin role. For each name not yet registered, the deployer grants
+/// itself the `.eth` registry role the name's state needs, registers it, and revokes
+/// the role again whether or not the registration succeeded. A name already
+/// registered as the table says is left alone; one held any other way stops the run.
+export async function registerDirectNames(
+  opts: RegistryAdminOptions & {
+    deployer?: Address;
+    directRegistrations?: readonly DirectRegistration[];
+  },
+) {
+  const ctx = registryAdminContext(opts);
+  const deployer = registryAdminDeployer(ctx, opts);
+  const write = (
+    functionName: string,
+    args: readonly unknown[],
+    label: string,
+  ) =>
+    sendAdminWrite({
+      client: ctx.client,
+      chain: ctx.chain,
+      rpcUrl: opts.rpcUrl,
+      provider: opts.provider,
+      target: ctx.ethRegistry,
+      functionName,
+      args,
+      receiptLabel: label,
+      calldataLabel: label,
+      privateKey: opts.privateKey,
+      impersonateAccount: opts.impersonateAccount,
+      calldataOnly: opts.calldataOnly,
+    });
+  for (const entry of await resolveDirectRegistrations(ctx, opts)) {
+    const standing = directRegistrationStanding(
+      entry,
+      await readDirectRegistrationState(ctx, entry.label),
+    );
+    if (standing.kind === "registered") {
+      console.log(`${entry.label}.eth: already registered as the table says`);
+      continue;
+    }
+    if (standing.kind === "conflict") throw new Error(standing.reason);
+    const held =
+      (await ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, deployer)) &
+      standing.role;
+    if (held === 0n) {
+      await write(
+        "grantRootRoles",
+        [standing.role, deployer],
+        `let the deployer register ${entry.label}.eth`,
+      );
+    }
+    try {
+      await write(
+        "register",
+        [
+          entry.label,
+          entry.owner,
+          zeroAddress,
+          entry.resolver,
+          DEPLOYMENT_ROLES.DIRECT_REGISTRATION,
+          entry.expiry,
+        ],
+        `register ${entry.label}.eth to ${entry.owner} with every role, resolver ${entry.resolver} and expiry ${entry.expiry}`,
+      );
+    } finally {
+      if (held === 0n) {
+        await write(
+          "revokeRootRoles",
+          [standing.role, deployer],
+          `revoke the deployer's role to register ${entry.label}.eth`,
+        );
+      }
+    }
+    if (!opts.calldataOnly) console.log(`${entry.label}.eth: registered`);
+  }
+  if (opts.calldataOnly) return;
+  await verifyDirectNames({ ...opts, deployer });
+}
+
+/// Checks every directly registered name is registered to its owner with its
+/// resolver and expiry, that the owner alone holds every role on it, and that the
+/// deployer kept no role it took to register them.
+export async function verifyDirectNames(
+  opts: RegistryAdminOptions & {
+    deployer?: Address;
+    directRegistrations?: readonly DirectRegistration[];
+  },
+) {
+  const ctx = registryAdminContext(opts);
+  const failures: string[] = [];
+  const entries = await resolveDirectRegistrations(ctx, opts);
+  for (const entry of entries) {
+    const standing = directRegistrationStanding(
+      entry,
+      await readDirectRegistrationState(ctx, entry.label),
+    );
+    if (standing.kind === "pending") {
+      failures.push(`${entry.label}.eth is not registered`);
+      continue;
+    }
+    if (standing.kind === "conflict") {
+      failures.push(standing.reason);
+      continue;
+    }
+    const resource = (await ctx.read(ctx.ethRegistry, "getResource", [
+      labelId(entry.label),
+    ])) as bigint;
+    if (
+      (await ctx.assignees(ctx.ethRegistry, resource, ANY_ROLE)) !==
+        DEPLOYMENT_ROLES.DIRECT_REGISTRATION ||
+      (await ctx.roles(ctx.ethRegistry, resource, entry.owner)) !==
+        DEPLOYMENT_ROLES.DIRECT_REGISTRATION
+    ) {
+      failures.push(
+        `${entry.owner} is not the only holder of every role on ${entry.label}.eth`,
+      );
+    }
+  }
+  const deployer =
+    opts.deployer ??
+    keyAddress(opts.privateKey) ??
+    namespaceDeployer(ctx.deploymentsDir, ctx.deploymentNetwork);
+  if (deployer) {
+    const kept =
+      (await ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, deployer)) &
+      (ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.REGISTER_RESERVED);
+    if (kept !== 0n) {
+      failures.push(
+        `the deployer still holds ${describeRoleBitmap(kept)} on the .eth registry`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `direct registrations check failed: ${failures.join("; ")}`,
+    );
+  }
+  console.log(
+    `direct registrations: ${entries.length} name(s) registered to their owners with every role${entries.map((entry) => ` ${entry.label}.eth`).join(",")}`,
+  );
 }
 
 /// The owner drops its root registry root roles once the probation period after the
@@ -8576,6 +8791,16 @@ export async function runForkFull(opts: RunForkFullOptions) {
         : {
             privateKey: requirePrivateKeyForAddress(deployer, keys, "deployer"),
           };
+      if (directRegistrations(opts.network).length > 0) {
+        console.log(
+          "direct registrations: the deployer registers the network's listed names to their owners",
+        );
+        await registerDirectNames({
+          ...phaseV1Ctx,
+          deployer,
+          ...deployerSigner,
+        });
+      }
       console.log(
         "registry handover: the deployer hands the v2 registries to the owner and the eth token to the endowment",
       );
@@ -10086,6 +10311,74 @@ export async function main(argv = process.argv): Promise<void> {
     ),
   );
 
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          addCalldataOnlyOptions(new Command("register-direct-names"))
+            .description(
+              "Register the network's directly registered names (such as on.eth on mainnet) straight to their owners with every role and admin role, taking a resolver or expiry from v1 where the table says; the deployer grants itself the .eth registry role each needs and revokes it again",
+            )
+            .option(
+              "--deployer <address>",
+              "Account holding the .eth registry admin roles; defaults to the signer, else the account that sent the namespace's deploy transactions",
+            )
+            .option(
+              "--private-key <key>",
+              "Deployer private key; falls back to DEPLOYER_KEY",
+            )
+            .option(
+              "--impersonate-account <address>",
+              "Impersonate the deployer on a fork",
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentOptions & {
+            deployer?: Address;
+            privateKey?: `0x${string}`;
+            impersonateAccount?: Address;
+            calldataOnly?: boolean;
+          },
+      ) => {
+        await registerDirectNames({
+          ...withNetworkRpc(opts),
+          privateKey:
+            opts.privateKey ??
+            (opts.impersonateAccount || opts.calldataOnly
+              ? undefined
+              : envPrivateKey("DEPLOYER_KEY")),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("verify-direct-names")
+            .description(
+              "Check the network's directly registered names are registered to their owners with their resolver and expiry and every role, and that the deployer kept no role it took to register them",
+            )
+            .option(
+              "--deployer <address>",
+              "Deployer address; defaults to the account that sent the namespace's deploy transactions",
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentOptions & { deployer?: Address },
+      ) => {
+        await verifyDirectNames({ ...withNetworkRpc(opts) });
+      },
+    ),
+  );
   phase.addCommand(
     addV1DeploymentOptions(
       addDeploymentOptions(

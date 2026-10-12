@@ -25,6 +25,7 @@ import {
   V1_GRACE_PERIOD_SECONDS,
 } from "../../script/preMigration.js";
 import {
+  DEPLOYMENT_ROLES,
   FUSES,
   GRACE_PERIOD_V2,
   ROLES,
@@ -692,6 +693,71 @@ describe("premigration reconcile", () => {
 
     expect(result.missing).toEqual([]);
     expect(result.unreservable).toEqual([{ id: longId, label: long }]);
+  });
+
+  it("counts a directly registered name missing until registered, then lists it apart", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user, deployer } = env.namedAccounts;
+
+    // Live on v1 and absent from the CSV, as on.eth is on mainnet.
+    const onExpiry = await registerV1Name(
+      env,
+      "on",
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    const onId = labelhash("on");
+    writeIndex(workDir, [...indexEntries, { id: onId, expiry: onExpiry }]);
+    const directRegistrations = [
+      {
+        label: "on",
+        owner: getAddress(user.address),
+        resolver: zeroAddress,
+        expiry: "v1" as const,
+      },
+    ];
+
+    const before = await run(workDir, fromBlock, {
+      directRegistrations,
+      reportOnly: true,
+    });
+    expect(before.missing).toEqual([
+      `${onId} (on.eth) is not registered yet: run phase register-direct-names`,
+    ]);
+    expect(before.directlyRegistered).toEqual([]);
+
+    const asDeployer = { account: deployer };
+    await env.v2.ETHRegistry.write.grantRootRoles(
+      [ROLES.REGISTRY.REGISTRAR, deployer.address],
+      asDeployer,
+    );
+    await env.v2.ETHRegistry.write.register(
+      [
+        "on",
+        user.address,
+        zeroAddress,
+        zeroAddress,
+        DEPLOYMENT_ROLES.DIRECT_REGISTRATION,
+        onExpiry,
+      ],
+      asDeployer,
+    );
+
+    const after = await run(workDir, fromBlock, { directRegistrations });
+    expect(after.missing).toEqual([]);
+    expect(after.unexpected).toEqual([]);
+    expect(after.directlyRegistered).toEqual([{ id: onId, label: "on" }]);
+
+    // Registered with any other expiry, it is not the name the table asks for.
+    const wrong = await run(workDir, fromBlock, {
+      directRegistrations: [
+        { ...directRegistrations[0], expiry: onExpiry + 1n },
+      ],
+      reportOnly: true,
+    });
+    expect(wrong.unexpected).toEqual([
+      expect.stringContaining("(on.eth) is registered to"),
+    ]);
   });
 
   // A seeded fixture work directory: the run state naming what was seeded, and the
