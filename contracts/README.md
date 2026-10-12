@@ -342,6 +342,16 @@ Generated contract address tables, regenerated automatically at the end of `phas
 - [Sepolia](docs/addresses/sepolia.md)
 - [Mainnet](docs/addresses/mainnet.md)
 
+## Audits
+
+ENSv2 contracts have been reviewed by two independent auditors. The reports are in [docs/audits](docs/audits):
+
+| Auditor    | Report                                                                                                                                     | Date         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| Certora    | [Security Assessment & Formal Verification](<docs/audits/Certora - ENS V2 - Security Assessment &  Formal Verification  Final Report.pdf>) | May 2026     |
+| Nethermind | [NM-0591 ENS V2](docs/audits/NM_0591_ENS.pdf)                                                                                              | June 2026    |
+| Nethermind | [NM-0965 ENS V2 Additions](docs/audits/NM_0965_ENS_FINAL.pdf)                                                                              | October 2026 |
+
 ## Getting started
 
 ### Installation
