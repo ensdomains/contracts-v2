@@ -10380,34 +10380,32 @@ export async function main(argv = process.argv): Promise<void> {
     ),
   );
   phase.addCommand(
-    addV1DeploymentOptions(
-      addDeploymentOptions(
-        addNetworkOptions(
-          addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
-            .description(
-              "Hand the deployer's v2 registry authority to its final holders: the deployer registers on.eth with its v1 expiry, where v1 holds it live; the eth token and on.eth, with every role on them, go to the endowment; the owner takes the root registry's and the .eth registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars",
-            )
-            .option(
-              "--owner <address>",
-              "Account to hand the root registry to; defaults to the owner the namespace was deployed with, else the network's configured owner",
-            )
-            .option(
-              "--endowment <address>",
-              "Account to give the eth token to; defaults to the network's configured endowment, else the owner",
-            )
-            .option(
-              "--deployer <address>",
-              "Account holding the roles; defaults to the signer, else the account that sent the namespace's deploy transactions",
-            )
-            .option(
-              "--private-key <key>",
-              "Deployer private key; falls back to DEPLOYER_KEY",
-            )
-            .option(
-              "--impersonate-account <address>",
-              "Impersonate the deployer on a fork",
-            ),
-        ),
+    addDeploymentOptions(
+      addNetworkOptions(
+        addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
+          .description(
+            "Hand the deployer's v2 registry authority to its final holders: the eth token, with every role on it, goes to the endowment; the owner takes the root registry's and the .eth registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars",
+          )
+          .option(
+            "--owner <address>",
+            "Account to hand the root registry to; defaults to the owner the namespace was deployed with, else the network's configured owner",
+          )
+          .option(
+            "--endowment <address>",
+            "Account to give the eth token to; defaults to the network's configured endowment, else the owner",
+          )
+          .option(
+            "--deployer <address>",
+            "Account holding the roles; defaults to the signer, else the account that sent the namespace's deploy transactions",
+          )
+          .option(
+            "--private-key <key>",
+            "Deployer private key; falls back to DEPLOYER_KEY",
+          )
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate the deployer on a fork",
+          ),
       ),
     ).action(
       async (
