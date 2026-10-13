@@ -170,6 +170,21 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         assertEq(hca.validate(validator, digest, envelope), ERC1271_MAGICVALUE);
     }
 
+    function test_validator_rejectsFirstPermit2RouteFromSameChain() public {
+        vm.chainId(SOURCE_CHAIN_ID);
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        bytes memory operationData = _initialCommitOperation(permissionId, proof);
+        (bytes memory claimData, bytes32 digest) =
+            _claim(operationData, address(hca), block.chainid);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        hca.validate(
+            validator,
+            digest,
+            _initialEnvelope(permissionId, proof, claimData, operationData, digest)
+        );
+    }
+
     function test_validator_rejectsInvalidFirstPermit2Operations() public {
         _assertFirstPermit2OperationRevert(
             abi.encodePacked(bytes2(HCAOperationHashLib.ERC7579_ERC1271_MODE), uint8(0)),
