@@ -570,8 +570,12 @@ A deployment whose root registry registered `eth` without the transfer-admin rol
 `PublicResolverV2`, `MigrationHelper`, `RootBatchRegistrar`) and those built on one of them
 (`WrapperRegistryImpl`, `LockedMigrationController`). It also replaces the HCA session validator
 (`HCAOwnerAndSessionValidator`), whose current build differs from the one deployed, and the HCA
-implementation built over it (`StandaloneHCAImplementation`). No account uses either until the owner
-approves the implementation. Everything else is reused, the `.eth` registry and its pre-migration
+implementation built over it (`StandaloneHCAImplementation`), and the v2 registrar (`ETHRegistrar`)
+and the v1 renewer (`ETHRenewerV1`), whose payment recipient (`beneficiary` in `rocketh/config.ts`,
+the ENS DAO endowment Safe on mainnet) is fixed at construction. No account uses any of them until the
+DAO approves the HCA implementation and authorizes the renewer, and phase 6 authorizes the registrar.
+The command revokes every root role a replaced contract still holds, such as the old renewer's renew
+role on the `.eth` registry. Everything else is reused, the `.eth` registry and its pre-migration
 reservations above all.
 
 ```bash
@@ -591,7 +595,8 @@ bun run migration -- phase set-eth-parent --network mainnet
   redeploy, and does nothing after a completed one.
 - The new root registers `eth` and `reverse` and the DNS top-level names again. The phase 1 DAO
   calls are rebuilt with it: `setRegistrarResolver` now names the new `ENSV2Resolver`, and
-  `setImplementationApproval` the new HCA implementation.
+  `setImplementationApproval` the new HCA implementation. The freeze and hand-off calls that
+  authorize the renewer and give it the v1 `BaseRegistrar` name the new `ETHRenewerV1`.
 - The `.eth` registry keeps pointing at the old root until `set-eth-parent`. That command sends
   nothing unless every contract exposing `ROOT_REGISTRY()` reports the new root, no replaced
   contract is still recorded, `verify-deployment` passes (so no record points into the archive),
@@ -1376,7 +1381,7 @@ and idempotency rules.
 | `phase redeploy-root` | Replace the v2 root registry under a live namespace, with every contract built over it, before the DAO proposal executes and before go-live; the `.eth` registry and its reservations are reused, and its parent is left for `set-eth-parent` |
 | `phase set-eth-parent` | Point the `.eth` registry at the new root registry, once every contract built over the root reports it, `verify-deployment` passes, and every replaced contract's source is verified on Etherscan |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
-| `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |
+| `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, the registrar's and the v1 renewer's beneficiary (`--expected-beneficiary`), accepted tokens |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller |
 | `phase verify-v1-renewer` | Verify `ETHRenewerV1` is a v1 controller **and** owns the v1 `BaseRegistrar`, which is what a renewal needs |
 | `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it. `--impersonate-account` sends as that account on a local fork, to play a DAO proposal |

@@ -329,6 +329,9 @@ export async function setupDevnet({
       {
         accounts: {
           ...Object.fromEntries(accounts.map((x) => [x.name, x.address])),
+          // Fees go to the owner, as in rocketh/config.ts where no network names
+          // a beneficiary.
+          beneficiary: accounts.find((x) => x.name === "owner")!.address,
           ...(isFork ? { v1Owner: ENS_DAO_MULTISIG.toLowerCase() } : {}),
         } as never,
         chains: {

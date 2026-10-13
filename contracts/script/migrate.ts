@@ -2508,6 +2508,8 @@ export async function readEventLogs(
     event: AbiEvent;
     fromBlock?: bigint;
     toBlock: bigint;
+    // Indexed event arguments to match, as the node filters them.
+    args?: Record<string, unknown>;
   },
   retry = new QueryRetry(),
 ): Promise<ScannedLog[]> {
@@ -2530,9 +2532,10 @@ export async function readEventLogs(
       const logs = await client.getLogs({
         address: args.address,
         event: args.event,
+        args: args.args,
         fromBlock,
         toBlock,
-      });
+      } as never);
       retry.served();
       if (acceptedSpan === undefined || span > acceptedSpan)
         acceptedSpan = span;
@@ -4956,26 +4959,37 @@ export async function verifyRegistrarEconomics(opts: {
     problems.push(`rent price oracle ${oracle} has no code`);
   }
 
-  const beneficiary = (await client.readContract({
-    address: ethRegistrar.address,
-    abi: ethRegistrar.abi,
-    functionName: "BENEFICIARY",
-  })) as Address;
-  console.log(`ETHRegistrar beneficiary: ${beneficiary}`);
-  // Registration fees are transferred here. A zero beneficiary means every payment
-  // is burned, which no other check would notice.
-  if (sameAddress(beneficiary, zeroAddress)) {
-    problems.push(
-      "beneficiary is the zero address; registration fees would be burnt",
-    );
-  }
-  if (
-    opts.expectedBeneficiary &&
-    !sameAddress(beneficiary, opts.expectedBeneficiary)
-  ) {
-    problems.push(
-      `beneficiary is ${beneficiary}, expected ${opts.expectedBeneficiary}`,
-    );
+  // Registration and renewal fees are transferred to each contract's beneficiary. A
+  // zero beneficiary means every payment is burned, which no other check would
+  // notice.
+  const payees = [
+    ethRegistrar,
+    maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "ETHRenewerV1"),
+  ].flatMap((deployment, index) =>
+    deployment
+      ? [{ name: index === 0 ? "ETHRegistrar" : "ETHRenewerV1", deployment }]
+      : [],
+  );
+  for (const { name, deployment } of payees) {
+    const beneficiary = (await client.readContract({
+      address: deployment.address,
+      abi: deployment.abi,
+      functionName: "BENEFICIARY",
+    })) as Address;
+    console.log(`${name} beneficiary: ${beneficiary}`);
+    if (sameAddress(beneficiary, zeroAddress)) {
+      problems.push(
+        `${name} beneficiary is the zero address; its fees would be burnt`,
+      );
+    }
+    if (
+      opts.expectedBeneficiary &&
+      !sameAddress(beneficiary, opts.expectedBeneficiary)
+    ) {
+      problems.push(
+        `${name} beneficiary is ${beneficiary}, expected ${opts.expectedBeneficiary}`,
+      );
+    }
   }
 
   // Every token a user is expected to be able to pay with must be accepted by the
@@ -5346,6 +5360,203 @@ async function assertRootRedeployAllowed(opts: {
 /// been handed over or go-live has begun, or when a contract that should be reused
 /// has drifted from the build and would be replaced too. Re-running after an
 /// interruption resumes, and after completion does nothing.
+// A namespace's contract records, with the block each was deployed at.
+function namespaceContracts(deploymentsDir: string, namespace: string) {
+  return [...readNamespaceRecords(deploymentsDir, namespace)].flatMap(
+    ([name, record]) => {
+      const deployment = maybeLoadV2Deployment(deploymentsDir, namespace, name);
+      const receipt = record.receipt as
+        | { blockNumber?: string | number }
+        | undefined;
+      return deployment
+        ? [
+            {
+              name,
+              ref: { address: deployment.address, abi: deployment.abi },
+              deployBlock:
+                receipt?.blockNumber !== undefined
+                  ? BigInt(receipt.blockNumber)
+                  : 0n,
+            },
+          ]
+        : [];
+    },
+  );
+}
+
+const abiHasFunction = (abi: readonly unknown[], name: string) =>
+  abi.some(
+    (item) =>
+      (item as { type?: string; name?: string }).type === "function" &&
+      (item as { name?: string }).name === name,
+  );
+
+// Takes away every authority a contract the redeploy replaced still holds: each
+// access-control role it holds on any contract of the namespace or of the archive,
+// an approval in a permissioned address set, and an approved HCA implementation,
+// all revoked as the deployer. A v1 controller grant, or anything the deployer
+// cannot revoke, stops the run with what is left, for the owner to revoke.
+async function revokeReplacedContractAuthority(opts: {
+  client: ReturnType<typeof publicClient>;
+  chain: Chain;
+  rpcUrl: string;
+  provider?: RpcProvider;
+  network: MigrationNetwork;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  archive: string | undefined;
+  before: ReturnType<typeof readNamespaceRecords>;
+  after: ReturnType<typeof readNamespaceRecords>;
+  deployerAddress: Address;
+  deployerPrivateKey?: `0x${string}`;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+}) {
+  const replaced = REPLACED_DEPLOYMENTS.flatMap((name) => {
+    const old = opts.before.get(name)?.address;
+    const now = opts.after.get(name)?.address;
+    return old && !(now && sameAddress(old, now))
+      ? [{ name, address: getAddress(old) }]
+      : [];
+  });
+  if (replaced.length === 0) return;
+  const nameOf = new Map(
+    replaced.map(({ name, address }) => [address.toLowerCase(), name]),
+  );
+  const describe = (address: Address) =>
+    `the replaced ${nameOf.get(address.toLowerCase())} ${address}`;
+  const contracts = [
+    ...namespaceContracts(opts.deploymentsDir, opts.deploymentNetwork),
+    ...(opts.archive
+      ? namespaceContracts(opts.deploymentsDir, opts.archive)
+      : []),
+  ];
+  const read = (ref: ContractRef, functionName: string, args: unknown[]) =>
+    opts.client.readContract({
+      address: ref.address,
+      abi: ref.abi,
+      functionName,
+      args,
+    } as never) as Promise<unknown>;
+  const left: string[] = [];
+  const revoke = async (
+    ref: ContractRef,
+    functionName: string,
+    args: readonly unknown[],
+    label: string,
+  ) => {
+    try {
+      await sendAdminWrite({
+        client: opts.client,
+        chain: opts.chain,
+        rpcUrl: opts.rpcUrl,
+        provider: opts.provider,
+        target: ref,
+        functionName,
+        args,
+        receiptLabel: label,
+        privateKey: opts.deployerPrivateKey,
+        impersonateAccount: opts.deployerPrivateKey
+          ? undefined
+          : opts.deployerAddress,
+      });
+      console.log(`  ${label}: done`);
+    } catch (error) {
+      left.push(`${label}: ${errorMessageChain(error)[0]}`);
+    }
+  };
+
+  const toBlock = await opts.client.getBlockNumber();
+  const oldAddresses = replaced.map(({ address }) => address);
+  for (const { name, ref, deployBlock } of contracts) {
+    if (abiHasFunction(ref.abi, "roles")) {
+      const logs = await readEventLogs(opts.client, {
+        address: ref.address,
+        event: EAC_ROLES_CHANGED_EVENT,
+        args: { account: oldAddresses },
+        fromBlock: deployBlock,
+        toBlock,
+      });
+      const grants = new Map<string, { resource: bigint; account: Address }>();
+      for (const log of logs) {
+        const args = log.args as { resource?: bigint; account?: Address };
+        if (!args.account || args.resource === undefined) continue;
+        if (!nameOf.has(args.account.toLowerCase())) continue;
+        grants.set(`${args.resource}|${args.account.toLowerCase()}`, {
+          resource: args.resource,
+          account: getAddress(args.account),
+        });
+      }
+      for (const { resource, account } of grants.values()) {
+        const held = (await read(ref, "roles", [resource, account])) as bigint;
+        if (held === 0n) continue;
+        const label = `revoke ${describeRoleBitmap(held)} from ${describe(account)} on ${name}${resource === ROOT_RESOURCE ? "" : ` at resource ${resource}`}`;
+        if (
+          resource === ROOT_RESOURCE &&
+          abiHasFunction(ref.abi, "revokeRootRoles")
+        ) {
+          await revoke(ref, "revokeRootRoles", [held, account], label);
+        } else {
+          await revoke(ref, "revokeRoles", [resource, held, account], label);
+        }
+      }
+    }
+    if (
+      abiHasFunction(ref.abi, "includes") &&
+      abiHasFunction(ref.abi, "approve")
+    ) {
+      for (const address of oldAddresses) {
+        if (await read(ref, "includes", [address])) {
+          await revoke(
+            ref,
+            "approve",
+            [address, false],
+            `remove ${describe(address)} from ${name}`,
+          );
+        }
+      }
+    }
+    if (abiHasFunction(ref.abi, "approvedImplementations")) {
+      for (const address of oldAddresses) {
+        if (await read(ref, "approvedImplementations", [address])) {
+          await revoke(
+            ref,
+            "setImplementationApproval",
+            [address, false],
+            `withdraw ${name}'s approval of ${describe(address)}`,
+          );
+        }
+      }
+    }
+  }
+
+  // v1 grants belong to the v1 owner, so they are reported rather than revoked.
+  for (const v1Name of [
+    V1_BASE_REGISTRAR_NAME,
+    "ReverseRegistrar",
+    "DefaultReverseRegistrar",
+  ]) {
+    const v1 = loadV1Deployment(opts.network, v1Name, opts);
+    if (!v1 || !abiHasFunction(v1.abi, "controllers")) continue;
+    for (const address of oldAddresses) {
+      if (await read(v1, "controllers", [address])) {
+        left.push(
+          `${describe(address)} is a v1 ${v1Name} controller, which only the v1 owner can revoke`,
+        );
+      }
+    }
+  }
+  if (left.length > 0) {
+    for (const line of left) console.error(`  ${line}`);
+    throw new Error(
+      `replaced contracts keep authority the deployer could not revoke: ${left.length} grant(s)`,
+    );
+  }
+  console.log(
+    `replaced contracts hold no authority: checked ${contracts.length} contract(s) and the v1 controllers`,
+  );
+}
+
 export async function redeployRootRegistry(
   opts: DeployV2Options & { rpcUrl: string; deployerAddress: Address },
 ) {
@@ -5380,6 +5591,22 @@ export async function redeployRootRegistry(
         `the root registry redeploy left the namespace in an unexpected state: ${problems.length} problem(s)`,
       );
     }
+    await revokeReplacedContractAuthority({
+      client,
+      chain,
+      rpcUrl: opts.rpcUrl,
+      provider: opts.provider,
+      network: opts.network,
+      deploymentsDir,
+      deploymentNetwork,
+      archive,
+      before: namespaceBeforeRedeploy(active, archived),
+      after: active,
+      deployerAddress: opts.deployerAddress,
+      deployerPrivateKey: opts.deployerPrivateKey,
+      v1DeploymentsDir: opts.v1DeploymentsDir,
+      v1DeploymentNetwork: opts.v1DeploymentNetwork,
+    });
     console.log(
       `the root registry was already redeployed: the replaced records are in ${archive}`,
     );
@@ -5477,10 +5704,8 @@ export async function redeployRootRegistry(
     deferEthParent: true,
   });
 
-  const { replaced, problems } = rootRedeployDiff(
-    before,
-    readNamespaceRecords(deploymentsDir, deploymentNetwork),
-  );
+  const after = readNamespaceRecords(deploymentsDir, deploymentNetwork);
+  const { replaced, problems } = rootRedeployDiff(before, after);
   for (const line of replaced) console.log(`  replaced ${line}`);
   if (problems.length > 0) {
     for (const problem of problems) console.error(`  ${problem}`);
@@ -5488,6 +5713,22 @@ export async function redeployRootRegistry(
       `the root registry redeploy changed the namespace unexpectedly: ${problems.length} problem(s)`,
     );
   }
+  await revokeReplacedContractAuthority({
+    client,
+    chain,
+    rpcUrl: opts.rpcUrl,
+    provider: opts.provider,
+    network: opts.network,
+    deploymentsDir,
+    deploymentNetwork,
+    archive: findRootArchive(deploymentsDir, deploymentNetwork),
+    before,
+    after,
+    deployerAddress: opts.deployerAddress,
+    deployerPrivateKey: opts.deployerPrivateKey,
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork,
+  });
   console.log(
     "root registry redeployed; the .eth registry's parent is unchanged until phase set-eth-parent",
   );
@@ -10353,11 +10594,11 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         new Command("verify-registrar-economics")
           .description(
-            "Verify the registrar can price and take payment: oracle, beneficiary, and accepted tokens",
+            "Verify the registrar can price and take payment: oracle, the registrar's and the v1 renewer's beneficiary, and accepted tokens",
           )
           .option(
             "--expected-beneficiary <address>",
-            "Assert the registration-fee beneficiary is this address",
+            "Assert the registrar's and the v1 renewer's payment beneficiary is this address",
           )
           .option(
             "--payment-tokens <list>",

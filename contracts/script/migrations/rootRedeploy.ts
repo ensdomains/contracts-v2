@@ -26,8 +26,10 @@ import { sameAddress } from "./plumbing.js";
 /// The deployments a root registry redeploy replaces: the root itself, every
 /// contract holding it as an immutable, and the contracts built on one of those;
 /// and the HCA session validator, whose current build differs from the deployed
-/// one, with the HCA implementation built over it. No account uses either until
-/// the owner approves the implementation.
+/// one, with the HCA implementation built over it, and the v2 registrar and the v1
+/// renewer, whose payment recipient differs from the deployed ones. No account uses
+/// any of them until the DAO approves the HCA implementation and authorizes the
+/// renewer, and phase 6 authorizes the registrar.
 export const REPLACED_DEPLOYMENTS = [
   "RootRegistry",
   "RootBatchRegistrar",
@@ -42,6 +44,8 @@ export const REPLACED_DEPLOYMENTS = [
   "MigrationHelper",
   "HCAOwnerAndSessionValidator",
   "StandaloneHCAImplementation",
+  "ETHRegistrar",
+  "ETHRenewerV1",
 ] as const;
 
 /// The deploy script that only ever runs once per namespace and builds the
