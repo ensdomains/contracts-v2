@@ -121,11 +121,7 @@ describe("archiveReplacedRecords", () => {
       JSON.stringify(deployed(9)),
     );
     expect(
-      archiveReplacedRecords(
-        root,
-        "mainnet",
-        new Date("2026-10-12T00:00:00Z"),
-      ),
+      archiveReplacedRecords(root, "mainnet", new Date("2026-10-12T00:00:00Z")),
     ).toBe("mainnet-root-20261012-r2");
     expect(existsSync(join(root, "mainnet", "RootRegistry.json"))).toBe(false);
   });
