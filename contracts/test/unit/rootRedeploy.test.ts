@@ -10,13 +10,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  archiveRootBoundRecords,
+  archiveReplacedRecords,
   bytecodeWithoutMetadata,
   driftedReusedRecords,
   findRootArchive,
   namespaceBeforeRedeploy,
   readNamespaceRecords,
-  ROOT_BOUND_DEPLOYMENTS,
+  REPLACED_DEPLOYMENTS,
   rootRedeployDiff,
   UR_IMPLEMENTATION_SCRIPT_ID,
 } from "../../script/migrations/rootRedeploy.js";
@@ -88,14 +88,14 @@ describe("driftedReusedRecords", () => {
   });
 });
 
-describe("archiveRootBoundRecords", () => {
+describe("archiveReplacedRecords", () => {
   it("moves only the root-bound records and forgets the resolver implementation script", () => {
     const root = namespace({
       ETHRegistry: deployed(1),
       RootRegistry: deployed(2),
       ENSV2Resolver: deployed(3, "ENSV2Resolver"),
     });
-    const archive = archiveRootBoundRecords(
+    const archive = archiveReplacedRecords(
       root,
       "mainnet",
       new Date("2026-10-12T00:00:00Z"),
@@ -121,7 +121,7 @@ describe("archiveRootBoundRecords", () => {
       JSON.stringify(deployed(9)),
     );
     expect(
-      archiveRootBoundRecords(
+      archiveReplacedRecords(
         root,
         "mainnet",
         new Date("2026-10-12T00:00:00Z"),
@@ -134,24 +134,24 @@ describe("archiveRootBoundRecords", () => {
 describe("rootRedeployDiff", () => {
   const before = new Map<string, { address?: `0x${string}` }>([
     ["ETHRegistry", { address: address(1) }],
-    ...ROOT_BOUND_DEPLOYMENTS.map(
+    ...REPLACED_DEPLOYMENTS.map(
       (name, i) => [name, { address: address(100 + i) }] as const,
     ),
   ]);
   const replaced = new Map<string, { address?: `0x${string}` }>([
     ["ETHRegistry", { address: address(1) }],
-    ...ROOT_BOUND_DEPLOYMENTS.map(
+    ...REPLACED_DEPLOYMENTS.map(
       (name, i) => [name, { address: address(200 + i) }] as const,
     ),
   ]);
 
-  it("accepts every root-bound contract replaced and the rest kept", () => {
+  it("accepts every replaced contract at a new address and the rest kept", () => {
     const { replaced: moved, problems } = rootRedeployDiff(before, replaced);
     expect(problems).toEqual([]);
-    expect(moved).toHaveLength(ROOT_BOUND_DEPLOYMENTS.length);
+    expect(moved).toHaveLength(REPLACED_DEPLOYMENTS.length);
   });
 
-  it("flags a root-bound contract left in place and a reused one moved", () => {
+  it("flags a replaced contract left in place and a reused one moved", () => {
     const after = new Map(replaced);
     after.set("RootRegistry", { address: address(100) });
     after.set("ETHRegistry", { address: address(7) });
@@ -161,10 +161,27 @@ describe("rootRedeployDiff", () => {
       `ETHRegistry: moved from ${address(1)} to ${address(7)}`,
     ]);
   });
+
+  it("expects nothing of a replaced contract the namespace never had", () => {
+    const withoutHca = (records: typeof before) =>
+      new Map(
+        [...records].filter(
+          ([name]) =>
+            name !== "HCAOwnerAndSessionValidator" &&
+            name !== "StandaloneHCAImplementation",
+        ),
+      );
+    const { replaced: moved, problems } = rootRedeployDiff(
+      withoutHca(before),
+      withoutHca(replaced),
+    );
+    expect(problems).toEqual([]);
+    expect(moved).toHaveLength(REPLACED_DEPLOYMENTS.length - 2);
+  });
 });
 
 describe("namespaceBeforeRedeploy", () => {
-  it("takes the root-bound originals from the archive, even where an interrupted run replaced them", () => {
+  it("takes the replaced originals from the archive, even where an interrupted run replaced them", () => {
     const active = new Map([
       ["ETHRegistry", { address: address(1) }],
       // Already redeployed by an interrupted run.

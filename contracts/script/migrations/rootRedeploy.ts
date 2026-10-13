@@ -5,7 +5,7 @@
 /// `.eth` registry and its reservations above all, is reused. The deploy tool reuses
 /// a record when its creation bytecode (less the metadata hash) and constructor
 /// arguments match the current build, and redeploys it otherwise. Moving the
-/// root-bound records out of the namespace therefore makes a resumed deploy rebuild
+/// replaced records out of the namespace therefore makes a resumed deploy rebuild
 /// exactly those, provided nothing else has drifted from the build; this module
 /// checks that, moves the records, and compares the namespace before and after.
 
@@ -24,8 +24,11 @@ import type { Address } from "viem";
 import { sameAddress } from "./plumbing.js";
 
 /// The deployments a root registry redeploy replaces: the root itself, every
-/// contract holding it as an immutable, and the contracts built on one of those.
-export const ROOT_BOUND_DEPLOYMENTS = [
+/// contract holding it as an immutable, and the contracts built on one of those;
+/// and the HCA session validator, whose current build differs from the deployed
+/// one, with the HCA implementation built over it. No account uses either until
+/// the owner approves the implementation.
+export const REPLACED_DEPLOYMENTS = [
   "RootRegistry",
   "RootBatchRegistrar",
   "ENSV2Resolver",
@@ -37,6 +40,8 @@ export const ROOT_BOUND_DEPLOYMENTS = [
   "WrapperRegistryImpl",
   "LockedMigrationController",
   "MigrationHelper",
+  "HCAOwnerAndSessionValidator",
+  "StandaloneHCAImplementation",
 ] as const;
 
 /// The deploy script that only ever runs once per namespace and builds the
@@ -79,7 +84,7 @@ export function readNamespaceRecords(
   return records;
 }
 
-/// Records outside the root-bound set whose creation bytecode differs from the
+/// Records outside the replaced set whose creation bytecode differs from the
 /// current build, and would therefore be redeployed rather than reused.
 /// `currentBytecode` returns the build's creation bytecode for a contract name, or
 /// undefined when the build has no such contract.
@@ -87,10 +92,10 @@ export function driftedReusedRecords(
   records: Map<string, DeploymentRecord>,
   currentBytecode: (contractName: string) => string | undefined,
 ): string[] {
-  const rootBound = new Set<string>(ROOT_BOUND_DEPLOYMENTS);
+  const replacedSet = new Set<string>(REPLACED_DEPLOYMENTS);
   const problems: string[] = [];
   for (const [name, record] of records) {
-    if (rootBound.has(name)) continue;
+    if (replacedSet.has(name)) continue;
     // An adopted address has no deploy transaction here and is never redeployed.
     if (!record.transaction && !record.receipt) continue;
     if (!record.bytecode || !record.contractName) {
@@ -119,7 +124,7 @@ export function driftedReusedRecords(
   return problems;
 }
 
-/// The archive namespace holding the root-bound records a redeploy replaced, if one
+/// The archive namespace holding the records a root redeploy replaced, if one
 /// exists: the newest `<namespace>-root-*` directory with a `RootRegistry` record.
 export function findRootArchive(
   deploymentsDir: string,
@@ -138,12 +143,12 @@ export function findRootArchive(
     .at(-1);
 }
 
-/// Moves the root-bound records into a new archive namespace beside the active one,
+/// Moves the records a root redeploy replaces into a new archive namespace beside the active one,
 /// and forgets the once-only Universal Resolver implementation script, so a resumed
 /// deploy rebuilds them. The archive is a sibling namespace, so the deployment
 /// check flags any record still pointing at an archived address. Returns the
 /// archive's name.
-export function archiveRootBoundRecords(
+export function archiveReplacedRecords(
   deploymentsDir: string,
   namespace: string,
   date: Date,
@@ -160,7 +165,7 @@ export function archiveRootBoundRecords(
   const source = join(deploymentsDir, namespace);
   const target = join(deploymentsDir, archive);
   mkdirSync(target, { recursive: true });
-  for (const name of ROOT_BOUND_DEPLOYMENTS) {
+  for (const name of REPLACED_DEPLOYMENTS) {
     const file = `${name}.json`;
     if (existsSync(join(source, file))) {
       renameSync(join(source, file), join(target, file));
@@ -182,14 +187,14 @@ export function archiveRootBoundRecords(
 }
 
 /// The namespace as it stood before a root redeploy: the archived originals of the
-/// root-bound deployments, which an interrupted run may already have replaced in the
+/// replaced deployments, which an interrupted run may already have replaced in the
 /// namespace, and the namespace's own records for everything else.
 export function namespaceBeforeRedeploy(
   active: Map<string, DeploymentRecord>,
   archived: Map<string, DeploymentRecord>,
 ): Map<string, DeploymentRecord> {
   const before = new Map(active);
-  for (const name of ROOT_BOUND_DEPLOYMENTS) {
+  for (const name of REPLACED_DEPLOYMENTS) {
     const record = archived.get(name);
     if (record) before.set(name, record);
   }
@@ -197,17 +202,19 @@ export function namespaceBeforeRedeploy(
 }
 
 /// Compares the namespace after a root redeploy with the records before it: every
-/// root-bound deployment must be at a new address, and every other one where it was.
+/// replaced deployment the namespace had must be at a new address, and every other
+/// one where it was.
 export function rootRedeployDiff(
   before: Map<string, DeploymentRecord>,
   after: Map<string, DeploymentRecord>,
 ): { replaced: string[]; problems: string[] } {
-  const rootBound = new Set<string>(ROOT_BOUND_DEPLOYMENTS);
+  const replacedSet = new Set<string>(REPLACED_DEPLOYMENTS);
   const replaced: string[] = [];
   const problems: string[] = [];
-  for (const name of ROOT_BOUND_DEPLOYMENTS) {
+  for (const name of REPLACED_DEPLOYMENTS) {
     const old = before.get(name)?.address;
     const now = after.get(name)?.address;
+    if (!old && !now) continue;
     if (!now) {
       problems.push(`${name}: no record after the redeploy`);
     } else if (old && sameAddress(old, now)) {
@@ -217,7 +224,7 @@ export function rootRedeployDiff(
     }
   }
   for (const [name, record] of after) {
-    if (rootBound.has(name)) continue;
+    if (replacedSet.has(name)) continue;
     const old = before.get(name)?.address;
     if (!old) {
       problems.push(`${name}: new record at ${record.address}`);
@@ -226,7 +233,7 @@ export function rootRedeployDiff(
     }
   }
   for (const name of before.keys()) {
-    if (!rootBound.has(name) && !after.has(name)) {
+    if (!replacedSet.has(name) && !after.has(name)) {
       problems.push(`${name}: record missing after the redeploy`);
     }
   }

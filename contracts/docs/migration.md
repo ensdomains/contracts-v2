@@ -573,8 +573,11 @@ A deployment whose root registry registered `eth` without the transfer-admin rol
 `phase redeploy-root` replaces the root registry, with the contracts that hold it as an immutable
 (`ENSV2Resolver`, `UniversalResolverV2`, `UniversalHelper`, `DNSTLDResolver`, `DNSAliasResolver`,
 `PublicResolverV2`, `MigrationHelper`, `RootBatchRegistrar`) and those built on one of them
-(`WrapperRegistryImpl`, `LockedMigrationController`). Everything else is reused, the `.eth`
-registry and its pre-migration reservations above all.
+(`WrapperRegistryImpl`, `LockedMigrationController`). It also replaces the HCA session validator
+(`HCAOwnerAndSessionValidator`), whose current build differs from the one deployed, and the HCA
+implementation built over it (`StandaloneHCAImplementation`). No account uses either until the owner
+approves the implementation. Everything else is reused, the `.eth` registry and its pre-migration
+reservations above all.
 
 ```bash
 bun run migration -- phase redeploy-root  --network mainnet \
@@ -589,17 +592,18 @@ bun run migration -- phase set-eth-parent --network mainnet
   set the `.eth` registry's parent, and when any contract that should be reused differs from the
   current build, since the deploy would replace it too. It moves the replaced records to a
   `<namespace>-root-<date>` archive beside the namespace, reruns phase 1 into the same namespace,
-  and fails unless exactly the root-bound contracts moved. A re-run resumes an interrupted
+  and fails unless exactly the contracts it replaces moved. A re-run resumes an interrupted
   redeploy, and does nothing after a completed one.
 - The new root registers `eth` and `reverse` and the DNS top-level names again. The phase 1 DAO
-  calls are rebuilt with it: `setRegistrarResolver` now names the new `ENSV2Resolver`.
+  calls are rebuilt with it: `setRegistrarResolver` now names the new `ENSV2Resolver`, and
+  `setImplementationApproval` the new HCA implementation.
 - The `.eth` registry keeps pointing at the old root until `set-eth-parent`. That command sends
   nothing unless every contract exposing `ROOT_REGISTRY()` reports the new root, no replaced
   contract is still recorded, `verify-deployment` passes (so no record points into the archive),
   every replaced contract's source is verified on Etherscan (`ETHERSCAN_API_KEY`;
   `--skip-source-verification` on a fork), and the new root's `eth` entry points at the `.eth`
   registry with the deployer holding its token.
-- The old root registry and the contracts built over it stay on chain, unused.
+- The old root registry and the other replaced contracts stay on chain, unused.
 
 ## Re-deploying onto an already-migrated network
 

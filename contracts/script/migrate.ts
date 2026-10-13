@@ -122,12 +122,12 @@ import {
   type ResolvedDirectRegistration,
 } from "./migrations/directRegistrations.js";
 import {
-  archiveRootBoundRecords,
+  archiveReplacedRecords,
   driftedReusedRecords,
   findRootArchive,
   namespaceBeforeRedeploy,
   readNamespaceRecords,
-  ROOT_BOUND_DEPLOYMENTS,
+  REPLACED_DEPLOYMENTS,
   rootRedeployDiff,
 } from "./migrations/rootRedeploy.js";
 import {
@@ -5425,9 +5425,10 @@ export async function redeployRootRegistry(
   const archived = archive
     ? readNamespaceRecords(deploymentsDir, archive)
     : (new Map() as typeof active);
-  const replacedAlready = ROOT_BOUND_DEPLOYMENTS.every((name) => {
+  const replacedAlready = REPLACED_DEPLOYMENTS.every((name) => {
     const now = active.get(name)?.address;
     const old = archived.get(name)?.address;
+    if (!now && !old) return true;
     return now && old && !sameAddress(now, old);
   });
   if (archive && replacedAlready) {
@@ -5514,21 +5515,21 @@ export async function redeployRootRegistry(
   const before = namespaceBeforeRedeploy(active, archived);
   const resuming =
     archive !== undefined &&
-    ROOT_BOUND_DEPLOYMENTS.some((name) => {
+    REPLACED_DEPLOYMENTS.some((name) => {
       const now = active.get(name)?.address;
       const old = archived.get(name)?.address;
-      return !now || (old !== undefined && !sameAddress(now, old));
+      return old !== undefined && (!now || !sameAddress(now, old));
     });
   if (resuming) {
     console.log(`resuming the root registry redeploy archived in ${archive}`);
   } else {
-    const moved = archiveRootBoundRecords(
+    const moved = archiveReplacedRecords(
       deploymentsDir,
       deploymentNetwork,
       new Date(),
     );
     console.log(
-      `moved the root-bound records to ${moved}: ${ROOT_BOUND_DEPLOYMENTS.join(", ")}`,
+      `moved the records to replace to ${moved}: ${REPLACED_DEPLOYMENTS.join(", ")}`,
     );
   }
 
@@ -5642,9 +5643,10 @@ export async function setEthParent(opts: {
   } else {
     const archived = readNamespaceRecords(deploymentsDir, archive);
     const active = readNamespaceRecords(deploymentsDir, deploymentNetwork);
-    for (const name of ROOT_BOUND_DEPLOYMENTS) {
+    for (const name of REPLACED_DEPLOYMENTS) {
       const now = active.get(name)?.address;
       const old = archived.get(name)?.address;
+      if (!now && !old) continue;
       if (!now) failures.push(`${name} has no record`);
       else if (old && sameAddress(now, old)) {
         failures.push(`${name} is still the replaced contract ${now}`);
@@ -5676,8 +5678,14 @@ export async function setEthParent(opts: {
         "ETHERSCAN_API_KEY is not set, so source verification cannot be checked",
       );
     } else {
-      for (const name of ROOT_BOUND_DEPLOYMENTS) {
-        const address = v2(name).address;
+      for (const name of REPLACED_DEPLOYMENTS) {
+        const record = maybeLoadV2Deployment(
+          deploymentsDir,
+          deploymentNetwork,
+          name,
+        );
+        if (!record) continue;
+        const address = record.address;
         if (!(await isSourceVerifiedOnEtherscan(chain.id, address, apiKey))) {
           failures.push(
             `${name} ${address} has no verified source on Etherscan`,
