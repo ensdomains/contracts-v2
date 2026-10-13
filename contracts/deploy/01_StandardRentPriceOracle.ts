@@ -52,7 +52,7 @@ export default execute(
       wethAddress = MAINNET_WETH;
       oracles[wethAddress] = {
         oracle: MAINNET_ETH_ORACLE,
-        flip: true,
+        flip: false,
         maxAge,
       };
       paymentTokens.push(MAINNET_USDC);
@@ -61,7 +61,7 @@ export default execute(
       wethAddress = SEPOLIA_WETH;
       oracles[wethAddress] = {
         oracle: SEPOLIA_ETH_ORACLE,
-        flip: true,
+        flip: false,
         maxAge,
       };
       paymentTokens.push(SEPOLIA_USDC);
@@ -69,7 +69,7 @@ export default execute(
       wethAddress = get("MockWETH").address;
       oracles[wethAddress] = {
         oracle: get("MockChainlinkETHUSD").address,
-        flip: true,
+        flip: false,
         maxAge,
       };
       paymentTokens.push(get("MockUSDC").address);

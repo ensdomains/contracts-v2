@@ -82,7 +82,7 @@ contract StandardRentPriceOracleFixture is Test {
             (pc.numer, pc.denom) = StandardRegistrar.ratioFromDecimals(token.decimals());
             if (address(token) == address(tokenWETH)) {
                 pc.oracle = ethOracle;
-                pc.flip = true;
+                pc.flip = false; // USD_PER_ETH
                 pc.maxAge = maxAge;
             }
             paymentConfigs.push(pc);

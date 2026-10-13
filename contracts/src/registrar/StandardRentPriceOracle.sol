@@ -70,7 +70,9 @@ struct PaymentConfigWithToken {
 ///    recently expired names; renewals are exempt.
 /// 4. Configurable payment tokens: payment tokens and their exchange rates can be managed
 ///    with `ROLE_UPDATE_TOKEN`. The exchange rate converts the token to standard units.
-///    Since no external oracle is consulted, only stablecoins.
+///    Non-stablecoins must provide a `IChainlinkAggregrator` where one of the legs is USD.
+///    The expected quote is USD/X.  Use `flip=true` if the quote is X/USD.
+///    Use `maxAge` to limit the staleness of the quote.
 ///    Accounts with `ROLE_DISABLE_TOKEN` can only disable payment tokens.
 ///
 contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, IContractNamer {
@@ -83,7 +85,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @param numer Exchange rate numerator, relative to base units.
     /// @param denom Exchange rate denominator, relative to base units.
     /// @param oracle USD-based Chainlink oracle (optional).
-    /// @param flip `true` if the oracle response should be flipped (X/USD => USD/X).
+    /// @param flip `true` if the oracle response should be flipped (USD/X => X/USD).
     /// @param maxAge Maximum accepted age of the oracle response, in seconds.
     struct PaymentConfig {
         uint128 numer;
@@ -134,7 +136,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @param numer Exchange rate numerator, relative to base units.
     /// @param denom Exchange rate denominator, relative to base units, or 0 if disabled.
     /// @param oracle USD-based Chainlink oracle (optional).
-    /// @param flip `true` if the oracle response should be flipped (X/USD => USD/X).
+    /// @param flip `true` if the oracle response should be flipped (USD/X => X/USD).
     /// @param maxAge Maximum accepted age of the oracle response, in seconds.
     event PaymentTokenUpdated(
         address indexed paymentToken,
@@ -474,11 +476,11 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
             }
             uint256 scale = 10 ** pc.oracle.decimals();
             if (pc.flip) {
-                numer *= scale;
-                denom *= uint256(answer);
-            } else {
                 numer *= uint256(answer);
                 denom *= scale;
+            } else {
+                numer *= scale;
+                denom *= uint256(answer);
             }
         }
     }
