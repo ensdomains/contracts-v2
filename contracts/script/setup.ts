@@ -104,7 +104,7 @@ const NAMED_ACCOUNTS = [
   "owner",
   "user",
   "user2",
-  "endowment",
+  "nameOwner",
 ] as const;
 
 export type StateSnapshot = () => Promise<void>;

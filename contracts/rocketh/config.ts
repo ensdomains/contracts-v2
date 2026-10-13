@@ -41,13 +41,14 @@ export const config = {
     urManager: {
       default: "securityCouncil",
     },
-    endowment: {
+    nameOwner: {
       // holds the v2 root registry's `eth` token after the handover; the owner where
       // no network names one
       default: "owner",
-      // the ENS DAO endowment Safe (endowment.ensdao.eth). Keyed by environment name
-      // only, as the local devnet also runs as chain 1.
-      mainnet: "0x4F2083f5fBede34C2714aFfb3105539775f7FE64",
+      // the ENS DAO name owner, a Safe whose only owner is the DAO timelock and which
+      // accepts ERC-1155 tokens. Keyed by environment name only, as the local devnet
+      // also runs as chain 1.
+      mainnet: "0x5B716D6587d241166bC8914858640F8684F3A2F3",
     },
     v1Owner: {
       default: "owner",

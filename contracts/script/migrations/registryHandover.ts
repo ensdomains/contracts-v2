@@ -3,7 +3,7 @@
 /// The deploy leaves the deployer holding root roles on `RootRegistry` and
 /// `ETHRegistry`, the `eth` token in the root, and ownership of the two batch
 /// registrars. After the migration:
-/// - the endowment (the ENS DAO endowment Safe on mainnet) holds the `eth` token,
+/// - the name owner (the ENS DAO name owner Safe on mainnet) holds the `eth` token,
 ///   and with it every role on the entry: setting its child registry and resolver,
 ///   granting either, and transferring the token;
 /// - the owner (the DAO on mainnet) takes the root registry's root roles, admin
@@ -29,11 +29,11 @@ export type HandoverContract =
   | "BatchRegistrar"
   | "RootBatchRegistrar";
 
-/// What the deployer, the owner and the endowment currently hold, as the plan reads it.
+/// What the deployer, the owner and the name owner currently hold, as the plan reads it.
 export type RegistryHandoverState = {
   deployer: Address;
   owner: Address;
-  endowment: Address;
+  nameOwner: Address;
   /// Current token id of the `eth` entry in `RootRegistry`. A role change on the
   /// entry regenerates it, so it is read just before the plan runs.
   ethTokenId: bigint;
@@ -84,9 +84,9 @@ export function planRegistryHandover(
       `the owner ${state.owner} is the deployer: there is no one to hand the registries to`,
     );
   }
-  if (sameAddress(state.endowment, state.deployer)) {
+  if (sameAddress(state.nameOwner, state.deployer)) {
     throw new Error(
-      `the endowment ${state.endowment} is the deployer: there is no one to hand the eth token to`,
+      `the name owner ${state.nameOwner} is the deployer: there is no one to hand the eth token to`,
     );
   }
 
@@ -95,12 +95,12 @@ export function planRegistryHandover(
     calls.push({
       contract: "RootRegistry",
       functionName: "safeTransferFrom",
-      args: [state.deployer, state.endowment, state.ethTokenId, 1n, "0x"],
-      label: `transfer the eth token, and every role on the entry, to the endowment ${state.endowment}`,
+      args: [state.deployer, state.nameOwner, state.ethTokenId, 1n, "0x"],
+      label: `transfer the eth token, and every role on the entry, to the name owner ${state.nameOwner}`,
     });
-  } else if (!sameAddress(state.ethTokenHolder, state.endowment)) {
+  } else if (!sameAddress(state.ethTokenHolder, state.nameOwner)) {
     throw new Error(
-      `the eth token is held by ${state.ethTokenHolder}, neither the deployer nor the endowment ${state.endowment}`,
+      `the eth token is held by ${state.ethTokenHolder}, neither the deployer nor the name owner ${state.nameOwner}`,
     );
   }
   const missingRoot =

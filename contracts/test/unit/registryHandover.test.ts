@@ -11,14 +11,14 @@ import {
 
 const DEPLOYER = getAddress("0x00000000000000000000000000000000000000d1");
 const OWNER = getAddress("0x00000000000000000000000000000000000000a1");
-const ENDOWMENT = getAddress("0x00000000000000000000000000000000000000e1");
+const NAME_OWNER = getAddress("0x00000000000000000000000000000000000000e1");
 const ETH_TOKEN_ID = 123n;
 
 // The registries as the deploy leaves them.
 const deployed: RegistryHandoverState = {
   deployer: DEPLOYER,
   owner: OWNER,
-  endowment: ENDOWMENT,
+  nameOwner: NAME_OWNER,
   ethTokenId: ETH_TOKEN_ID,
   ethTokenHolder: DEPLOYER,
   batchRegistrars: [
@@ -34,7 +34,7 @@ const deployed: RegistryHandoverState = {
 // The registries once handed over.
 const handedOver: RegistryHandoverState = {
   ...deployed,
-  ethTokenHolder: ENDOWMENT,
+  ethTokenHolder: NAME_OWNER,
   batchRegistrars: [
     { contract: "BatchRegistrar", owner: zeroAddress },
     { contract: "RootBatchRegistrar", owner: zeroAddress },
@@ -51,8 +51,8 @@ describe("planRegistryHandover", () => {
       {
         contract: "RootRegistry",
         functionName: "safeTransferFrom",
-        args: [DEPLOYER, ENDOWMENT, ETH_TOKEN_ID, 1n, "0x"],
-        label: expect.stringContaining("endowment"),
+        args: [DEPLOYER, NAME_OWNER, ETH_TOKEN_ID, 1n, "0x"],
+        label: expect.stringContaining("name owner"),
       },
       {
         contract: "RootRegistry",
@@ -142,7 +142,7 @@ describe("planRegistryHandover", () => {
     ]);
   });
 
-  it("refuses a token held by neither the deployer nor the endowment", () => {
+  it("refuses a token held by neither the deployer nor the name owner", () => {
     expect(() =>
       planRegistryHandover({ ...deployed, ethTokenHolder: OWNER }),
     ).toThrow(/eth token is held by/);
@@ -159,7 +159,7 @@ describe("planRegistryHandover", () => {
 
   it("refuses to hand the eth token from the deployer to itself", () => {
     expect(() =>
-      planRegistryHandover({ ...deployed, endowment: DEPLOYER }),
+      planRegistryHandover({ ...deployed, nameOwner: DEPLOYER }),
     ).toThrow(/no one to hand the eth token to/);
   });
 

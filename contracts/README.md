@@ -157,7 +157,7 @@ The owner takes the `RootRegistry` root roles for a probation period and then dr
 `CAN_NAME`, `SET_URI`, and `REGISTRAR` and `REGISTER_RESERVED` with their admin roles, so it can
 still add top-level names and give reserved ones, such as DNS top-level names, to their operators.
 It also takes the `ETHRegistry` root roles, none of which reaches a name,
-so `.eth` names stay emancipated. The `eth` token moves to the endowment (the ENS DAO endowment
+so `.eth` names stay emancipated. The `eth` token moves to the name owner (the ENS DAO name owner
 Safe on mainnet) with every role it carries. The deployer drops every role it holds and renounces
 both batch registrars. `phase verify-roles` records
 the roles actually held in `deployments/<namespace>/roles.md`._

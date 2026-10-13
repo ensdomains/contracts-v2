@@ -85,7 +85,7 @@ export type NetworkConfig = {
   defaultUrManager?: Address;
   // Holder of the root registry's `eth` token after the handover, when the network
   // names one.
-  defaultEndowment?: Address;
+  defaultNameOwner?: Address;
   chainTags: string[];
 };
 
@@ -103,7 +103,7 @@ const SEPOLIA_UR_MANAGER = getAddress(
 const MAINNET_UR_MANAGER = getAddress(
   rockethConfig.accounts.securityCouncil.mainnet,
 );
-const MAINNET_ENDOWMENT = getAddress(rockethConfig.accounts.endowment.mainnet);
+const MAINNET_NAME_OWNER = getAddress(rockethConfig.accounts.nameOwner.mainnet);
 
 export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
   sepolia: {
@@ -124,7 +124,7 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
     defaultOwner: MAINNET_DAO,
     defaultV1Owner: MAINNET_DAO,
     defaultUrManager: MAINNET_UR_MANAGER,
-    defaultEndowment: MAINNET_ENDOWMENT,
+    defaultNameOwner: MAINNET_NAME_OWNER,
     chainTags: ["hasDao"],
   },
 };
@@ -144,14 +144,14 @@ export type DirectRegistration = {
 /// Names each network registers directly on v2. They skip pre-migration because no
 /// export carries their label and no registrar prices them, and the DAO chooses
 /// their owner. A v2 name cannot be owned by the DAO timelock, which has no ERC-1155
-/// receiver, so a DAO name goes to the endowment Safe.
+/// receiver, so a DAO name goes to the name owner.
 export const DIRECT_REGISTRATIONS: Partial<
   Record<MigrationNetwork, DirectRegistration[]>
 > = {
   mainnet: [
     {
       label: "on",
-      owner: MAINNET_ENDOWMENT,
+      owner: MAINNET_NAME_OWNER,
       resolver: "v1",
       expiry: "v1",
     },

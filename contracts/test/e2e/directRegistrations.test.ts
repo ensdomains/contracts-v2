@@ -67,9 +67,9 @@ describe("direct registrations", () => {
   });
 
   const deployer = () => getAddress(env.namedAccounts.deployer.address);
-  const endowment = () => getAddress(env.namedAccounts.endowment.address);
+  const nameOwner = () => getAddress(env.namedAccounts.nameOwner.address);
   const table = (): DirectRegistration[] => [
-    { label: "on", owner: endowment(), resolver: "v1", expiry: "v1" },
+    { label: "on", owner: nameOwner(), resolver: "v1", expiry: "v1" },
   ];
 
   function context() {
@@ -115,23 +115,23 @@ describe("direct registrations", () => {
     }
   }
 
-  async function expectRegisteredToEndowment() {
+  async function expectRegisteredToNameOwner() {
     const onId = idFromLabel("on");
-    expect(await env.v2.ETHRegistry.read.getOwner([onId])).toBe(endowment());
+    expect(await env.v2.ETHRegistry.read.getOwner([onId])).toBe(nameOwner());
     expect(await env.v2.ETHRegistry.read.getExpiry([onId])).toBe(onV1Expiry);
     expect(await env.v2.ETHRegistry.read.getResolver(["on"])).toBe(V1_RESOLVER);
     const resource = await env.v2.ETHRegistry.read.getResource([onId]);
-    expect(await env.v2.ETHRegistry.read.roles([resource, endowment()])).toBe(
+    expect(await env.v2.ETHRegistry.read.roles([resource, nameOwner()])).toBe(
       DEPLOYMENT_ROLES.DIRECT_REGISTRATION,
     );
   }
 
   it(
-    "registers on.eth to the endowment with every role and its v1 resolver and expiry",
+    "registers on.eth to the name owner with every role and its v1 resolver and expiry",
     async () => {
       await dropRegisterRoles();
       await registerDirectNames(context());
-      await expectRegisteredToEndowment();
+      await expectRegisteredToNameOwner();
       expect(await registerRoles()).toBe(0n);
 
       // A second run finds it registered and sends nothing.
@@ -159,7 +159,7 @@ describe("direct registrations", () => {
       await dropRegisterRoles();
 
       await registerDirectNames(context());
-      await expectRegisteredToEndowment();
+      await expectRegisteredToNameOwner();
       expect(await registerRoles()).toBe(0n);
     },
     TEST_TIMEOUT_MS,

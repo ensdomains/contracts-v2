@@ -3929,7 +3929,7 @@ const EXPECTED_TOKEN_ROLES: Record<
 > = {
   RootRegistry: [
     // 01_ETHRegistry.ts registers `eth` to the deployer. The handover transfers the
-    // token to the endowment, and the roles on the entry move with it.
+    // token to the name owner, and the roles on the entry move with it.
     {
       label: "eth",
       deployment: "@deployer",
@@ -3938,7 +3938,7 @@ const EXPECTED_TOKEN_ROLES: Record<
     },
     {
       label: "eth",
-      deployment: "@endowment",
+      deployment: "@nameOwner",
       roles: DEPLOYMENT_ROLES.ETH_TOKEN,
       stages: HANDED_OVER_STAGES,
     },
@@ -3993,7 +3993,7 @@ export async function verifyV2Roles(opts: {
   deploymentNetwork?: string;
   deployer?: Address;
   owner?: Address;
-  endowment?: Address;
+  nameOwner?: Address;
   fromBlock?: string;
   reportOnly?: boolean;
   // The point in the migration to audit against; after phase 6 by default.
@@ -4014,8 +4014,8 @@ export async function verifyV2Roles(opts: {
     opts.owner ??
     deploymentOwner(deploymentsDir, deploymentNetwork) ??
     NETWORKS[opts.network].defaultOwner;
-  const endowment =
-    opts.endowment ?? NETWORKS[opts.network].defaultEndowment ?? owner;
+  const nameOwner =
+    opts.nameOwner ?? NETWORKS[opts.network].defaultNameOwner ?? owner;
   // Falling back to the owner here made the audit compare every constructor grant
   // against the wrong address: on a live deployment the deployer and the owner
   // differ, so the real deployer was reported as unexpected and the owner as missing
@@ -4038,7 +4038,7 @@ export async function verifyV2Roles(opts: {
     deploymentNetwork,
     deployer,
     owner,
-    endowment,
+    nameOwner,
     fromBlock:
       opts.fromBlock !== undefined ? BigInt(opts.fromBlock) : undefined,
   });
@@ -4056,7 +4056,7 @@ export async function verifyV2Roles(opts: {
     const resolveAccount = (deployment: string): Address | undefined => {
       if (deployment === "@deployer") return deployer;
       if (deployment === "@owner") return owner;
-      if (deployment === "@endowment") return endowment;
+      if (deployment === "@nameOwner") return nameOwner;
       return maybeLoadV2Deployment(
         deploymentsDir,
         deploymentNetwork,
@@ -4160,8 +4160,8 @@ const ACCOUNT_NAMES: Record<string, string> = {
   [MAINNET_DAO.toLowerCase()]: "ENS DAO timelock",
   [rockethConfig.accounts.securityCouncil.mainnet.toLowerCase()]:
     "ENS Security Council Safe",
-  [rockethConfig.accounts.endowment.mainnet.toLowerCase()]:
-    "ENS DAO endowment Safe",
+  [rockethConfig.accounts.nameOwner.mainnet.toLowerCase()]:
+    "ENS DAO name owner",
 };
 type RockethAccountName = keyof typeof rockethConfig.accounts;
 
@@ -4198,7 +4198,7 @@ async function readRoleMap(opts: {
   deploymentNetwork: string;
   deployer: Address;
   owner: Address;
-  endowment?: Address;
+  nameOwner?: Address;
   /// Where every event scan starts; each contract's deploy block by default.
   fromBlock?: bigint;
 }): Promise<RoleMap> {
@@ -4245,7 +4245,7 @@ async function readRoleMap(opts: {
   };
   addAccount("deployer", opts.deployer);
   addAccount("owner", opts.owner);
-  addAccount("endowment", opts.endowment);
+  addAccount("nameOwner", opts.nameOwner);
   addAccount(
     "security council",
     configuredAccount("securityCouncil", environment),
@@ -4391,7 +4391,7 @@ type RegistryAdminOptions = V1DeploymentOptions & {
   deploymentsDir?: string;
   deploymentNetwork?: string;
   owner?: Address;
-  endowment?: Address;
+  nameOwner?: Address;
   privateKey?: `0x${string}`;
   impersonateAccount?: Address;
   calldataOnly?: boolean;
@@ -4411,8 +4411,8 @@ function registryAdminContext(opts: RegistryAdminOptions) {
       deploymentOwner(deploymentsDir, deploymentNetwork) ??
       NETWORKS[opts.network].defaultOwner,
   );
-  const endowment = getAddress(
-    opts.endowment ?? NETWORKS[opts.network].defaultEndowment ?? owner,
+  const nameOwner = getAddress(
+    opts.nameOwner ?? NETWORKS[opts.network].defaultNameOwner ?? owner,
   );
   const read = (
     registry: ContractRef,
@@ -4447,7 +4447,7 @@ function registryAdminContext(opts: RegistryAdminOptions) {
     deploymentsDir,
     deploymentNetwork,
     owner,
-    endowment,
+    nameOwner,
     rootRegistry: registry("RootRegistry"),
     ethRegistry: registry("ETHRegistry"),
     read,
@@ -4514,7 +4514,7 @@ async function readRegistryHandoverState(
   return {
     deployer,
     owner: ctx.owner,
-    endowment: ctx.endowment,
+    nameOwner: ctx.nameOwner,
     ethTokenId,
     ethTokenHolder: getAddress(ethTokenHolder),
     batchRegistrars,
@@ -4540,7 +4540,7 @@ async function assertRegistryHandoverComplete(
   }
   // A role's assignee count sits in the lowest bit of its nybble, so one holder of
   // each role in a bitmap reads back as the bitmap itself. The plan being empty
-  // says the endowment holds the eth token and the owner the root roles.
+  // says the name owner holds the eth token and the owner the root roles.
   const failures: string[] = [];
   const ethResource = (await ctx.read(ctx.rootRegistry, "getResource", [
     labelId("eth"),
@@ -4548,11 +4548,11 @@ async function assertRegistryHandoverComplete(
   if (
     (await ctx.assignees(ctx.rootRegistry, ethResource, ANY_ROLE)) !==
       DEPLOYMENT_ROLES.ETH_TOKEN ||
-    (await ctx.roles(ctx.rootRegistry, ethResource, state.endowment)) !==
+    (await ctx.roles(ctx.rootRegistry, ethResource, state.nameOwner)) !==
       DEPLOYMENT_ROLES.ETH_TOKEN
   ) {
     failures.push(
-      "the endowment is not the only holder of the eth entry's roles, or lacks some of them",
+      "the name owner is not the only holder of the eth entry's roles, or lacks some of them",
     );
   }
   if (
@@ -4583,7 +4583,7 @@ async function assertRegistryHandoverComplete(
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${state.endowment} holds the eth token and every role on its entry; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, the batch registrars have no owner, and .eth names are emancipated`,
+    `registry handover complete: ${state.nameOwner} holds the eth token and every role on its entry; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, the batch registrars have no owner, and .eth names are emancipated`,
   );
 }
 
@@ -4611,7 +4611,7 @@ function registryAdminDeployer(
 }
 
 /// Hands the deployer's authority over the v2 registries to their final holders: the
-/// `eth` token, with every role on its entry, goes to the endowment; the owner takes
+/// `eth` token, with every role on its entry, goes to the name owner; the owner takes
 /// the root registry's and the `.eth` registry's root roles; the deployer drops every
 /// role it holds on them and renounces both batch registrars. Sends only what is
 /// missing, then checks the end state.
@@ -4634,7 +4634,7 @@ export async function handOverRegistryAdmin(
     await readRegistryHandoverState(ctx, deployer),
   );
   console.log(
-    `registry handover from ${deployer} to ${ctx.owner}, eth token to ${ctx.endowment}: ${calls.length} call(s) to make`,
+    `registry handover from ${deployer} to ${ctx.owner}, eth token to ${ctx.nameOwner}: ${calls.length} call(s) to make`,
   );
   for (const call of calls) {
     const target = targets[call.contract];
@@ -6595,7 +6595,7 @@ type RunForkFullOptions = {
   deployerPrivateKey?: `0x${string}`;
   owner?: Address;
   ownerPrivateKey?: `0x${string}`;
-  endowment?: Address;
+  nameOwner?: Address;
   v1Owner?: Address;
   v1OwnerPrivateKey?: `0x${string}`;
   urManager?: Address;
@@ -7323,7 +7323,7 @@ const SMOKE_CHECKS = {
   freshV2Registration:
     "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
   registryHandover:
-    "the registry handover, leaving the deployer no v2 authority, the owner both registries, the endowment the eth token, and .eth names emancipated",
+    "the registry handover, leaving the deployer no v2 authority, the owner both registries, the name owner the eth token, and .eth names emancipated",
   rootEmancipation:
     "the owner dropping its root registry roles once the handover's probation period ends",
 } as const;
@@ -7616,7 +7616,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
     const v1Owner = opts.v1Owner ?? network.defaultV1Owner;
-    const endowment = opts.endowment ?? network.defaultEndowment ?? owner;
+    const nameOwner = opts.nameOwner ?? network.defaultNameOwner ?? owner;
     if (useRpcStateControls) {
       await setBalance(client, DEFAULT_ANVIL_DEPLOYER);
       await setBalance(client, deployer);
@@ -7628,7 +7628,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         { address: deployer, label: "deployer" },
         { address: owner, label: "owner" },
         { address: v1Owner, label: "v1 owner" },
-        { address: endowment, label: "endowment" },
+        { address: nameOwner, label: "nameOwner" },
       ]);
     }
     const generatedSmokePrivateKey = useRpcStateControls
@@ -8539,7 +8539,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ...phaseCtx,
       deployer,
       owner,
-      endowment,
+      nameOwner,
       reportOnly: true,
     });
     // An extra grant can be the fixtures' doing, but a grant the deployment set out
@@ -8759,7 +8759,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         ...phaseCtx,
         deployer,
         owner,
-        endowment,
+        nameOwner,
         stage,
         reportOnly: true,
       });
@@ -8802,13 +8802,13 @@ export async function runForkFull(opts: RunForkFullOptions) {
         });
       }
       console.log(
-        "registry handover: the deployer hands the v2 registries to the owner and the eth token to the endowment",
+        "registry handover: the deployer hands the v2 registries to the owner and the eth token to the name owner",
       );
       await handOverRegistryAdmin({
         ...phaseV1Ctx,
         deployer,
         owner,
-        endowment,
+        nameOwner,
         ...deployerSigner,
       });
       await auditRolesAt("post-registry-handover");
@@ -10277,8 +10277,8 @@ export async function main(argv = process.argv): Promise<void> {
             "Owner address; defaults to the owner the namespace's ETHRegistrar was deployed with, else the network's configured owner",
           )
           .option(
-            "--endowment <address>",
-            "Holder of the eth token after the registry handover; defaults to the network's configured endowment, else the owner",
+            "--name-owner <address>",
+            "Holder of the eth token after the registry handover; defaults to the network's configured name owner, else the owner",
           )
           .option(
             "--from-block <number>",
@@ -10300,7 +10300,7 @@ export async function main(argv = process.argv): Promise<void> {
           DeploymentCliOptions & {
             deployer?: Address;
             owner?: Address;
-            endowment?: Address;
+            nameOwner?: Address;
             fromBlock?: string;
             reportOnly?: boolean;
             stage?: RoleAuditStage;
@@ -10384,15 +10384,15 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
           .description(
-            "Hand the deployer's v2 registry authority to its final holders: the eth token, with every role on it, goes to the endowment; the owner takes the root registry's and the .eth registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars",
+            "Hand the deployer's v2 registry authority to its final holders: the eth token, with every role on it, goes to the name owner; the owner takes the root registry's and the .eth registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars",
           )
           .option(
             "--owner <address>",
             "Account to hand the root registry to; defaults to the owner the namespace was deployed with, else the network's configured owner",
           )
           .option(
-            "--endowment <address>",
-            "Account to give the eth token to; defaults to the network's configured endowment, else the owner",
+            "--name-owner <address>",
+            "Account to give the eth token to; defaults to the network's configured name owner, else the owner",
           )
           .option(
             "--deployer <address>",
@@ -10412,7 +10412,7 @@ export async function main(argv = process.argv): Promise<void> {
         opts: NetworkCliOptions &
           DeploymentCliOptions & {
             owner?: Address;
-            endowment?: Address;
+            nameOwner?: Address;
             deployer?: Address;
             privateKey?: `0x${string}`;
             impersonateAccount?: Address;
@@ -11284,8 +11284,8 @@ export async function main(argv = process.argv): Promise<void> {
               .option("--deployer <address>", "Migration deployer address")
               .option("--owner <address>", "Migration owner/admin address")
               .option(
-                "--endowment <address>",
-                "Account the registry handover gives the eth token to; defaults to the network's configured endowment, else the owner",
+                "--name-owner <address>",
+                "Account the registry handover gives the eth token to; defaults to the network's configured name owner, else the owner",
               )
               .option("--v1-owner <address>", "V1 owner address")
               .option("--ur-manager <address>", "Managed URP admin address")
@@ -11363,8 +11363,8 @@ export async function main(argv = process.argv): Promise<void> {
               .option("--deployer <address>", "Migration deployer address")
               .option("--owner <address>", "Migration owner/admin address")
               .option(
-                "--endowment <address>",
-                "Account the registry handover gives the eth token to; defaults to the network's configured endowment, else the owner",
+                "--name-owner <address>",
+                "Account the registry handover gives the eth token to; defaults to the network's configured name owner, else the owner",
               )
               .option("--v1-owner <address>", "V1 owner address")
               .option("--ur-manager <address>", "Managed URP admin address")

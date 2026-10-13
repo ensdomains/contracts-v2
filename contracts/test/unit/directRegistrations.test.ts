@@ -30,11 +30,11 @@ const registered = {
 };
 
 describe("DIRECT_REGISTRATIONS", () => {
-  it("registers on.eth to the mainnet endowment with its v1 resolver and expiry", () => {
+  it("registers on.eth to the mainnet name owner with its v1 resolver and expiry", () => {
     expect(DIRECT_REGISTRATIONS.mainnet).toEqual([
       {
         label: "on",
-        owner: NETWORKS.mainnet.defaultEndowment!,
+        owner: NETWORKS.mainnet.defaultNameOwner!,
         resolver: "v1",
         expiry: "v1",
       },

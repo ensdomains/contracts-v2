@@ -124,7 +124,7 @@ export const DEPLOYMENT_ROLES = {
     ROLES.ADMIN.REGISTRY.SET_RESOLVER |
     ROLES.ADMIN.REGISTRY.CAN_TRANSFER,
   // A `.eth` name registered straight to its owner outside pre-migration, such as
-  // on.eth for the endowment: every role and admin role.
+  // on.eth for the name owner: every role and admin role.
   DIRECT_REGISTRATION: FLAGS.ALL,
   // .reverse token: full role bitmap, held by the deployer only while it hands the
   // name over. Some roles (e.g. REGISTRAR) are root-only and don't apply to tokens.
