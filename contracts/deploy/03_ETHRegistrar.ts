@@ -23,8 +23,6 @@ export default execute(
       "StandardRentPriceOracle",
     );
 
-    console.log({ deployer, fees });
-
     const ethRegistrar = await deploy("ETHRegistrar", {
       account: deployer,
       artifact: Artifact_ETHRegistrar,

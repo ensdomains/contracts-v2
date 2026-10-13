@@ -44,15 +44,13 @@ export async function registerTestNames(
   // Step 1: Commit all names
   for (let i = 0; i < labels.length; i++) {
     const commitment = await env.v2.ETHRegistrar.read.makeCommitment([
-      {
-        label: labels[i],
-        duration: duration,
-        owner: account.address,
-        secret: secret(i),
-        subregistry: zeroAddress,
-        resolver: resolver.address,
-        referrer,
-      },
+      labels[i],
+      account.address,
+      secret(i),
+      zeroAddress,
+      resolver.address,
+      duration,
+      referrer,
     ]);
     const receipt = await env.waitFor(
       env.v2.ETHRegistrar.write.commit([commitment], {
@@ -98,16 +96,14 @@ export async function registerTestNames(
     const receipt = await env.waitFor(
       env.v2.ETHRegistrar.write.register(
         [
-          {
-            label: labels[i],
-            duration: duration,
-            owner: account.address,
-            secret: secret(i),
-            subregistry: zeroAddress,
-            resolver: resolver.address,
-            referrer,
-          },
+          labels[i],
+          account.address,
+          secret(i),
+          zeroAddress,
+          resolver.address,
+          duration,
           paymentToken,
+          referrer,
         ],
         { account },
       ),

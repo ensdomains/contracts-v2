@@ -4,49 +4,48 @@ export const MAX_EXPIRY = (1n << 64n) - 1n; // see: DatastoreUtils.sol
 
 export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
 export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
-  "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" satisfies Address;
+  "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
 
-export const NATIVE_ETH =
-  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" satisfies Address;
+export const NATIVE_ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as const;
 
 // Networks whose top URP already fronts a long-lived intermediate (managed) URP
 // whose admin we control, keyed by network name. On these networks a fresh v2
 // deployment reuses the existing intermediate URP instead of deploying a new one.
 export const KNOWN_INTERMEDIATE_URP: Record<string, Address> = {
   sepolia: "0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1",
-};
+} as const;
 
 // Real mainnet payment tokens used by the rent price oracle in place of the
 // free-mint test mocks (which must never ship to mainnet). Confirm/adjust the
 // accepted set before a mainnet deploy.
 export const MAINNET_USDC =
-  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" satisfies Address;
+  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as const;
 export const MAINNET_DAI =
-  "0x6B175474E89094C44Da98b954EedeAC495271d0F" satisfies Address;
+  "0x6B175474E89094C44Da98b954EedeAC495271d0F" as const;
 export const MAINNET_WETH =
-  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" satisfies Address;
+  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" as const;
 export const MAINNET_ETH_ORACLE =
-  "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419" satisfies Address;
+  "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419" as const;
 
 export const SEPOLIA_USDC =
-  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" satisfies Address;
+  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 export const SEPOLIA_WETH =
-  "0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c" satisfies Address;
+  "0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c" as const;
 export const SEPOLIA_ETH_ORACLE =
-  "0x694AA1769357215DE4FAC081bf1f309aDC325306" satisfies Address;
+  "0x694AA1769357215DE4FAC081bf1f309aDC325306" as const;
 
 // Faucet-minted MockUSDC from the active deployment namespace, accepted by the
 // live rent price oracle and whitelisted on the Rhinestone orchestrator.
 // Archived deployment namespaces carry their own MockUSDC instances that the
 // live oracle rejects — never source this address from an archived artifact.
 export const SEPOLIA_MOCK_USDC =
-  "0x16f95D91DBa7dA3Aca778Ec053dF0FF6C6A8aA8e" satisfies Address;
+  "0x16f95D91DBa7dA3Aca778Ec053dF0FF6C6A8aA8e" as const;
 
 export const RHINESTONE_INTENT_EXECUTOR =
-  "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" satisfies Address;
+  "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" as const;
 
 export const RHINESTONE_GAS_REFUND_PAYMASTER =
-  "0x1d7df6Ddc7328Ac827EB4D7f171C60AFB7f9A599" satisfies Address;
+  "0x1d7df6Ddc7328Ac827EB4D7f171C60AFB7f9A599" as const;
 
 interface Flags {
   [key: string]: bigint | Flags;

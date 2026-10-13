@@ -744,8 +744,8 @@ async function main() {
     reverseRegistrar:
       (process.env.HCA_V1_REVERSE_REGISTRAR as Address | undefined) ??
       v1Deployment("ReverseRegistrar"),
-    intentExecutor: RHINESTONE_INTENT_EXECUTOR as Address,
-    gasRefundPaymaster: RHINESTONE_GAS_REFUND_PAYMASTER as Address,
+    intentExecutor: RHINESTONE_INTENT_EXECUTOR,
+    gasRefundPaymaster: RHINESTONE_GAS_REFUND_PAYMASTER,
   };
 
   await Promise.all(
