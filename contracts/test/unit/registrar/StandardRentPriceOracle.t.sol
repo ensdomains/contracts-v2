@@ -264,15 +264,28 @@ contract StandardRentPriceOracleTest is StandardRentPriceOracleFixture {
     function test_getPaymentTokenRatio_eth() external view {
         (uint256 numer0, uint256 denom0) = rentPriceOracle.getPaymentTokenRatio(NATIVE_ETH);
         (uint256 numer1, uint256 denom1) = rentPriceOracle.getPaymentTokenRatio(address(tokenWETH));
-        (, int256 answer, , , ) = ethOracle.latestRoundData();
         assertEq(numer0, numer1, "same numer");
         assertEq(denom0, denom1, "same denom");
+
+        (, int256 answer, , , ) = ethOracle.latestRoundData();
         assertEq(
             numer1,
             10 ** (tokenWETH.decimals() + ethOracle.decimals() - StandardRegistrar.PRICE_DECIMALS),
             "numer"
         );
         assertEq(denom1, uint256(answer), "denom");
+    }
+
+    function test_getPaymentTokenRatio_ethFlipped() external {
+        StandardRentPriceOracle.PaymentConfig memory pc =
+            rentPriceOracle.getPaymentTokenConfiguration(address(tokenWETH));
+        pc.oracle = ethOracleFlipped;
+        pc.flip = !pc.flip;
+        rentPriceOracle.updatePaymentToken(address(tokenWETH), pc);
+
+        (uint256 numer0, uint256 denom0) = rentPriceOracle.getPaymentTokenRatio(NATIVE_ETH);
+        (uint256 numer1, uint256 denom1) = rentPriceOracle.getPaymentTokenRatio(address(tokenWETH));
+        assertEq(numer0 / denom0, numer1 / denom1);
     }
 
     function test_updatePaymentToken_add(

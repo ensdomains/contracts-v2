@@ -25,6 +25,7 @@ import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 contract StandardRentPriceOracleFixture is Test {
     StandardRentPriceOracle rentPriceOracle;
     MockChainlinkAggregator ethOracle;
+    MockChainlinkAggregator ethOracleFlipped;
     MockChainlinkAggregator invalidOracle;
     MockChainlinkAggregator staleOracle;
 
@@ -56,6 +57,11 @@ contract StandardRentPriceOracleFixture is Test {
         uint64 maxAge = 3600; // arbitrary
         uint256 ethPrice = StandardRegistrar.USD_PER_ETH;
         ethOracle = new MockChainlinkAggregator(int256(ethPrice * 10 ** decimals), 0, decimals);
+        ethOracleFlipped = new MockChainlinkAggregator(
+            int256(10 ** decimals / ethPrice),
+            0,
+            decimals
+        );
         invalidOracle = new MockChainlinkAggregator(0, 0, decimals);
         staleOracle = new MockChainlinkAggregator(1, maxAge + 1, decimals);
 
@@ -77,7 +83,7 @@ contract StandardRentPriceOracleFixture is Test {
             if (address(token) == address(tokenWETH)) {
                 pc.oracle = ethOracle;
                 pc.flip = true;
-                pc.maxAge = 3600;
+                pc.maxAge = maxAge;
             }
             paymentConfigs.push(pc);
         }

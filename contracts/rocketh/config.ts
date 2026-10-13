@@ -44,7 +44,8 @@ export const config = {
     },
     fees: {
       default: "owner",
-      mainnet: "0x4F2083f5fBede34C2714aFfb3105539775f7FE64", // endowment.ensdao.eth
+      1: "0x4F2083f5fBede34C2714aFfb3105539775f7FE64", // endowment.ensdao.eth
+      mainnet: "0x4F2083f5fBede34C2714aFfb3105539775f7FE64",
     },
   },
   environments: {
