@@ -91,30 +91,40 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
     }
 
     /// @inheritdoc IETHRenewer
-    function renew(RenewData calldata rd, address paymentToken) public virtual {
-        _transferERC20(paymentToken, _renew(rd, paymentToken));
+    function renew(RenewData calldata rd, address paymentToken) public {
+        _beforeRenewing();
+        uint256 amount = _renew(rd, paymentToken);
+        _afterRenewing();
+        _transferERC20(paymentToken, amount);
     }
 
     /// @inheritdoc IETHRenewer
-    function renewWithETH(RenewData calldata rd, address refundTo) public payable virtual {
-        _transferETH(_renew(rd, NATIVE_ETH), refundTo);
+    function renewWithETH(RenewData calldata rd, address refundTo) public payable {
+        _beforeRenewing();
+        uint256 amount = _renew(rd, NATIVE_ETH);
+        _afterRenewing();
+        _transferETH(amount, refundTo);
     }
 
     /// @inheritdoc IETHRenewer
-    function renewBatch(RenewData[] calldata rds, address paymentToken) public virtual {
+    function renewBatch(RenewData[] calldata rds, address paymentToken) public {
+        _beforeRenewing();
         uint256 total;
         for (uint256 i; i < rds.length; ++i) {
             total += _renew(rds[i], paymentToken);
         }
+        _afterRenewing();
         _transferERC20(paymentToken, total);
     }
 
     /// @inheritdoc IETHRenewer
-    function renewBatchWithETH(RenewData[] calldata rds, address refundTo) public payable virtual {
+    function renewBatchWithETH(RenewData[] calldata rds, address refundTo) public payable {
+        _beforeRenewing();
         uint256 total;
         for (uint256 i; i < rds.length; ++i) {
             total += _renew(rds[i], NATIVE_ETH);
         }
+        _afterRenewing();
         _transferETH(total, refundTo);
     }
 
@@ -180,6 +190,12 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
             }
         }
     }
+
+    /// @dev Callback before names are renewed.
+    function _beforeRenewing() internal virtual {}
+
+    /// @dev Callback after names are renewed.
+    function _afterRenewing() internal virtual {}
 
     /// @dev Callback for when a name is renewed.
     function _onRenew(string calldata label, uint64 duration) internal virtual {}

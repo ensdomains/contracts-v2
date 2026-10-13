@@ -10,7 +10,7 @@ import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistr
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
-import {IETHRenewer, RenewData} from "./interfaces/IETHRenewer.sol";
+import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
 // https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
@@ -50,16 +50,6 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
 
     /// @notice ENSv1 `ETHRegistrarController` that is an active `NameWrapper` controller.
     IWrappedETHRegistrarController public immutable WRAPPED_CONTROLLER;
-
-    ////////////////////////////////////////////////////////////////////////
-    // Modifiers
-    ////////////////////////////////////////////////////////////////////////
-
-    modifier withWrapper() {
-        BASE_REGISTRAR.addController(address(NAME_WRAPPER));
-        _;
-        BASE_REGISTRAR.removeController(address(NAME_WRAPPER));
-    }
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -110,6 +100,16 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
         BASE_REGISTRAR.setResolver(resolver);
     }
 
+    /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.
+    /// @param labels The labels to sync.
+    function syncWrapper(string[] memory labels) external {
+        _beforeRenewing();
+        for (uint256 i; i < labels.length; ++i) {
+            WRAPPED_CONTROLLER.renew(labels[i], 0);
+        }
+        _afterRenewing();
+    }
+
     /// @inheritdoc IETHRenewer
     function getRemainingGracePeriod(string calldata label) external view returns (uint64) {
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
@@ -124,47 +124,19 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
         return 0;
     }
 
-    /// @inheritdoc IETHRenewer
-    function renew(RenewData calldata rd, address paymentToken) public override withWrapper {
-        super.renew(rd, paymentToken);
-    }
-
-    /// @inheritdoc IETHRenewer
-    function renewWithETH(RenewData calldata rd, address refundTo)
-        public
-        payable
-        override
-        withWrapper
-    {
-        super.renewWithETH(rd, refundTo);
-    }
-
-    /// @inheritdoc IETHRenewer
-    function renewBatch(RenewData[] calldata rds, address paymentToken) public override withWrapper {
-        super.renewBatch(rds, paymentToken);
-    }
-
-    /// @inheritdoc IETHRenewer
-    function renewBatchWithETH(RenewData[] calldata rds, address refundTo)
-        public
-        payable
-        override
-        withWrapper
-    {
-        super.renewBatchWithETH(rds, refundTo);
-    }
-
-    /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.
-    /// @param labels The labels to sync.
-    function syncWrapper(string[] memory labels) public withWrapper {
-        for (uint256 i; i < labels.length; ++i) {
-            WRAPPED_CONTROLLER.renew(labels[i], 0);
-        }
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Temporarily add controller that can renew wrapped names.
+    function _beforeRenewing() internal override {
+        BASE_REGISTRAR.addController(address(NAME_WRAPPER));
+    }
+
+    /// @dev Remove temporary controller added during `_beforeRenewing()`.  
+    function _afterRenewing() internal override {
+        BASE_REGISTRAR.removeController(address(NAME_WRAPPER));
+    }
 
     /// @dev Update ENSv1 and NameWrapper (if wrapped) during renew.
     function _onRenew(string calldata label, uint64 duration) internal override {
