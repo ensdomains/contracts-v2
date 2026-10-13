@@ -584,6 +584,8 @@ bun run migration -- phase redeploy-root  --network mainnet \
 bun run migration -- phase verify-deployment --network mainnet
 bun ./script/verify.ts --network mainnet
 bun run migration -- phase set-eth-parent --network mainnet
+bun run migration -- phase verify-roles --network mainnet --stage pre-handoff
+bun ./script/generateAddressDocs.ts --network mainnet
 ```
 
 - `redeploy-root` refuses once the DAO proposal has executed (the v1 `BaseRegistrar` is no longer
@@ -603,6 +605,9 @@ bun run migration -- phase set-eth-parent --network mainnet
   every replaced contract's source is verified on Etherscan (`ETHERSCAN_API_KEY`;
   `--skip-source-verification` on a fork), and the new root's `eth` entry points at the `.eth`
   registry with the deployer holding its token.
+- The deploy rewrites `deployments/<namespace>/addresses.md`, and `verify-roles` rewrites
+  `roles.md`. `generateAddressDocs.ts` then rewrites `docs/addresses/<network>.md`, so the published
+  addresses name the new contracts.
 - The old root registry and the other replaced contracts stay on chain, unused.
 
 ## Re-deploying onto an already-migrated network
