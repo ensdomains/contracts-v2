@@ -5335,12 +5335,21 @@ async function assertRootRedeployAllowed(opts: {
       "BatchRegistrar no longer holds the registrar role: go-live has started",
     );
   }
-  if (
-    await hasRootRoles(ROLES.REGISTRY.REGISTRAR, v2("ETHRegistrar").address)
-  ) {
-    failures.push(
-      "ETHRegistrar holds the registrar role: v2 registration is open",
-    );
+  // A resumed redeploy has moved the registrar's record to the archive and may not
+  // have deployed its replacement yet, so both namespaces are checked.
+  const archive = findRootArchive(opts.deploymentsDir, opts.deploymentNetwork);
+  for (const namespace of [opts.deploymentNetwork, archive]) {
+    const registrar = namespace
+      ? maybeLoadV2Deployment(opts.deploymentsDir, namespace, "ETHRegistrar")
+      : null;
+    if (
+      registrar &&
+      (await hasRootRoles(ROLES.REGISTRY.REGISTRAR, registrar.address))
+    ) {
+      failures.push(
+        `ETHRegistrar ${registrar.address} holds the registrar role: v2 registration is open`,
+      );
+    }
   }
   if (!(await hasRootRoles(ROLES.REGISTRY.SET_PARENT, opts.deployer))) {
     failures.push(
