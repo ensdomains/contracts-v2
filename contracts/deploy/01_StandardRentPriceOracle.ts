@@ -46,7 +46,7 @@ export default execute(
       flip: false,
       maxAge: 0n,
     };
-    const maxAge = 3600n; // 1 hour
+    const maxAge = 3n * 3600n; // safetyFactory * (1 hour) => https://docs.chain.link/data-feeds/overview#check-the-timestamp-of-the-latest-answer
     let wethAddress: Address;
     if (tags.hasDao) {
       wethAddress = MAINNET_WETH;
