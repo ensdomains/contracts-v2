@@ -440,8 +440,9 @@ if (import.meta.main) {
     const v2 = await readDeploymentAddresses(v2Dir);
     const v1 = await readDeploymentAddresses(v1Dir, true);
     const chainId = await readDeploymentChainId(v2Dir);
-    if (chainId !== (await readDeploymentChainId(v1Dir))) {
-      throw new Error(`chain mismatch: ${v1.chainId} != ${v2.chainId}`);
+    const otherChainId = await readDeploymentChainId(v1Dir);
+    if (chainId !== otherChainId) {
+      throw new Error(`chain mismatch: ${chainId} != ${otherChainId}`);
     }
     const info = resolveAccounts(chainId);
     console.log(`Mode: ${mode}`);

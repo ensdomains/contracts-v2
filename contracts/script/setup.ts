@@ -973,19 +973,21 @@ export async function setupDevnet({
       const { resolver } = account;
 
       // fix V1 deployment issues:
-      // 1. NameWrapper is ReverseClaimer; owned by deployer
+      // NameWrapper is ReverseClaimer; reverse node owned by deployer => change to DAO
+      // note: it is also Ownable, but disowned on mainnet
       await v1.ENSRegistry.write.setOwner([
         namehash(getReverseName(v1.NameWrapper.address)),
         account.address,
       ]);
-      // 2. PublicResolver is ReverseClaimer; owned by deployer
+      // PublicResolver is ReverseClaimer; reverse node owned by deployer => change to DAO
       await v1.ENSRegistry.write.setOwner([
         namehash(getReverseName(v1.PublicResolver.address)),
         account.address,
       ]);
-      // 3. DNSSECImpl is Ownable; owned by deployer
+      // DNSSECImpl is Ownable; owned by deployer => change to DAO
       await v1.DNSSECImpl.write.setOwner([account.address]);
-      // 4. BaseRegistrarImplementation is Ownable; but has indirect ownership
+      // BaseRegistrarImplementation is Ownable; but has indirect ownership => juggle and change to DAO
+      // note: already claimed on mainnet
       await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
         [account.address],
         { account },
