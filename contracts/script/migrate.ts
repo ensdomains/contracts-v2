@@ -7296,6 +7296,12 @@ export async function deployV2(opts: DeployV2Options) {
   if (opts.fresh) {
     archiveExistingDeploymentNamespace(deploymentsDir, deploymentNetwork);
   }
+  // The records' addresses before the run, to tell whether it deployed anything.
+  const addressesBefore = new Map(
+    [...readNamespaceRecords(deploymentsDir, deploymentNetwork)].map(
+      ([name, record]) => [name, record.address?.toLowerCase()],
+    ),
+  );
 
   const env = await loadAndExecuteDeploymentsFromFilesWithConfig(
     {
@@ -7317,7 +7323,18 @@ export async function deployV2(opts: DeployV2Options) {
   );
 
   if (persist) {
-    recordDeploymentMetadata(deploymentsDir, deploymentNetwork, chainId);
+    const changed = [
+      ...readNamespaceRecords(deploymentsDir, deploymentNetwork),
+    ].some(
+      ([name, record]) =>
+        addressesBefore.get(name) !== record.address?.toLowerCase(),
+    );
+    recordDeploymentMetadata(
+      deploymentsDir,
+      deploymentNetwork,
+      chainId,
+      changed,
+    );
   }
 
   logDeployedAddresses(env, [
@@ -9329,24 +9346,35 @@ function assertCleanDeploymentNamespace(
 
 const DEPLOYMENT_METADATA_FILE = ".deployment.json";
 
-// Records when a namespace was first deployed. rocketh ignores dotfiles other
-// than `.migrations.json`, so this metadata never interferes with artifact
-// loading. Written once so the timestamp reflects the original deployment and
-// survives idempotent re-runs; the fresh-deploy archiver reads it back to name
-// the archived folder.
+// Records when a namespace was first deployed and when a deploy last changed it.
+// rocketh ignores dotfiles other than `.migrations.json`, so this metadata never
+// interferes with artifact loading. The first-deploy time is written once and
+// survives re-runs; the fresh-deploy archiver reads it back to name the archived
+// folder. The update time moves only when a run deployed or replaced a contract,
+// so an idempotent re-run leaves it alone.
 function recordDeploymentMetadata(
   root: string,
   environment: string,
   chainId: number,
+  changed: boolean,
 ) {
   const dir = join(root, environment);
   if (!existsSync(dir)) return;
   const metadataPath = join(dir, DEPLOYMENT_METADATA_FILE);
-  if (existsSync(metadataPath)) return;
+  const now = new Date().toISOString();
+  let metadata: Record<string, unknown> | undefined;
+  if (existsSync(metadataPath)) {
+    if (!changed) return;
+    try {
+      metadata = JSON.parse(readFileSync(metadataPath, "utf-8"));
+    } catch {}
+  }
   writeFileSync(
     metadataPath,
     `${JSON.stringify(
-      { environment, chainId, deployedAt: new Date().toISOString() },
+      metadata
+        ? { ...metadata, updatedAt: now }
+        : { environment, chainId, deployedAt: now, updatedAt: now },
       null,
       2,
     )}\n`,
