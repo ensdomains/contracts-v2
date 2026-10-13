@@ -362,10 +362,9 @@ describe("Phased migration rehearsal", () => {
       [env.v2.ETHRegistrar.address, base + premium],
       { account },
     );
-    await env.v2.ETHRegistrar.write.register(
-      [commitData, paymentToken, zeroAddress],
-      { account },
-    );
+    await env.v2.ETHRegistrar.write.register([commitData, paymentToken], {
+      account,
+    });
   }
 });
 

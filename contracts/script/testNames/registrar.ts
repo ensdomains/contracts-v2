@@ -108,7 +108,6 @@ export async function registerTestNames(
             referrer,
           },
           paymentToken,
-          zeroAddress,
         ],
         { account },
       ),
