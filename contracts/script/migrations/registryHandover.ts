@@ -6,11 +6,11 @@
 /// - the name owner (the ENS DAO name owner Safe on mainnet) holds the `eth` token,
 ///   and with it every role on the entry: setting its child registry and resolver,
 ///   granting either, and transferring the token;
-/// - the owner (the DAO on mainnet) takes the root registry's root roles, admin
-///   bits included, for a probation period before it drops them itself;
-/// - the owner takes the `.eth` registry's root roles, so it can authorize
-///   registrars and migration controllers. None of them reaches a name, so `.eth`
-///   names stay emancipated;
+/// - the owner (the DAO on mainnet) takes every safe root role, with its admin
+///   role, on both the root registry and the `.eth` registry: registering names
+///   and reserved names, setting the parent, renewing, setting the metadata URI and
+///   contract naming. None of them reaches a name, so both registries leave their
+///   names emancipated;
 /// - the batch registrars have no owner, so nothing can ever send through them
 ///   again, even if a registry grants them roles.
 ///
@@ -104,7 +104,7 @@ export function planRegistryHandover(
     );
   }
   const missingRoot =
-    DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT & ~state.ownerRootRoles;
+    DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & ~state.ownerRootRoles;
   if (missingRoot !== 0n) {
     calls.push({
       contract: "RootRegistry",
@@ -114,7 +114,7 @@ export function planRegistryHandover(
     });
   }
   const missingEthRegistry =
-    DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT & ~state.ownerEthRegistryRoles;
+    DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & ~state.ownerEthRegistryRoles;
   if (missingEthRegistry !== 0n) {
     calls.push({
       contract: "ETHRegistry",
@@ -154,17 +154,4 @@ export function planRegistryHandover(
     }
   }
   return calls;
-}
-
-/// The root registry root roles the owner keeps once the root is emancipated: the
-/// regular naming and metadata roles it was granted at deploy, and the roles that
-/// add top-level names and give reserved ones to their operators.
-export const EMANCIPATED_OWNER_ROOT_ROLES =
-  DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER |
-  DEPLOYMENT_ROLES.ROOT_REGISTRY_TLD_ISSUER;
-
-/// The root roles the owner drops to emancipate root names: everything it holds on
-/// the root registry except the roles it keeps. Zero once emancipated.
-export function rootEmancipationRoles(ownerRootRoles: bigint): bigint {
-  return ownerRootRoles & ~EMANCIPATED_OWNER_ROOT_ROLES;
 }

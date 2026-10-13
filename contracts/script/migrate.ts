@@ -74,6 +74,7 @@ import {
 } from "./rolesDoc.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  DANGEROUS_ROOT_ROLES,
   DEPLOYMENT_ROLES,
   FUSES,
   LOCAL_BATCH_GATEWAY_URL,
@@ -110,10 +111,8 @@ import {
 } from "./migrations/ownerTx.js";
 import { buildDaoProposal } from "./migrations/daoProposal.js";
 import {
-  EMANCIPATED_OWNER_ROOT_ROLES,
   type HandoverContract,
   planRegistryHandover,
-  rootEmancipationRoles,
   type RegistryHandoverState,
 } from "./migrations/registryHandover.js";
 import {
@@ -3793,25 +3792,19 @@ const EAC_ROLES_CHANGED_EVENT = parseAbiItem(
 const AUDITED_REGISTRIES = ["RootRegistry", "ETHRegistry"] as const;
 
 /// Points in the migration the v2 role audit checks against, in order: before phase 6,
-/// after it, after the deployer hands the registries over, and after the owner drops
-/// its root registry roles.
+/// after it, and after the deployer hands the registries over.
 export const ROLE_AUDIT_STAGES = [
   "pre-handoff",
   "post-handoff",
   "post-registry-handover",
-  "root-emancipated",
 ] as const;
 export type RoleAuditStage = (typeof ROLE_AUDIT_STAGES)[number];
 
 const DEPLOYER_STAGES: RoleAuditStage[] = ["pre-handoff", "post-handoff"];
-const HANDED_OVER_STAGES: RoleAuditStage[] = [
-  "post-registry-handover",
-  "root-emancipated",
-];
+const HANDED_OVER_STAGES: RoleAuditStage[] = ["post-registry-handover"];
 const REGISTRAR_STAGES: RoleAuditStage[] = [
   "post-handoff",
   "post-registry-handover",
-  "root-emancipated",
 ];
 
 // Root-scope grants each deploy script makes, keyed by the registry they land on.
@@ -3841,23 +3834,17 @@ const EXPECTED_ROOT_ROLES: Record<
       stages: DEPLOYER_STAGES,
     },
     { deployment: "@owner", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER },
-    // The handover gives the owner the deployer's root roles for a probation
-    // period, after which the owner drops all but the naming and metadata roles
-    // and the roles that add top-level names and give reserved ones out.
+    // The handover gives the owner every safe root role with its admin role.
     {
       deployment: "@owner",
-      roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
-      stages: ["post-registry-handover"],
-    },
-    {
-      deployment: "@owner",
-      roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_TLD_ISSUER,
+      roles: DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT,
       stages: HANDED_OVER_STAGES,
     },
   ],
   ETHRegistry: [
-    // The handover moves the deployer's root roles to the owner. None of them reaches
-    // a name, so .eth names stay emancipated.
+    // The handover gives the owner every safe root role with its admin role, and
+    // drops the deployer's. None of them reaches a name, so .eth names stay
+    // emancipated.
     {
       deployment: "@deployer",
       roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
@@ -3866,7 +3853,7 @@ const EXPECTED_ROOT_ROLES: Record<
     { deployment: "@owner", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER },
     {
       deployment: "@owner",
-      roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+      roles: DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT,
       stages: HANDED_OVER_STAGES,
     },
     // Phase 1 defers the ETHRegistrar and migration controller grants and phase 6
@@ -4373,15 +4360,6 @@ const ROOT_RESOURCE = 0n;
 // roles in the high half.
 const ANY_ROLE = ROLES.ALL;
 const ANY_ADMIN_ROLE = ROLES.ALL & ~((1n << 128n) - 1n);
-// Root roles on the root registry that would reach the `eth` entry: repointing it,
-// giving it a resolver, or unregistering it so it can be registered again.
-const ETH_ENTRY_ROOT_ROLES =
-  ROLES.REGISTRY.SET_SUBREGISTRY |
-  ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
-  ROLES.REGISTRY.SET_RESOLVER |
-  ROLES.ADMIN.REGISTRY.SET_RESOLVER |
-  ROLES.REGISTRY.UNREGISTER |
-  ROLES.ADMIN.REGISTRY.UNREGISTER;
 
 type RegistryAdminOptions = V1DeploymentOptions & {
   network: MigrationNetwork;
@@ -4555,35 +4533,39 @@ async function assertRegistryHandoverComplete(
       "the name owner is not the only holder of the eth entry's roles, or lacks some of them",
     );
   }
-  if (
-    (await ctx.assignees(
-      ctx.rootRegistry,
-      ROOT_RESOURCE,
-      ETH_ENTRY_ROOT_ROLES,
-    )) !== 0n
-  ) {
-    failures.push(
-      "an account holds a root registry root role that reaches the eth entry",
-    );
-  }
-  if (
-    (await ctx.assignees(ctx.ethRegistry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !==
-    (DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT & ANY_ADMIN_ROLE)
-  ) {
-    failures.push(
-      "an account other than the owner holds an admin role on the .eth registry",
-    );
-  }
-  if (!(await ctx.read(ctx.ethRegistry, "isEmancipated", []))) {
-    failures.push(
-      "the .eth registry is not emancipated: a root role reaches its names",
-    );
+  // Each registry's admin roles have the owner as their only holder, and nobody
+  // holds a dangerous root role, so both leave their names emancipated.
+  const ownerAdmin = DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & ANY_ADMIN_ROLE;
+  for (const [label, registry] of [
+    ["root registry", ctx.rootRegistry],
+    [".eth registry", ctx.ethRegistry],
+  ] as const) {
+    if (
+      (await ctx.assignees(registry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !==
+        ownerAdmin ||
+      ((await ctx.roles(registry, ROOT_RESOURCE, ctx.owner)) &
+        DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT) !==
+        DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT
+    ) {
+      failures.push(
+        `the owner is not the only admin on the ${label}, or lacks a safe root role`,
+      );
+    }
+    if (
+      (await ctx.assignees(registry, ROOT_RESOURCE, DANGEROUS_ROOT_ROLES)) !==
+        0n ||
+      !(await ctx.read(registry, "isEmancipated", []))
+    ) {
+      failures.push(
+        `the ${label} is not emancipated: an account holds a root role that reaches its names`,
+      );
+    }
   }
   if (failures.length > 0) {
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${state.nameOwner} holds the eth token and every role on its entry; ${ctx.owner} holds the root registry's and the .eth registry's root roles; the deployer holds nothing, the batch registrars have no owner, and .eth names are emancipated`,
+    `registry handover complete: ${state.nameOwner} holds the eth token and every role on its entry; ${ctx.owner} holds every safe root role on the root registry and the .eth registry; the deployer holds nothing, the batch registrars have no owner, and both registries are emancipated`,
   );
 }
 
@@ -4871,54 +4853,6 @@ export async function verifyDirectNames(
   }
   console.log(
     `direct registrations: ${entries.length} name(s) registered to their owners with every role${entries.map((entry) => ` ${entry.label}.eth`).join(",")}`,
-  );
-}
-
-/// The owner drops its root registry root roles once the probation period after the
-/// handover ends, so registered top-level names are emancipated. It keeps the naming
-/// and metadata roles, and the roles that add top-level names and give reserved ones
-/// to their operators. Then checks the owner is the only admin left on the root
-/// registry, and only over those last two roles.
-export async function emancipateRootRegistry(opts: RegistryAdminOptions) {
-  const ctx = registryAdminContext(opts);
-  const held = await ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner);
-  const roles = rootEmancipationRoles(held);
-  if (roles === 0n) {
-    console.log(`${ctx.owner} holds no root registry roles to drop`);
-  } else {
-    await sendAdminWrite({
-      client: ctx.client,
-      chain: ctx.chain,
-      rpcUrl: opts.rpcUrl,
-      provider: opts.provider,
-      target: ctx.rootRegistry,
-      functionName: "revokeRootRoles",
-      args: [roles, ctx.owner],
-      receiptLabel: "the owner drops its root registry root roles",
-      calldataLabel:
-        "the owner drops its root registry root roles, keeping naming, metadata, and adding and assigning top-level names",
-      privateKey: opts.privateKey,
-      impersonateAccount: opts.impersonateAccount,
-      calldataOnly: opts.calldataOnly,
-    });
-  }
-  if (opts.calldataOnly) return;
-  // Holder counts sit one per role nibble, so they equal the kept admin bitmap only
-  // when each kept admin role has exactly one holder and no other has any.
-  const keptAdmin = EMANCIPATED_OWNER_ROOT_ROLES & ANY_ADMIN_ROLE;
-  if (
-    (await ctx.assignees(ctx.rootRegistry, ROOT_RESOURCE, ANY_ADMIN_ROLE)) !==
-      keptAdmin ||
-    ((await ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner)) &
-      keptAdmin) !==
-      keptAdmin
-  ) {
-    throw new Error(
-      `an account other than the owner ${ctx.owner} holds an admin role on the root registry, or one beyond adding and assigning top-level names`,
-    );
-  }
-  console.log(
-    `root registry emancipated: ${ctx.owner} is its only admin, and only over adding top-level names and assigning reserved ones`,
   );
 }
 
@@ -7331,9 +7265,7 @@ const SMOKE_CHECKS = {
   freshV2Registration:
     "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
   registryHandover:
-    "the registry handover, leaving the deployer no v2 authority, the owner both registries, the name owner the eth token, and .eth names emancipated",
-  rootEmancipation:
-    "the owner dropping its root registry roles once the handover's probation period ends",
+    "the registry handover, leaving the deployer no v2 authority, the owner every safe root role on both registries, the name owner the eth token, and both registries emancipated",
 } as const;
 
 // One condition that stopped a rehearsal from covering everything, together with
@@ -8788,7 +8720,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
           `the run's owner and deployer are both ${owner}, so there is no one to hand`,
           "the v2 registries to. This is expected on a sepolia run with the real deployer.",
         ],
-        checks: [SMOKE_CHECKS.registryHandover, SMOKE_CHECKS.rootEmancipation],
+        checks: [SMOKE_CHECKS.registryHandover],
         remedy: [
           "pass an --owner that differs from --deployer to exercise the handover.",
         ],
@@ -8821,31 +8753,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
       });
       await auditRolesAt("post-registry-handover");
       coveredChecks.push(SMOKE_CHECKS.registryHandover);
-
-      const ownerKey = privateKeyForAddress(owner, keys);
-      if (useRpcStateControls || ownerKey) {
-        console.log(
-          "root emancipation: the owner drops its root registry roles",
-        );
-        await emancipateRootRegistry({
-          ...phaseCtx,
-          owner,
-          ...(useRpcStateControls
-            ? adminSigner(owner)
-            : { privateKey: ownerKey }),
-        });
-        await auditRolesAt("root-emancipated");
-        coveredChecks.push(SMOKE_CHECKS.rootEmancipation);
-      } else {
-        recordSkipped({
-          cause: "no owner signer",
-          why: [
-            `the run has neither state controls nor a key for the owner ${owner}.`,
-          ],
-          checks: [SMOKE_CHECKS.rootEmancipation],
-          remedy: ["run against a local fork, or pass the owner's key."],
-        });
-      }
     }
 
     if (opts.network === "mainnet") {
@@ -10434,47 +10341,6 @@ export async function main(argv = process.argv): Promise<void> {
             (opts.impersonateAccount || opts.calldataOnly
               ? undefined
               : envPrivateKey("DEPLOYER_KEY")),
-        });
-      },
-    ),
-  );
-  phase.addCommand(
-    addDeploymentOptions(
-      addNetworkOptions(
-        addCalldataOnlyOptions(new Command("emancipate-root-registry"))
-          .description(
-            "The owner drops its root registry root roles after the handover's probation period, keeping naming, metadata, and adding and assigning top-level names, so registered top-level names are emancipated",
-          )
-          .option(
-            "--owner <address>",
-            "Account dropping the roles; defaults to the owner the namespace was deployed with, else the network's configured owner",
-          )
-          .option(
-            "--private-key <key>",
-            "Owner private key; falls back to OWNER_KEY",
-          )
-          .option(
-            "--impersonate-account <address>",
-            "Impersonate the owner on a fork",
-          ),
-      ),
-    ).action(
-      async (
-        opts: NetworkCliOptions &
-          DeploymentCliOptions & {
-            owner?: Address;
-            privateKey?: `0x${string}`;
-            impersonateAccount?: Address;
-            calldataOnly?: boolean;
-          },
-      ) => {
-        await emancipateRootRegistry({
-          ...withNetworkRpc(opts),
-          privateKey:
-            opts.privateKey ??
-            (opts.impersonateAccount || opts.calldataOnly
-              ? undefined
-              : envPrivateKey("OWNER_KEY")),
         });
       },
     ),

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { getAddress, zeroAddress } from "viem";
 
-import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
 import {
-  EMANCIPATED_OWNER_ROOT_ROLES,
+  DANGEROUS_ROOT_ROLES,
+  DEPLOYMENT_ROLES,
+  ROLES,
+} from "../../script/deploy-constants.js";
+import {
   planRegistryHandover,
-  rootEmancipationRoles,
   type RegistryHandoverState,
 } from "../../script/migrations/registryHandover.js";
 
@@ -39,9 +41,9 @@ const handedOver: RegistryHandoverState = {
     { contract: "BatchRegistrar", owner: zeroAddress },
     { contract: "RootBatchRegistrar", owner: zeroAddress },
   ],
-  ownerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+  ownerRootRoles: DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT,
   deployerRootRoles: 0n,
-  ownerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+  ownerEthRegistryRoles: DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT,
   deployerEthRegistryRoles: 0n,
 };
 
@@ -58,7 +60,7 @@ describe("planRegistryHandover", () => {
         contract: "RootRegistry",
         functionName: "grantRootRoles",
         args: [
-          DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT &
+          DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT &
             ~DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER,
           OWNER,
         ],
@@ -68,7 +70,7 @@ describe("planRegistryHandover", () => {
         contract: "ETHRegistry",
         functionName: "grantRootRoles",
         args: [
-          DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT &
+          DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT &
             ~DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
           OWNER,
         ],
@@ -163,26 +165,22 @@ describe("planRegistryHandover", () => {
     ).toThrow(/no one to hand the eth token to/);
   });
 
-  it("hands the owner no .eth registry role that reaches a name", () => {
-    // The roles the registry counts against emancipation: any of them at the root
-    // reaches every name, and blocks safe transfers of .eth names.
-    const unemancipated =
-      ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
-      ROLES.REGISTRY.SET_SUBREGISTRY |
-      ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
-      ROLES.REGISTRY.SET_RESOLVER |
-      ROLES.ADMIN.REGISTRY.SET_RESOLVER |
-      ROLES.REGISTRY.UNREGISTER |
-      ROLES.ADMIN.REGISTRY.UNREGISTER |
-      ROLES.REGISTRY.UPGRADE |
-      ROLES.ADMIN.REGISTRY.UPGRADE;
-    expect(DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT & unemancipated).toBe(0n);
-    expect(
-      DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT &
-        (ROLES.ADMIN.REGISTRY.REGISTRAR |
-          ROLES.ADMIN.REGISTRY.REGISTER_RESERVED),
-    ).toBe(
-      ROLES.ADMIN.REGISTRY.REGISTRAR | ROLES.ADMIN.REGISTRY.REGISTER_RESERVED,
+  it("hands the owner every root role but the dangerous ones, each with its admin role", () => {
+    const registryRoles = Object.values(ROLES.REGISTRY).reduce(
+      (all, role) => all | role,
+      0n,
+    );
+    // Granted at registration only, or with no regular role behind it.
+    const ungrantable =
+      ROLES.REGISTRY.WAS_RESERVED |
+      ROLES.ADMIN.REGISTRY.WAS_RESERVED |
+      ROLES.REGISTRY.CAN_TRANSFER;
+    const grantable = (registryRoles | (registryRoles << 128n)) & ~ungrantable;
+    expect(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & DANGEROUS_ROOT_ROLES).toBe(
+      0n,
+    );
+    expect(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT | DANGEROUS_ROOT_ROLES).toBe(
+      grantable,
     );
   });
 
@@ -197,39 +195,5 @@ describe("planRegistryHandover", () => {
         owner: getAddress(DEPLOYER.toLowerCase()),
       }),
     ).toThrow(/no one to hand the registries to/);
-  });
-});
-
-describe("rootEmancipationRoles", () => {
-  it("drops every root role but naming, metadata, and adding and assigning top-level names", () => {
-    const dropped = rootEmancipationRoles(DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT);
-    expect(dropped & EMANCIPATED_OWNER_ROOT_ROLES).toBe(0n);
-    expect(dropped | EMANCIPATED_OWNER_ROOT_ROLES).toBe(
-      DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
-    );
-    expect(dropped & ROLES.ADMIN.REGISTRY.CAN_NAME).not.toBe(0n);
-    expect(dropped & ROLES.ADMIN.REGISTRY.REGISTRAR).toBe(0n);
-    expect(dropped & ROLES.ADMIN.REGISTRY.REGISTER_RESERVED).toBe(0n);
-  });
-
-  it("keeps no root role that reaches a registered name", () => {
-    expect(
-      EMANCIPATED_OWNER_ROOT_ROLES &
-        (ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
-          ROLES.REGISTRY.SET_SUBREGISTRY |
-          ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
-          ROLES.REGISTRY.SET_RESOLVER |
-          ROLES.ADMIN.REGISTRY.SET_RESOLVER |
-          ROLES.REGISTRY.UNREGISTER |
-          ROLES.ADMIN.REGISTRY.UNREGISTER |
-          ROLES.REGISTRY.UPGRADE |
-          ROLES.ADMIN.REGISTRY.UPGRADE |
-          ROLES.REGISTRY.RENEW |
-          ROLES.ADMIN.REGISTRY.RENEW),
-    ).toBe(0n);
-  });
-
-  it("is nothing once the owner holds only the roles it keeps", () => {
-    expect(rootEmancipationRoles(EMANCIPATED_OWNER_ROOT_ROLES)).toBe(0n);
   });
 });

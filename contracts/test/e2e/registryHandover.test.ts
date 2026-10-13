@@ -16,12 +16,7 @@ import {
   ROLES,
   STATUS,
 } from "../../script/deploy-constants.js";
-import {
-  emancipateRootRegistry,
-  handOverRegistryAdmin,
-  verifyV2Roles,
-} from "../../script/migrate.js";
-import { EMANCIPATED_OWNER_ROOT_ROLES } from "../../script/migrations/registryHandover.js";
+import { handOverRegistryAdmin, verifyV2Roles } from "../../script/migrate.js";
 import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
 import { idFromLabel } from "../utils/utils.js";
 
@@ -104,11 +99,9 @@ describe("registry handover", () => {
         await env.v2.RootRegistry.read.roles([await ethResource(), deployer()]),
       ).toBe(0n);
       const ownerRoles = await rootRoles("RootRegistry", owner());
-      expect(ownerRoles & DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT).toBe(
-        DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
-      );
+      expect(ownerRoles).toBe(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT);
       expect(await rootRoles("ETHRegistry", owner())).toBe(
-        DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+        DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT,
       );
       expect(
         await env.v2.RootRegistry.read.roles([await ethResource(), owner()]),
@@ -300,25 +293,22 @@ describe("registry handover", () => {
   );
 
   it(
-    "emancipates the root registry, leaving the owner naming, metadata, and adding and assigning top-level names",
+    "leaves both registries emancipated, with the owner adding and assigning top-level names but reaching no registered name",
     async () => {
       await handOver();
-      await emancipateRootRegistry({
-        ...context(),
-        impersonateAccount: owner(),
-      });
       const asOwner = { account: env.namedAccounts.owner };
 
-      expect(await rootRoles("RootRegistry", owner())).toBe(
-        EMANCIPATED_OWNER_ROOT_ROLES,
-      );
       expect(await env.v2.RootRegistry.read.isEmancipated()).toBe(true);
-      await expect(
-        env.v2.RootRegistry.write.grantRootRoles(
-          [ROLES.REGISTRY.RENEW, STRANGER],
-          asOwner,
-        ),
-      ).rejects.toThrow();
+      expect(await env.v2.ETHRegistry.read.isEmancipated()).toBe(true);
+      for (const role of [
+        ROLES.REGISTRY.SET_RESOLVER,
+        ROLES.REGISTRY.SET_SUBREGISTRY,
+        ROLES.REGISTRY.UNREGISTER,
+      ]) {
+        await expect(
+          env.v2.RootRegistry.write.grantRootRoles([role, owner()], asOwner),
+        ).rejects.toThrow();
+      }
 
       // The owner gives a reserved DNS top-level name to its operator, keeping the
       // reservation's expiry, and adds a top-level name nobody reserved.
@@ -377,7 +367,7 @@ describe("registry handover", () => {
         ...context(),
         deployer: deployer(),
         fromBlock: "0",
-        stage: "root-emancipated",
+        stage: "post-registry-handover",
         reportOnly: true,
       });
       expect(findings.filter((finding) => finding.kind === "missing")).toEqual(

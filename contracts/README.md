@@ -134,7 +134,7 @@ Roles granted during core deployment.
 | Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | CAN_NAME | UPGRADE |
 | --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | -------- | ------- |
 | RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       |         |
-| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       | AR              | AR           | A                  |          |         |
+| RootRegistry    | .eth     | Deployer                      |           |                   |            |            | AR    | AR              | AR           | A                  |          |         |
 | RootRegistry    | .reverse | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |          |         |
 | ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       |         |
 | ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |          |         |
@@ -153,11 +153,11 @@ _The token for `eth` is registered to the deployer, transferable; `reverse` and 
 
 _These are the roles at deploy. Where the owner is not the deployer (mainnet), phase 8 of the
 migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over.
-The owner takes the `RootRegistry` root roles for a probation period and then drops all but
-`CAN_NAME`, `SET_URI`, and `REGISTRAR` and `REGISTER_RESERVED` with their admin roles, so it can
-still add top-level names and give reserved ones, such as DNS top-level names, to their operators.
-It also takes the `ETHRegistry` root roles, none of which reaches a name,
-so `.eth` names stay emancipated. The `eth` token moves to the name owner (the ENS DAO name owner
+On both `RootRegistry` and `ETHRegistry` the owner takes every root role except the dangerous ones
+(setting a name's child registry or resolver, unregistering it, letting its owner transfer it, and
+upgrading the registry), each with its admin role. It can add top-level names, give reserved ones,
+such as DNS top-level names, to their operators, and authorize `.eth` registrars, but no root role
+reaches a registered name, so both registries' names are emancipated. The `eth` token moves to the name owner (the ENS DAO name owner
 Safe on mainnet) with every role it carries. The deployer drops every role it holds and renounces
 both batch registrars. `phase verify-roles` records
 the roles actually held in `deployments/<namespace>/roles.md`._
