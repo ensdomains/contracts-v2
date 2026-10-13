@@ -1,4 +1,4 @@
-FROM oven/bun:1.2.13
+FROM oven/bun:1.2.13 AS build
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -77,6 +77,27 @@ RUN cd /app && bun install --production
 
 # Clean up other unnecessary files
 RUN rm -rf /app/.git /app/contracts/.git 2>/dev/null || true
+
+# Keep only what the devnet loads at runtime. Non-obvious keeps: contracts/plugins
+# (hardhat.config.ts is loaded), build-info inputs (rocketh copies them into
+# deployments/) and ens-contracts deployments/{mainnet,archive} (v1 deploy scripts).
+RUN cp -L /root/.foundry/bin/anvil /usr/local/bin/anvil && cd /app \
+ && rm -rf alto mockestrator docs doc .github patches docker \
+      contracts/out contracts/cache contracts/csv-data contracts/src contracts/docs \
+      contracts/lib/ens-contracts/artifacts contracts/lib/ens-contracts/cache contracts/lib/ens-contracts/generated \
+      contracts/artifacts/build-info/*.output.json \
+ && find contracts/artifacts -mindepth 1 -maxdepth 1 ! -name build-info -exec rm -rf {} + \
+ && find contracts/lib -mindepth 1 -maxdepth 1 ! -name ens-contracts -exec rm -rf {} + \
+ && find contracts/lib/ens-contracts/deployments -mindepth 1 -maxdepth 1 ! -name mainnet ! -name archive -exec rm -rf {} + \
+ && arch=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') \
+ && find node_modules/@nomicfoundation -mindepth 1 -maxdepth 1 -name 'edr-*' ! -name "edr-linux-${arch}-gnu" -exec rm -rf {} +
+
+# Runtime image: bun, curl for the compose healthchecks, anvil and the pruned app.
+FROM oven/bun:1.2.13-slim
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /usr/local/bin/anvil /usr/local/bin/anvil
+COPY --from=build /app /app
 
 # Expose the JSON-RPC and deployment-discovery endpoints.
 EXPOSE 8545 8000
