@@ -164,18 +164,17 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
 
     /// @dev Pay beneficiary using ether and refund overpayment.
     function _transferETH(uint256 amount, address refundTo) internal {
-        if (amount == 0) {
-            return;
-        }
         if (msg.value < amount) {
             revert InsufficientETH(msg.value, amount);
         }
-        (bool ok, ) = payable(BENEFICIARY).call{value: amount}("");
-        if (!ok) {
-            revert UnableToReceiveETH(BENEFICIARY);
+        if (amount > 0) {
+            (bool ok, ) = payable(BENEFICIARY).call{value: amount}("");
+            if (!ok) {
+                revert UnableToReceiveETH(BENEFICIARY);
+            }
         }
         if (msg.value > amount) {
-            (ok, ) = payable(refundTo).call{value: msg.value - amount}("");
+            (bool ok, ) = payable(refundTo).call{value: msg.value - amount}("");
             if (!ok) {
                 revert UnableToReceiveETH(refundTo);
             }

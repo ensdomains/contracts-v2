@@ -279,9 +279,6 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     }
 
     function test_registerWithETH(uint32 available, uint32 duration) external {
-        // function test_registerWithETH() external {
-        //     uint32 available = 7059;
-        //     uint32 duration = 2750336;
         _ensurePriorRegistration(available, duration);
         (uint256 base, uint256 premium) =
             rentPriceOracle.getRegisterPrice(
@@ -292,7 +289,6 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
             );
         uint256 amount = base + premium;
         uint256 overpay = amount / 100;
-        assertGt(testOwner.balance, amount + overpay);
         CommitData memory cd = _commitData();
         ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
         vm.warp(block.timestamp + testCommitDelay);
@@ -530,6 +526,39 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         }
     }
 
+    function test_registerBatchWithETH(uint8 n) external {
+        vm.assume(n < 10);
+        CommitData[] memory cds = new CommitData[](n);
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            testLabel = _label(i);
+            cds[i] = _commitData();
+            ethRegistrar.commit(ethRegistrar.makeCommitment(cds[i]));
+            (uint256 base, uint256 premium) =
+                rentPriceOracle.getRegisterPrice(
+                    testLabel,
+                    type(uint64).max,
+                    testDuration,
+                    NATIVE_ETH
+                );
+            total += base + premium;
+        }
+        uint256 overpay = total / 100;
+        vm.warp(block.timestamp + testCommitDelay);
+        uint256 owner0 = testOwner.balance;
+        uint256 beneficiary0 = beneficiary.balance;
+        vm.prank(testOwner);
+        uint256[] memory tokenIds =
+            ethRegistrar.registerBatchWithETH{value: total + overpay}(cds, refundTo);
+        assertEq(owner0 - total - overpay, testOwner.balance, "payer");
+        assertEq(beneficiary0 + total, beneficiary.balance, "beneficiary");
+        assertEq(overpay, refundTo.balance, "refund");
+        assertEq(tokenIds.length, n, "tokens");
+        for (uint256 i; i < n; ++i) {
+            assertEq(ethRegistry.ownerOf(tokenIds[i]), testOwner);
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // renew()
     ////////////////////////////////////////////////////////////////////////
@@ -642,7 +671,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         this.renew();
     }
 
-    function test_renew_eth(uint32 duration) external {
+    function test_renewWithETH(uint32 duration) external {
         vm.assume(duration >= ethRegistrar.MIN_RENEW_DURATION());
         this.register();
         uint256 owner0 = testOwner.balance;
@@ -659,7 +688,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         assertEq(overpay, refundTo.balance, "refund");
     }
 
-    function test_renew_eth_insufficientETH() external {
+    function test_renewWithETH_insufficientETH() external {
         this.register();
         uint256 amount = ethRegistrar.getRenewPrice(testLabel, testDuration, NATIVE_ETH);
         vm.expectRevert(
@@ -701,6 +730,27 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         vm.prank(testOwner);
         ethRegistrar.renewBatch(rds, address(testPaymentToken));
         assertEq(ethRegistry.getExpiry(tokenId), expiry + testDuration * rds.length);
+    }
+
+    function test_renewBatchWithETH(uint8 n) external {
+        vm.assume(n < 10);
+        RenewData[] memory rds = new RenewData[](n);
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            testLabel = _label(i);
+            this.register();
+            uint64 duration = testDuration + uint64(i);
+            rds[i] = RenewData(testLabel, duration, testReferrer);
+            total += ethRegistrar.getRenewPrice(testLabel, duration, NATIVE_ETH);
+        }
+        uint256 overpay = total / 100;
+        uint256 owner0 = testOwner.balance;
+        uint256 beneficiary0 = beneficiary.balance;
+        vm.prank(testOwner);
+        ethRegistrar.renewBatchWithETH{value: total + overpay}(rds, refundTo);
+        assertEq(owner0 - total - overpay, testOwner.balance, "payer");
+        assertEq(beneficiary0 + total, beneficiary.balance, "beneficiary");
+        assertEq(overpay, refundTo.balance, "refund");
     }
 
     ////////////////////////////////////////////////////////////////////////

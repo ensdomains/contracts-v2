@@ -73,8 +73,6 @@ struct PaymentConfigWithToken {
 ///    Since no external oracle is consulted, only stablecoins.
 ///    Accounts with `ROLE_DISABLE_TOKEN` can only disable payment tokens.
 ///
-/// If `msg.value > 0`, uses ether for payment.
-///
 contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, IContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Types
