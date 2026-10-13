@@ -103,12 +103,11 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 The deferred v1-owner transactions point the v1 `.eth` resolver at `ENSV2Resolver` and authorize the
 reverse adapters, including `DefaultReverseRegistrarAdapter` when HCA is enabled.
 
-`reverse` is registered in the v2 root pointing at `ENSV1Resolver`, and the owner ends up operating it:
-it holds every regular role on the name, such as setting its resolver, and nobody holds an admin role
-on it. The deployer holds the name's token, because registering mints it to the holder and the mainnet
-owner, the DAO timelock, has no ERC-1155 receiver to accept it. Admin roles on a name cannot be granted,
-only dropped, so the deployer passes the owner the regular roles and gives up its own; the token it
-keeps can neither be used nor transferred. The owner can operate `reverse` but not delegate roles on it.
+`eth` and `reverse` are registered in the v2 root to the deployer with every role and admin role,
+`reverse` pointing at `ENSV1Resolver`. Admin roles on a name cannot be granted after registration, so
+only a transfer of the token can pass them on, and the DAO timelock, the mainnet owner, has no ERC-1155
+receiver to accept one. The phase 8 handover therefore transfers both tokens, with every role on them,
+to the name owner.
 
 HCA deploys as shared infrastructure only — the validator, factory, upgrade set and standalone
 implementation. Individual owner-bound HCAs stay counterfactual and are created lazily through the
@@ -529,10 +528,9 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   token (default: the network's configured name owner, on mainnet the ENS DAO name owner, a Safe
   whose only owner is the DAO timelock; else the owner).
 - **Expected outcome:**
-  - The name owner holds the `eth` token, and with it every role on the entry: setting its child
-    registry and resolver, renewing it, granting any of these to another account, and transferring
-    the token. The token was registered with these roles, and a transfer moves the sender's roles
-    with it. It carries no role that could remove `eth`.
+  - The name owner holds the `eth` and `reverse` tokens, and on each entry every role with its admin
+    role, including transferring the token. The tokens were registered with these roles, and a
+    transfer moves the sender's roles with it. It also holds `on.eth` the same way (see phase 5).
   - On both the root registry and the `.eth` registry, the owner holds every root role except the
     dangerous ones, each with its admin role: registering names and reserved names, setting the
     registry's parent, renewing, setting the metadata URI, and contract naming. The dangerous root
@@ -545,18 +543,18 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
     top-level name, to its operator by registering it to them (a zero expiry keeps the
     reservation's), and authorize or remove registrars, renewers and migration controllers,
     including one that registers names still reserved by pre-migration.
-  - The owner holds no role on the `eth` entry. The DAO timelock cannot hold the `eth` token in any
-    case: it does not accept ERC-1155 tokens.
-  - The deployer holds no role on either registry or on the `eth` entry, and no longer holds the
-    `eth` token.
+  - The owner holds no role on the `eth` or `reverse` entry. The DAO timelock cannot hold either
+    token in any case: it does not accept ERC-1155 tokens.
+  - The deployer holds no role on either registry or on the `eth` or `reverse` entry, and holds
+    neither token.
   - `BatchRegistrar` and `RootBatchRegistrar` have no owner: the deployer renounces both, so no
     account can send through them again, even if a registry later grants them a role.
     `RootBatchRegistrar` already gives up its root registry role once phase 1 has registered the
     DNS top-level names, and `BatchRegistrar` loses its `.eth` registry roles in phase 6.
   - The registrar, renewer and migration controllers keep the regular roles they need.
 
-  The command first transfers the `eth` token, while the deployer is still the only account with
-  a role on the entry, as a safe transfer requires. It then makes every grant to the owner before the
+  The command first transfers the `eth` and `reverse` tokens, while the deployer is still the only
+  account with a role on each entry, as a safe transfer requires. It then makes every grant to the owner before the
   deployer drops anything, and sends only the transfer, grants and revocations still missing. It
   then checks the end state from the registries' own role counts, so a holder it did not look for
   is caught too: the owner is the only admin on each registry, nobody holds a dangerous root role,

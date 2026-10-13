@@ -46,7 +46,7 @@ export default execute(
           deployer,
           ethRegistry.address,
           zeroAddress,
-          DEPLOYMENT_ROLES.ETH_TOKEN,
+          DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
           MAX_EXPIRY,
         ],
       });

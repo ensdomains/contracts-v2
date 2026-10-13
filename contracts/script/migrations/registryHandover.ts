@@ -1,11 +1,10 @@
 /// Hands the deployer's authority over the v2 registries to its final holders.
 ///
 /// The deploy leaves the deployer holding root roles on `RootRegistry` and
-/// `ETHRegistry`, the `eth` token in the root, and ownership of the two batch
-/// registrars. After the migration:
-/// - the name owner (the ENS DAO name owner Safe on mainnet) holds the `eth` token,
-///   and with it every role on the entry: setting its child registry and resolver,
-///   granting either, and transferring the token;
+/// `ETHRegistry`, the `eth` and `reverse` tokens in the root, and ownership of the
+/// two batch registrars. After the migration:
+/// - the name owner (the ENS DAO name owner Safe on mainnet) holds the `eth` and
+///   `reverse` tokens, and with each every role and admin role on its entry;
 /// - the owner (the DAO on mainnet) takes every safe root role, with its admin
 ///   role, on both the root registry and the `.eth` registry: registering names
 ///   and reserved names, setting the parent, renewing, setting the metadata URI and
@@ -29,16 +28,23 @@ export type HandoverContract =
   | "BatchRegistrar"
   | "RootBatchRegistrar";
 
+/// The root registry names whose tokens the handover moves to the name owner.
+export const HANDED_OVER_ROOT_NAMES = ["eth", "reverse"] as const;
+export type HandedOverRootName = (typeof HANDED_OVER_ROOT_NAMES)[number];
+
 /// What the deployer, the owner and the name owner currently hold, as the plan reads it.
 export type RegistryHandoverState = {
   deployer: Address;
   owner: Address;
   nameOwner: Address;
-  /// Current token id of the `eth` entry in `RootRegistry`. A role change on the
-  /// entry regenerates it, so it is read just before the plan runs.
-  ethTokenId: bigint;
-  /// Holder of the `eth` token.
-  ethTokenHolder: Address;
+  /// Each handed-over name's current token id in `RootRegistry`, and its holder. A
+  /// role change on an entry regenerates its token id, so it is read just before the
+  /// plan runs.
+  rootNameTokens: Array<{
+    label: HandedOverRootName;
+    tokenId: bigint;
+    holder: Address;
+  }>;
   /// Owners of the batch registrars this namespace deployed.
   batchRegistrars: Array<{
     contract: "BatchRegistrar" | "RootBatchRegistrar";
@@ -69,8 +75,9 @@ export type RegistryHandoverCall = {
 };
 
 /// The calls that take the registries from `state` to the handed-over end state, in
-/// order. The `eth` token moves first, while the deployer is still the only account
-/// with a role on the entry, as a safe transfer requires; its roles move with it.
+/// order. The `eth` and `reverse` tokens move first, while the deployer is still the
+/// only account with a role on each entry, as a safe transfer requires; their roles
+/// move with them.
 /// Every grant to the owner comes before the deployer's revocations, while the
 /// deployer still holds the admin roles that make it, so no role passes through a
 /// moment with nobody able to grant it. Empty once handed over.
@@ -86,22 +93,24 @@ export function planRegistryHandover(
   }
   if (sameAddress(state.nameOwner, state.deployer)) {
     throw new Error(
-      `the name owner ${state.nameOwner} is the deployer: there is no one to hand the eth token to`,
+      `the name owner ${state.nameOwner} is the deployer: there is no one to hand the root names to`,
     );
   }
 
   const calls: RegistryHandoverCall[] = [];
-  if (sameAddress(state.ethTokenHolder, state.deployer)) {
-    calls.push({
-      contract: "RootRegistry",
-      functionName: "safeTransferFrom",
-      args: [state.deployer, state.nameOwner, state.ethTokenId, 1n, "0x"],
-      label: `transfer the eth token, and every role on the entry, to the name owner ${state.nameOwner}`,
-    });
-  } else if (!sameAddress(state.ethTokenHolder, state.nameOwner)) {
-    throw new Error(
-      `the eth token is held by ${state.ethTokenHolder}, neither the deployer nor the name owner ${state.nameOwner}`,
-    );
+  for (const { label, tokenId, holder } of state.rootNameTokens) {
+    if (sameAddress(holder, state.deployer)) {
+      calls.push({
+        contract: "RootRegistry",
+        functionName: "safeTransferFrom",
+        args: [state.deployer, state.nameOwner, tokenId, 1n, "0x"],
+        label: `transfer the ${label} token, and every role on the entry, to the name owner ${state.nameOwner}`,
+      });
+    } else if (!sameAddress(holder, state.nameOwner)) {
+      throw new Error(
+        `the ${label} token is held by ${holder}, neither the deployer nor the name owner ${state.nameOwner}`,
+      );
+    }
   }
   const missingRoot =
     DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & ~state.ownerRootRoles;

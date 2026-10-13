@@ -10,7 +10,7 @@ import {
 } from "../script/deploy-constants.js";
 
 export default execute(
-  async ({ execute: write, get, read, namedAccounts: { deployer, owner } }) => {
+  async ({ execute: write, get, read, namedAccounts: { deployer } }) => {
     const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
     const ensV1Resolver = get<Abi_ENSV1Resolver>("ENSV1Resolver");
     const reverseId = idFromLabel("reverse");
@@ -23,9 +23,8 @@ export default execute(
       args: [reverseId],
     });
 
-    // Registering mints the name's token to its holder, and an owner that is a
-    // contract without an ERC-1155 receiver — the DAO timelock on mainnet — refuses
-    // it. So the deployer takes the token, then passes the owner every regular role.
+    // The deployer takes the token with every role and admin role; the registry
+    // handover moves it, and every role with it, to the name owner.
     if (currentStatus === STATUS.AVAILABLE) {
       console.log("  - Registering reverse in root");
       await write(rootRegistry, {
@@ -36,39 +35,8 @@ export default execute(
           deployer,
           zeroAddress,
           ensV1Resolver.address,
-          DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
+          DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
           MAX_EXPIRY,
-        ],
-      });
-    }
-
-    // Admin roles on a name cannot be granted, only dropped, so the owner receives
-    // the regular roles and the deployer then gives up everything it no longer needs.
-    // Checked rather than assumed, so a resume finishes a hand-off a crash cut short.
-    const deployerRoles = await read(rootRegistry, {
-      functionName: "roles",
-      args: [reverseId, deployer],
-    });
-    const adminRoles =
-      DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT &
-      ~DEPLOYMENT_ROLES.REVERSE_REGISTRY_OPERATOR;
-    if ((deployerRoles & adminRoles) !== 0n) {
-      const ownerIsDeployer = isAddressEqual(deployer, owner);
-      console.log("  - Handing reverse roles to owner");
-      if (!ownerIsDeployer) {
-        await write(rootRegistry, {
-          account: deployer,
-          functionName: "grantRoles",
-          args: [reverseId, DEPLOYMENT_ROLES.REVERSE_REGISTRY_OPERATOR, owner],
-        });
-      }
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "revokeRoles",
-        args: [
-          reverseId,
-          ownerIsDeployer ? adminRoles : DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
-          deployer,
         ],
       });
     }
@@ -83,9 +51,8 @@ export default execute(
     if (isAddressEqual(currentResolver, ensV1Resolver.address)) return;
 
     console.log("  - Updating reverse resolver to current ENSV1Resolver");
-    // The owner holds SET_RESOLVER on the name once the hand-off is done.
     await write(rootRegistry, {
-      account: owner,
+      account: deployer,
       functionName: "setResolver",
       args: [reverseId, ensV1Resolver.address],
     });

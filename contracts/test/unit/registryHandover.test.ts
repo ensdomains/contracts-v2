@@ -15,14 +15,17 @@ const DEPLOYER = getAddress("0x00000000000000000000000000000000000000d1");
 const OWNER = getAddress("0x00000000000000000000000000000000000000a1");
 const NAME_OWNER = getAddress("0x00000000000000000000000000000000000000e1");
 const ETH_TOKEN_ID = 123n;
+const REVERSE_TOKEN_ID = 456n;
 
 // The registries as the deploy leaves them.
 const deployed: RegistryHandoverState = {
   deployer: DEPLOYER,
   owner: OWNER,
   nameOwner: NAME_OWNER,
-  ethTokenId: ETH_TOKEN_ID,
-  ethTokenHolder: DEPLOYER,
+  rootNameTokens: [
+    { label: "eth", tokenId: ETH_TOKEN_ID, holder: DEPLOYER },
+    { label: "reverse", tokenId: REVERSE_TOKEN_ID, holder: DEPLOYER },
+  ],
   batchRegistrars: [
     { contract: "BatchRegistrar", owner: DEPLOYER },
     { contract: "RootBatchRegistrar", owner: DEPLOYER },
@@ -36,7 +39,10 @@ const deployed: RegistryHandoverState = {
 // The registries once handed over.
 const handedOver: RegistryHandoverState = {
   ...deployed,
-  ethTokenHolder: NAME_OWNER,
+  rootNameTokens: [
+    { label: "eth", tokenId: ETH_TOKEN_ID, holder: NAME_OWNER },
+    { label: "reverse", tokenId: REVERSE_TOKEN_ID, holder: NAME_OWNER },
+  ],
   batchRegistrars: [
     { contract: "BatchRegistrar", owner: zeroAddress },
     { contract: "RootBatchRegistrar", owner: zeroAddress },
@@ -48,13 +54,19 @@ const handedOver: RegistryHandoverState = {
 };
 
 describe("planRegistryHandover", () => {
-  it("moves the eth token first, grants the owner its roles before the deployer drops everything, then renounces the batch registrars", () => {
+  it("moves the eth and reverse tokens first, grants the owner its roles before the deployer drops everything, then renounces the batch registrars", () => {
     expect(planRegistryHandover(deployed)).toEqual([
       {
         contract: "RootRegistry",
         functionName: "safeTransferFrom",
         args: [DEPLOYER, NAME_OWNER, ETH_TOKEN_ID, 1n, "0x"],
-        label: expect.stringContaining("name owner"),
+        label: expect.stringContaining("eth token"),
+      },
+      {
+        contract: "RootRegistry",
+        functionName: "safeTransferFrom",
+        args: [DEPLOYER, NAME_OWNER, REVERSE_TOKEN_ID, 1n, "0x"],
+        label: expect.stringContaining("reverse token"),
       },
       {
         contract: "RootRegistry",
@@ -103,14 +115,8 @@ describe("planRegistryHandover", () => {
     ]);
   });
 
-  it("registers eth transferable, with no role that could remove it", () => {
-    expect(
-      DEPLOYMENT_ROLES.ETH_TOKEN & ROLES.ADMIN.REGISTRY.CAN_TRANSFER,
-    ).not.toBe(0n);
-    expect(
-      DEPLOYMENT_ROLES.ETH_TOKEN &
-        (ROLES.REGISTRY.UNREGISTER | ROLES.ADMIN.REGISTRY.UNREGISTER),
-    ).toBe(0n);
+  it("registers the root names with every role and admin role", () => {
+    expect(DEPLOYMENT_ROLES.ROOT_NAME_TOKEN).toBe(ROLES.ALL);
   });
 
   it("revokes whatever the deployer holds, not only what the deploy granted", () => {
@@ -146,8 +152,14 @@ describe("planRegistryHandover", () => {
 
   it("refuses a token held by neither the deployer nor the name owner", () => {
     expect(() =>
-      planRegistryHandover({ ...deployed, ethTokenHolder: OWNER }),
-    ).toThrow(/eth token is held by/);
+      planRegistryHandover({
+        ...deployed,
+        rootNameTokens: [
+          { label: "eth", tokenId: ETH_TOKEN_ID, holder: DEPLOYER },
+          { label: "reverse", tokenId: REVERSE_TOKEN_ID, holder: OWNER },
+        ],
+      }),
+    ).toThrow(/reverse token is held by/);
   });
 
   it("refuses a batch registrar owned by someone other than the deployer", () => {
@@ -159,10 +171,10 @@ describe("planRegistryHandover", () => {
     ).toThrow(/BatchRegistrar is owned by/);
   });
 
-  it("refuses to hand the eth token from the deployer to itself", () => {
+  it("refuses to hand the root names from the deployer to itself", () => {
     expect(() =>
       planRegistryHandover({ ...deployed, nameOwner: DEPLOYER }),
-    ).toThrow(/no one to hand the eth token to/);
+    ).toThrow(/no one to hand the root names to/);
   });
 
   it("hands the owner every root role but the dangerous ones, each with its admin role", () => {

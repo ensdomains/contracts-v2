@@ -89,32 +89,34 @@ describe("registry handover", () => {
     env.v2.RootRegistry.read.getResource([idFromLabel("eth")]);
 
   it(
-    "leaves the deployer no authority, gives the owner both registries and the name owner the eth token",
+    "leaves the deployer no authority, gives the owner both registries and the name owner the eth and reverse tokens",
     async () => {
       await handOver();
 
       expect(await rootRoles("RootRegistry", deployer())).toBe(0n);
       expect(await rootRoles("ETHRegistry", deployer())).toBe(0n);
-      expect(
-        await env.v2.RootRegistry.read.roles([await ethResource(), deployer()]),
-      ).toBe(0n);
       const ownerRoles = await rootRoles("RootRegistry", owner());
       expect(ownerRoles).toBe(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT);
       expect(await rootRoles("ETHRegistry", owner())).toBe(
         DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT,
       );
-      expect(
-        await env.v2.RootRegistry.read.roles([await ethResource(), owner()]),
-      ).toBe(0n);
-      expect(
-        await env.v2.RootRegistry.read.getOwner([idFromLabel("eth")]),
-      ).toBe(nameOwner());
-      expect(
-        await env.v2.RootRegistry.read.roles([
-          await ethResource(),
-          nameOwner(),
-        ]),
-      ).toBe(DEPLOYMENT_ROLES.ETH_TOKEN);
+
+      // The name owner holds the eth and reverse tokens with every role and admin
+      // role on each; nobody else holds any role on either.
+      for (const label of ["eth", "reverse"]) {
+        const id = idFromLabel(label);
+        const resource = await env.v2.RootRegistry.read.getResource([id]);
+        expect(await env.v2.RootRegistry.read.getOwner([id])).toBe(nameOwner());
+        expect(
+          await env.v2.RootRegistry.read.roles([resource, nameOwner()]),
+        ).toBe(DEPLOYMENT_ROLES.ROOT_NAME_TOKEN);
+        // One holder of each role reads back as the role bitmap itself.
+        const [counts] = await env.v2.RootRegistry.read.getAssigneeCount([
+          resource,
+          ROLES.ALL,
+        ]);
+        expect(counts).toBe(DEPLOYMENT_ROLES.ROOT_NAME_TOKEN);
+      }
 
       // Neither batch registrar has an owner left to send through it.
       const client = createPublicClient({
@@ -270,7 +272,7 @@ describe("registry handover", () => {
       expect(await env.v2.RootRegistry.read.getOwner([ethId])).toBe(user);
       expect(
         await env.v2.RootRegistry.read.roles([await ethResource(), user]),
-      ).toBe(DEPLOYMENT_ROLES.ETH_TOKEN);
+      ).toBe(DEPLOYMENT_ROLES.ROOT_NAME_TOKEN);
     },
     TEST_TIMEOUT_MS,
   );

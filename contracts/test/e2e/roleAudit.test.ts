@@ -183,7 +183,7 @@ describe("v2 role audit", () => {
       await env.v2.RootRegistry.write.revokeRoles(
         [
           ethResource,
-          DEPLOYMENT_ROLES.ETH_TOKEN,
+          DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
           env.namedAccounts.deployer.address,
         ],
         { account: env.namedAccounts.deployer },
@@ -196,7 +196,7 @@ describe("v2 role audit", () => {
       );
       expect(missing).toBeDefined();
       expect(missing && "absent" in missing ? missing.absent : 0n).toBe(
-        DEPLOYMENT_ROLES.ETH_TOKEN,
+        DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
       );
     },
     TEST_TIMEOUT_MS,
@@ -214,8 +214,7 @@ describe("v2 role audit", () => {
         idFromLabel("reverse"),
       ]);
       await env.v2.RootRegistry.write.grantRoles(
-        // Nobody holds admin roles on `reverse`, but the deployer's root admin
-        // roles still let it grant their regular counterparts on any name.
+        // The deployer holds every admin role on `reverse` until the handover.
         [reverseResource, ROLES.REGISTRY.RENEW, stranger],
         { account: env.namedAccounts.deployer },
       );

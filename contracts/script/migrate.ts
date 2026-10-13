@@ -112,6 +112,7 @@ import {
 import { buildDaoProposal } from "./migrations/daoProposal.js";
 import {
   type HandoverContract,
+  HANDED_OVER_ROOT_NAMES,
   planRegistryHandover,
   type RegistryHandoverState,
 } from "./migrations/registryHandover.js";
@@ -3915,27 +3916,23 @@ const EXPECTED_TOKEN_ROLES: Record<
   }>
 > = {
   RootRegistry: [
-    // 01_ETHRegistry.ts registers `eth` to the deployer. The handover transfers the
-    // token to the name owner, and the roles on the entry move with it.
-    {
-      label: "eth",
-      deployment: "@deployer",
-      roles: DEPLOYMENT_ROLES.ETH_TOKEN,
-      stages: DEPLOYER_STAGES,
-    },
-    {
-      label: "eth",
-      deployment: "@nameOwner",
-      roles: DEPLOYMENT_ROLES.ETH_TOKEN,
-      stages: HANDED_OVER_STAGES,
-    },
-    // 01_ReverseMirror.ts hands the owner every regular role on `reverse`, and
-    // leaves no admin role on it with anyone.
-    {
-      label: "reverse",
-      deployment: "@owner",
-      roles: DEPLOYMENT_ROLES.REVERSE_REGISTRY_OPERATOR,
-    },
+    // 01_ETHRegistry.ts and 01_ReverseMirror.ts register `eth` and `reverse` to the
+    // deployer with every role. The handover transfers both tokens to the name
+    // owner, and the roles on each entry move with it.
+    ...HANDED_OVER_ROOT_NAMES.flatMap((label) => [
+      {
+        label,
+        deployment: "@deployer",
+        roles: DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
+        stages: DEPLOYER_STAGES,
+      },
+      {
+        label,
+        deployment: "@nameOwner",
+        roles: DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
+        stages: HANDED_OVER_STAGES,
+      },
+    ]),
   ],
   ETHRegistry: [],
 };
@@ -4461,17 +4458,22 @@ async function readRegistryHandoverState(
   ctx: RegistryAdminContext,
   deployer: Address,
 ): Promise<RegistryHandoverState> {
-  const ethId = labelId("eth");
   const [
-    ethTokenId,
-    ethTokenHolder,
+    rootNameTokens,
     ownerRootRoles,
     deployerRootRoles,
     ownerEthRegistryRoles,
     deployerEthRegistryRoles,
   ] = await Promise.all([
-    ctx.read(ctx.rootRegistry, "getTokenId", [ethId]) as Promise<bigint>,
-    ctx.read(ctx.rootRegistry, "getOwner", [ethId]) as Promise<Address>,
+    Promise.all(
+      HANDED_OVER_ROOT_NAMES.map(async (label) => {
+        const [tokenId, holder] = (await Promise.all([
+          ctx.read(ctx.rootRegistry, "getTokenId", [labelId(label)]),
+          ctx.read(ctx.rootRegistry, "getOwner", [labelId(label)]),
+        ])) as [bigint, Address];
+        return { label, tokenId, holder: getAddress(holder) };
+      }),
+    ),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, ctx.owner),
     ctx.roles(ctx.rootRegistry, ROOT_RESOURCE, deployer),
     ctx.roles(ctx.ethRegistry, ROOT_RESOURCE, ctx.owner),
@@ -4493,8 +4495,7 @@ async function readRegistryHandoverState(
     deployer,
     owner: ctx.owner,
     nameOwner: ctx.nameOwner,
-    ethTokenId,
-    ethTokenHolder: getAddress(ethTokenHolder),
+    rootNameTokens,
     batchRegistrars,
     ownerRootRoles,
     deployerRootRoles,
@@ -4518,20 +4519,22 @@ async function assertRegistryHandoverComplete(
   }
   // A role's assignee count sits in the lowest bit of its nybble, so one holder of
   // each role in a bitmap reads back as the bitmap itself. The plan being empty
-  // says the name owner holds the eth token and the owner the root roles.
+  // says the name owner holds the root names' tokens and the owner the root roles.
   const failures: string[] = [];
-  const ethResource = (await ctx.read(ctx.rootRegistry, "getResource", [
-    labelId("eth"),
-  ])) as bigint;
-  if (
-    (await ctx.assignees(ctx.rootRegistry, ethResource, ANY_ROLE)) !==
-      DEPLOYMENT_ROLES.ETH_TOKEN ||
-    (await ctx.roles(ctx.rootRegistry, ethResource, state.nameOwner)) !==
-      DEPLOYMENT_ROLES.ETH_TOKEN
-  ) {
-    failures.push(
-      "the name owner is not the only holder of the eth entry's roles, or lacks some of them",
-    );
+  for (const label of HANDED_OVER_ROOT_NAMES) {
+    const resource = (await ctx.read(ctx.rootRegistry, "getResource", [
+      labelId(label),
+    ])) as bigint;
+    if (
+      (await ctx.assignees(ctx.rootRegistry, resource, ANY_ROLE)) !==
+        DEPLOYMENT_ROLES.ROOT_NAME_TOKEN ||
+      (await ctx.roles(ctx.rootRegistry, resource, state.nameOwner)) !==
+        DEPLOYMENT_ROLES.ROOT_NAME_TOKEN
+    ) {
+      failures.push(
+        `the name owner is not the only holder of the ${label} entry's roles, or lacks some of them`,
+      );
+    }
   }
   // Each registry's admin roles have the owner as their only holder, and nobody
   // holds a dangerous root role, so both leave their names emancipated.
@@ -4565,7 +4568,7 @@ async function assertRegistryHandoverComplete(
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${state.nameOwner} holds the eth token and every role on its entry; ${ctx.owner} holds every safe root role on the root registry and the .eth registry; the deployer holds nothing, the batch registrars have no owner, and both registries are emancipated`,
+    `registry handover complete: ${state.nameOwner} holds the eth and reverse tokens and every role on their entries; ${ctx.owner} holds every safe root role on the root registry and the .eth registry; the deployer holds nothing, the batch registrars have no owner, and both registries are emancipated`,
   );
 }
 
@@ -4616,7 +4619,7 @@ export async function handOverRegistryAdmin(
     await readRegistryHandoverState(ctx, deployer),
   );
   console.log(
-    `registry handover from ${deployer} to ${ctx.owner}, eth token to ${ctx.nameOwner}: ${calls.length} call(s) to make`,
+    `registry handover from ${deployer} to ${ctx.owner}, eth and reverse tokens to ${ctx.nameOwner}: ${calls.length} call(s) to make`,
   );
   for (const call of calls) {
     const target = targets[call.contract];
@@ -5647,7 +5650,7 @@ export async function setEthParent(opts: {
   }
   if (
     ((await readRoot("roles", [ethResource, deployer])) as bigint) !==
-    DEPLOYMENT_ROLES.ETH_TOKEN
+    DEPLOYMENT_ROLES.ROOT_NAME_TOKEN
   ) {
     failures.push("the deployer does not hold exactly the eth token's roles");
   }
@@ -7265,7 +7268,7 @@ const SMOKE_CHECKS = {
   freshV2Registration:
     "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
   registryHandover:
-    "the registry handover, leaving the deployer no v2 authority, the owner every safe root role on both registries, the name owner the eth token, and both registries emancipated",
+    "the registry handover, leaving the deployer no v2 authority, the owner every safe root role on both registries, the name owner the eth and reverse tokens, and both registries emancipated",
 } as const;
 
 // One condition that stopped a rehearsal from covering everything, together with
@@ -8742,7 +8745,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         });
       }
       console.log(
-        "registry handover: the deployer hands the v2 registries to the owner and the eth token to the name owner",
+        "registry handover: the deployer hands the v2 registries to the owner and the eth and reverse tokens to the name owner",
       );
       await handOverRegistryAdmin({
         ...phaseV1Ctx,
@@ -10193,7 +10196,7 @@ export async function main(argv = process.argv): Promise<void> {
           )
           .option(
             "--name-owner <address>",
-            "Holder of the eth token after the registry handover; defaults to the network's configured name owner, else the owner",
+            "Holder of the eth and reverse tokens after the registry handover; defaults to the network's configured name owner, else the owner",
           )
           .option(
             "--from-block <number>",
@@ -10299,7 +10302,7 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         addCalldataOnlyOptions(new Command("hand-over-registry-admin"))
           .description(
-            "Hand the deployer's v2 registry authority to its final holders: the eth token, with every role on it, goes to the name owner; the owner takes the root registry's and the .eth registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars",
+            "Hand the deployer's v2 registry authority to its final holders: the eth and reverse tokens, with every role on them, go to the name owner; the owner takes the root registry's and the .eth registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars",
           )
           .option(
             "--owner <address>",
@@ -10307,7 +10310,7 @@ export async function main(argv = process.argv): Promise<void> {
           )
           .option(
             "--name-owner <address>",
-            "Account to give the eth token to; defaults to the network's configured name owner, else the owner",
+            "Account to give the eth and reverse tokens to; defaults to the network's configured name owner, else the owner",
           )
           .option(
             "--deployer <address>",
@@ -11159,7 +11162,7 @@ export async function main(argv = process.argv): Promise<void> {
               .option("--owner <address>", "Migration owner/admin address")
               .option(
                 "--name-owner <address>",
-                "Account the registry handover gives the eth token to; defaults to the network's configured name owner, else the owner",
+                "Account the registry handover gives the eth and reverse tokens to; defaults to the network's configured name owner, else the owner",
               )
               .option("--v1-owner <address>", "V1 owner address")
               .option("--ur-manager <address>", "Managed URP admin address")
@@ -11238,7 +11241,7 @@ export async function main(argv = process.argv): Promise<void> {
               .option("--owner <address>", "Migration owner/admin address")
               .option(
                 "--name-owner <address>",
-                "Account the registry handover gives the eth token to; defaults to the network's configured name owner, else the owner",
+                "Account the registry handover gives the eth and reverse tokens to; defaults to the network's configured name owner, else the owner",
               )
               .option("--v1-owner <address>", "V1 owner address")
               .option("--ur-manager <address>", "Managed URP admin address")
