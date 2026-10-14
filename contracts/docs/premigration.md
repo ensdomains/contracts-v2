@@ -245,7 +245,10 @@ with `--continue` once the cause is fixed.
 **Gas safety.** Before submitting, the script estimates gas; if it exceeds 80% of the block limit the
 batch is split in half and re-estimated (recursively). If a batch reverts at execution, it is
 recursively halved and retried (binary search) until failing names are isolated — preserving partial
-progress. A transaction that is slow to be mined is waited for, with or without a gas price limit,
+progress. A send the RPC endpoint's rate limit refuses is not split: it is sent again after a wait
+that doubles with each refusal in a row, up to the same attempt limit as a refused read, and only
+then is the batch halved. The refusal comes before any node sees the send, and a repeat that lands
+all the same changes nothing, since a reservation is only ever extended. A transaction that is slow to be mined is waited for, with or without a gas price limit,
 and is not counted as failed: splitting its batch would send the names again while it can still be
 mined. A checkpoint is saved after each batch.
 

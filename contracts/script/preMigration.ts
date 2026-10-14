@@ -21,6 +21,7 @@ import {
   getAddress,
   getContract,
   http,
+  HttpRequestError,
   keccak256,
   namehash,
   parseGwei,
@@ -407,6 +408,23 @@ function hasCause(
 // Whether a failed call reverted, as opposed to failing to reach or decode.
 function isRevert(error: unknown): boolean {
   return hasCause(error, ContractFunctionRevertedError);
+}
+
+// Whether a request was turned away by the endpoint's rate limit, which refuses it
+// before any node sees it.
+function isRateLimited(error: unknown): boolean {
+  const limited = (cause: unknown) =>
+    (cause instanceof HttpRequestError && cause.status === 429) ||
+    /rate limit|too many requests/i.test(
+      cause instanceof BaseError
+        ? cause.details
+        : cause instanceof Error
+          ? cause.message
+          : "",
+    );
+  return error instanceof BaseError
+    ? error.walk(limited) !== null
+    : limited(error);
 }
 
 type CallOutcome = {
@@ -1802,6 +1820,11 @@ async function splitFailedBatch(
 /// send, the send is refused and the batch waits again instead of being split: nothing
 /// is wrong with its names.
 ///
+/// A send the endpoint's rate limit refuses is sent again after a wait that grows with
+/// each refusal in a row, and only past the attempt limit is the batch split. The
+/// refusal comes before any node sees the send, and a repeat that lands all the same
+/// changes nothing, since the registrar only ever extends a reservation.
+///
 /// The gas price wait and the wait for the transaction to be mined sit outside the
 /// error handling that splits a batch, and neither has a time limit. A batch whose
 /// transaction was dropped before it was mined is sent again once the price allows,
@@ -1820,6 +1843,7 @@ export async function submitBatchWithBinaryFallback(
 ): Promise<BatchSubmitResult> {
   const { batchRegistrar, client } = sender;
   const sent: Hex[] = [];
+  let rateLimited = 0;
   for (;;) {
     const fees = await waitForGasPriceAtOrBelow(
       client,
@@ -1838,6 +1862,18 @@ export async function submitBatchWithBinaryFallback(
         logger.warning(
           `The base fee rose past the ${formatGwei(sender.maxGasPrice)} gwei fee cap before the batch was sent; waiting again.`,
         );
+        continue;
+      }
+      if (
+        sent.length === 0 &&
+        isRateLimited(error) &&
+        rateLimited < REFUSED_READ_ATTEMPTS
+      ) {
+        rateLimited++;
+        logger.warning(
+          `The RPC endpoint's rate limit refused the batch (${rateLimited} in a row); sending it again after a wait.`,
+        );
+        await sleep(refusedReadWaitMs(rateLimited, sender.pollIntervalMs));
         continue;
       }
       if (sent.length === 0 || isRevert(error)) {
