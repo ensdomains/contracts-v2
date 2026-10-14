@@ -210,8 +210,9 @@ import {
   type Checkpoint,
   createFreshCheckpoint,
   FailedNamesError,
+  type CsvLabelColumns,
   csvLabelCell,
-  csvLabelColumnIndex,
+  csvLabelColumns,
   isEncodedLabelhash,
   isValidLabel,
   loadCheckpoint,
@@ -383,11 +384,11 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // label of the `[labelhash]` shape, the hash inside the brackets, for a placeholder
 // of a label nobody knows.
 function readUnreservableLabelRows(csvFile: string): Map<string, string> {
-  const { rows, labelIndex } = openLabelCsv(csvFile);
+  const { rows, columns } = openLabelCsv(csvFile);
   const labels = new Map<string, string>();
-  if (labelIndex < 0) return labels;
+  if (columns.label < 0) return labels;
   for (const line of rows) {
-    const label = csvLabelCell(parseCSVLine(line), labelIndex);
+    const label = csvLabelCell(parseCSVLine(line), columns);
     // Read into a plain boolean: the check is a type guard, and a refused string
     // would otherwise narrow to nothing.
     const refused: boolean = !isValidLabel(label);
@@ -410,8 +411,8 @@ function countClaimableCsvRows(
   csvFile: string,
   chainNow: bigint,
 ): { count: number; filtered: boolean; unknownExpiry: number } {
-  const { header, rows, labelIndex } = openLabelCsv(csvFile);
-  if (labelIndex < 0) {
+  const { header, rows, columns } = openLabelCsv(csvFile);
+  if (columns.label < 0) {
     return { count: 0, filtered: false, unknownExpiry: 0 };
   }
   const expiryIndex = header
@@ -423,7 +424,7 @@ function countClaimableCsvRows(
   let dated = 0;
   for (const line of rows) {
     const fields = parseCSVLine(line);
-    if (csvLabelCell(fields, labelIndex) === undefined) continue;
+    if (csvLabelCell(fields, columns) === undefined) continue;
     labelled++;
     if (expiryIndex < 0) continue;
     const raw = fields[expiryIndex]?.trim();
@@ -449,7 +450,7 @@ function countClaimableCsvRows(
 }
 
 /// A label CSV opened for reading: its rows, its header fields, and where the label
-/// column sits.
+/// and labelhash columns sit.
 ///
 /// Every reader needs the same three things and had derived them for itself, with
 /// three slightly different messages for the same missing column. `rows` excludes the
@@ -457,32 +458,32 @@ function countClaimableCsvRows(
 function openLabelCsv(csvFile: string): {
   header: string[];
   rows: string[];
-  labelIndex: number;
+  columns: CsvLabelColumns;
 } {
   const lines = readFileSync(csvFile, "utf-8")
     .replace(/^\uFEFF/, "")
     .replace(/[\r\n]+$/, "")
     .split(/\r?\n/);
   if (lines.length === 0 || !lines[0]) {
-    return { header: [], rows: [], labelIndex: -1 };
+    return { header: [], rows: [], columns: { label: -1, labelhash: -1 } };
   }
   const header = parseCSVLine(lines[0]);
-  const labelIndex = csvLabelColumnIndex(header);
-  if (labelIndex < 0) {
+  const columns = csvLabelColumns(header);
+  if (columns.label < 0) {
     throw new Error(
       `CSV must contain a labelName or label column, or a Dune export's name beside full_name: ${csvFile}`,
     );
   }
-  return { header, rows: lines.slice(1), labelIndex };
+  return { header, rows: lines.slice(1), columns };
 }
 
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
-  const { rows, labelIndex } = openLabelCsv(csvFile);
-  if (labelIndex < 0) return [];
+  const { rows, columns } = openLabelCsv(csvFile);
+  if (columns.label < 0) return [];
   const labels: string[] = [];
   for (const line of rows) {
     if (limit !== undefined && labels.length >= limit) break;
-    const label = csvLabelCell(parseCSVLine(line), labelIndex);
+    const label = csvLabelCell(parseCSVLine(line), columns);
     if (label) labels.push(label);
   }
   return labels;
@@ -492,13 +493,12 @@ function transformCsvForPreMigration(
   sourcePath: string,
   targetPath: string,
 ): number {
-  const { rows, labelIndex } = openLabelCsv(sourcePath);
-  if (labelIndex < 0) throw new Error(`CSV is empty: ${sourcePath}`);
+  const { rows, columns } = openLabelCsv(sourcePath);
+  if (columns.label < 0) throw new Error(`CSV is empty: ${sourcePath}`);
 
   const output = [PREMIGRATION_CSV_HEADER];
   for (const line of rows) {
-    const columns = parseCSVLine(line);
-    const label = csvLabelCell(columns, labelIndex);
+    const label = csvLabelCell(parseCSVLine(line), columns);
     if (label) output.push(premigrationCsvRow(label));
   }
   writeFileSync(targetPath, `${output.join("\n")}\n`);

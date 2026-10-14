@@ -168,7 +168,9 @@ leaves the rest of the namespace untouched.
 > shape, since the text alone cannot say whether it is a placeholder or a name registered with the
 > placeholder text itself; mainnet holds a handful of the latter, registered by typing the bracketed
 > form. It also refuses a label the export does give as text but that is longer than 255 bytes, which
-> no DNS-encoded name can carry. Such a name can never be reserved from the CSV, so when `--csv-file`
+> no DNS-encoded name can carry, and a row whose label an export leaves empty or fills with text that
+> does not hash to the row's labelhash, which it reads in bracketed form (see
+> [CSV input](./premigration.md#csv-input)). Such a name can never be reserved from the CSV, so when `--csv-file`
 > is given reconcile lists each one under "not reservable from the CSV" instead of counting it as
 > missing. Without the CSV they cannot be told apart and count as missing.
 >

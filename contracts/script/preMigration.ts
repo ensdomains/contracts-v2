@@ -887,7 +887,7 @@ async function* readCSVInBatches(
 
   let rawLineNumber = 0;
   let headerParsed = false;
-  let labelColumnIndex = -1;
+  let labelColumns: CsvLabelColumns = { label: -1, labelhash: -1 };
   let expectedColumnCount = 0;
   let pendingBlankLineNumber: number | null = null;
 
@@ -909,8 +909,8 @@ async function* readCSVInBatches(
         );
       }
 
-      const resolvedIdx = csvLabelColumnIndex(headerFields);
-      if (resolvedIdx === -1) {
+      const resolved = csvLabelColumns(headerFields);
+      if (resolved.label === -1) {
         const found = headerFields.map((f) => f.trim()).join(", ");
         throw new CSVFormatError(
           `CSV header at ${csvFilePath}:1 has no label column. ` +
@@ -918,7 +918,7 @@ async function* readCSVInBatches(
             `Expected "labelName", "label", or a Dune export's "name" beside "full_name" (case-insensitive).`,
         );
       }
-      labelColumnIndex = resolvedIdx;
+      labelColumns = resolved;
       expectedColumnCount = headerFields.length;
       headerParsed = true;
       continue;
@@ -979,10 +979,10 @@ async function* readCSVInBatches(
       );
     }
 
-    const labelName = csvLabelCell(parts, labelColumnIndex);
+    const labelName = csvLabelCell(parts, labelColumns);
     if (labelName === undefined) {
       throw new CSVFormatError(
-        `CSV row at ${csvFilePath}:${rawLineNumber} has empty "labelName". ` +
+        `CSV row at ${csvFilePath}:${rawLineNumber} has empty "labelName" and no labelhash to name it by. ` +
           `Row: ${previewCSVLine(line)}`,
       );
     }
@@ -1024,14 +1024,46 @@ export function csvLabelColumnIndex(header: readonly string[]): number {
   return normalized.includes("full_name") ? normalized.indexOf("name") : -1;
 }
 
+/// Where a registration CSV keeps each name: its label column, and its labelhash
+/// column, or -1 when the export has none.
+export interface CsvLabelColumns {
+  label: number;
+  labelhash: number;
+}
+
+/// The label and labelhash columns of a registration CSV header. The label column is
+/// -1 when the header has none.
+export function csvLabelColumns(header: readonly string[]): CsvLabelColumns {
+  return {
+    label: csvLabelColumnIndex(header),
+    labelhash: header
+      .map((field) => field.trim().toLowerCase())
+      .indexOf("labelhash"),
+  };
+}
+
 /// The label in a parsed CSV row, exactly as written, or `undefined` when the cell is
 /// empty or holds only whitespace. v1 accepts labels with leading or trailing spaces,
 /// so trimming the cell would name a different label from the one registered.
+///
+/// When the row also carries the name's labelhash, a label cell that is empty or does
+/// not hash to it is an export's stand-in for a label nobody knows, such as Dune's
+/// empty cell or its `<nil>`. The row then reads as that labelhash in `[labelhash]`
+/// form, which names it without claiming a label, so it is refused like any unknown
+/// label rather than stopping the run or reserving the stand-in text as a name.
 export function csvLabelCell(
   fields: readonly string[],
-  labelIndex: number,
+  columns: CsvLabelColumns,
 ): string | undefined {
-  const label = fields[labelIndex];
+  const label = fields[columns.label];
+  const labelhash = fields[columns.labelhash]?.trim().toLowerCase();
+  if (
+    labelhash &&
+    /^0x[0-9a-f]{64}$/.test(labelhash) &&
+    (!label?.trim() || keccak256(toHex(label)) !== labelhash)
+  ) {
+    return `[${labelhash.slice(2)}]`;
+  }
   return label?.trim() ? label : undefined;
 }
 

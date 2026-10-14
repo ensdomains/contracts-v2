@@ -667,6 +667,38 @@ describe("premigration reconcile", () => {
     ]);
   });
 
+  it("lists a name the CSV names only by its labelhash apart from the missing", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A live name whose label no export knows: the row leaves the label empty, or
+    // writes a stand-in that does not hash to it, and carries only the labelhash.
+    const unknownId = keccak256(stringToHex("nobodyknowsme"));
+    await env.v1.BaseRegistrar.write.register([
+      BigInt(unknownId),
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const unknownExpiry = await env.v1.BaseRegistrar.read.nameExpires([
+      BigInt(unknownId),
+    ]);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,${unknownId},,,,,,\n,,${unknownId},,,,<nil>,,`,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: unknownId, expiry: unknownExpiry },
+    ]);
+
+    const result = await run(workDir, fromBlock, { csvFile });
+
+    expect(result.missing).toEqual([]);
+    expect(result.unreservable).toEqual([
+      { id: unknownId, label: `[${unknownId.slice(2)}]` },
+    ]);
+  });
+
   it("lists a name whose CSV label is over 255 bytes apart from the missing", async () => {
     const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
     const { user } = env.namedAccounts;

@@ -133,8 +133,14 @@ endings are tolerated.
 
 **Strict structural parsing.** Any structural problem aborts the run with the CSV path and 1-based
 line number (header = line 1); fix the file and re-run. Aborts on: no label column (none of the above); unbalanced quotes (header or row); a data row whose column count differs from the
-header; an empty/whitespace-only label cell; a blank line anywhere but a single trailing one; an empty
-file.
+header; an empty/whitespace-only label cell in a row with no labelhash to name it by; a blank line
+anywhere but a single trailing one; an empty file.
+
+**Names with no known label.** When the CSV has a `labelhash` column (the Dune and exporter formats,
+and the subgraph's `labelHash`), a row whose label cell is empty, or holds text that does not hash to
+the row's labelhash, is an export's stand-in for a label nobody knows: Dune writes an empty cell or
+`<nil>`. Such a row is read as its labelhash in bracketed form (`[…]`) rather than aborting the run
+or reserving the stand-in text as a name.
 
 **Application-level filtering** happens *after* structural parsing and does **not** abort: labels
 longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped and counted as
