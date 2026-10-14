@@ -50,7 +50,7 @@ library LibResolution {
     }
 
     /// @dev Call `IOwnedRegistry.findOwner()` if supported and wrap revert in `ResolutionError`.
-    function getOwner(IRegistry registry, string memory label) internal view returns (address) {
+    function findOwner(IRegistry registry, string memory label) internal view returns (address) {
         if (!ERC165Checker.supportsInterface(address(registry), type(IOwnedRegistry).interfaceId)) {
             return address(0);
         }
@@ -294,7 +294,7 @@ library LibResolution {
         }
         (parent, owner, foundOffset) = _findNearestOwner(rootRegistry, name, next);
         if (address(parent) != address(0)) {
-            address child = getOwner(parent, label);
+            address child = findOwner(parent, label);
             // if registry exists and has child owner
             if (child != address(0)) {
                 owner = child; // remember

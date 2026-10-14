@@ -93,12 +93,12 @@ contract LibResolutionTest is Test, ERC1155Holder {
         this._revertingGetParent();
     }
 
-    function _revertingGetOwner() external view returns (address) {
-        return LibResolution.getOwner(revertingRegistry, testLabel);
+    function _revertingFindOwner() external view returns (address) {
+        return LibResolution.findOwner(revertingRegistry, testLabel);
     }
 
-    function test_getOwner() external {
-        LibResolution.getOwner(revertingRegistry, testLabel); // no revert
+    function test_findOwner() external {
+        LibResolution.findOwner(revertingRegistry, testLabel); // no revert
         revertingRegistry.setRevertData(IOwnedRegistry.findOwner.selector, revertData);
         vm.expectRevert(revertData);
         revertingRegistry.findOwner(testLabel);
@@ -109,7 +109,7 @@ contract LibResolutionTest is Test, ERC1155Holder {
                 revertData
             )
         );
-        this._revertingGetOwner();
+        this._revertingFindOwner();
     }
 
     function _expectFind(
