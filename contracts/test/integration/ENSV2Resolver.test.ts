@@ -42,10 +42,11 @@ async function fixture() {
   return { v1, v2, ssResolver, ensV2Resolver, ethResolver };
 }
 
+const loadFixture = async () => network.networkHelpers.loadFixture(fixture);
+
 describe("ENSV2Resolver", () => {
   shouldSupportInterfaces({
-    contract: () =>
-      network.networkHelpers.loadFixture(fixture).then((F) => F.ensV2Resolver),
+    contract: () => loadFixture().then((F) => F.ensV2Resolver),
     interfaces: [
       "IERC165",
       "IERC7996",
@@ -56,15 +57,14 @@ describe("ENSV2Resolver", () => {
   });
 
   shouldSupportFeatures({
-    contract: () =>
-      network.networkHelpers.loadFixture(fixture).then((F) => F.ensV2Resolver),
+    contract: () => loadFixture().then((F) => F.ensV2Resolver),
     features: {
       RESOLVER: ["RESOLVE_MULTICALL"],
     },
   });
 
   it("eth override", async () => {
-    const F = await network.networkHelpers.loadFixture(fixture);
+    const F = await loadFixture();
     // setup invalid resolver in v2
     await F.v2.rootRegistry.write.setResolver([
       idFromLabel("eth"),
@@ -102,7 +102,7 @@ describe("ENSV2Resolver", () => {
 
   for (const name of ["test.eth", "sub.test.eth", "abc.sub.test.eth"]) {
     it(name, async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
+      const F = await loadFixture();
       // setup profile in v2
       const kp: KnownProfile = {
         name,
@@ -143,7 +143,7 @@ describe("ENSV2Resolver", () => {
   }
 
   it("not extended", async () => {
-    const F = await network.networkHelpers.loadFixture(fixture);
+    const F = await loadFixture();
     const name = "sub.test.eth";
     await F.v2.setupName({
       name: getParentName(name),

@@ -13,6 +13,7 @@ import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {IUniversalResolver} from "@ens/contracts/universalResolver/IUniversalResolver.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {ENSIP19, COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
+import {ERC7996Checker} from "@ens/contracts/utils/ERC7996Checker.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -255,7 +256,7 @@ abstract contract AbstractNormalizedUniversalResolver is
                 revert PrimaryNameNotNormalized(primary);
             }
         }
-        ResolverInfo memory info = requireResolver(name);
+        ResolverInfo memory info = _requireResolverRejectingOffchainLookup(name);
         _callResolver(
             info,
             args.coinType == COIN_TYPE_ETH
@@ -341,7 +342,7 @@ abstract contract AbstractNormalizedUniversalResolver is
         view
         returns (bytes memory, address)
     {
-        ResolverInfo memory info = requireResolver(name);
+        ResolverInfo memory info = _requireResolverRejectingOffchainLookup(name);
         _callResolver(
             info,
             data,
@@ -363,7 +364,7 @@ abstract contract AbstractNormalizedUniversalResolver is
         returns (bytes memory, address)
     {
         (bool wasNorm, bytes memory norm) = normalize(name, ensip15);
-        ResolverInfo memory info = requireResolver(norm);
+        ResolverInfo memory info = _requireResolverRejectingOffchainLookup(norm);
         _callResolver(
             info,
             ResolverProfileRewriterLib.replaceNode(data, info.node),
@@ -386,7 +387,7 @@ abstract contract AbstractNormalizedUniversalResolver is
     {
         // https://docs.ens.domains/ensip/19
         ResolverInfo memory info =
-            requireResolver(
+            _requireResolverRejectingOffchainLookup(
                 NameCoder.encode(ENSIP19.reverseName(lookupAddress, coinType)) // reverts EmptyAddress
             );
         _callResolver(
@@ -401,6 +402,22 @@ abstract contract AbstractNormalizedUniversalResolver is
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Same as `requireResolver()` but prevents `OffchainLookup` revert.
+    function _requireResolverRejectingOffchainLookup(bytes memory name)
+        internal
+        view
+        returns (ResolverInfo memory)
+    {
+        return
+            abi.decode(
+                callRejectingOffchainLookup(
+                    address(this),
+                    abi.encodeCall(this.requireResolver, (name))
+                ),
+                (ResolverInfo)
+            );
+    }
 
     /// @dev Asserts that the resolver information is valid.
     function _checkResolver(ResolverInfo memory info) internal view {
@@ -443,7 +460,10 @@ abstract contract AbstractNormalizedUniversalResolver is
             ERC165Checker.supportsERC165InterfaceUnchecked(info.resolver, type(IERC7996).interfaceId) &&
             (!multi ||
                 (info.extended &&
-                    IERC7996(info.resolver).supportsFeature(ResolverFeatures.RESOLVE_MULTICALL)))
+                    ERC7996Checker.supportsFeatureUnchecked(
+                        info.resolver,
+                        ResolverFeatures.RESOLVE_MULTICALL
+                    )))
         ) {
             ccipRead(
                 address(info.resolver),

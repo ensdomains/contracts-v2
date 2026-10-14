@@ -43,15 +43,31 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
+    // Implementation
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractMirrorResolver
-    function _findResolver(bytes calldata name) internal view override returns (address resolver) {
+    function findResolver(bytes calldata name) external view override returns (address resolver) {
+        // if this resolver was reached, all resolvers were null until this resolver was found
         bytes32 node;
         (, resolver, node, ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);
         if (node == NameCoder.ETH_NODE && address(ETH_RESOLVER) != address(0)) {
-            resolver = ETH_RESOLVER;
+            resolver = ETH_RESOLVER; // v1 "eth" should still return original OwnedResolver
+        } else {
+            (bool matched, , uint256 prevOffset, uint256 matchOffset) =
+                NameCoder.matchSuffix(name, 0, NameCoder.ETH_NODE); // check if "(*.){label}.eth"
+            if (matched && prevOffset < matchOffset) {
+                (bytes32 labelHash, ) = NameCoder.readLabel(name, prevOffset); // extract 2LD
+                IPermissionedRegistry.Status status =
+                    IPermissionedRegistry(address(ROOT_REGISTRY.getSubregistry("eth"))).getStatus(
+                        uint256(labelHash)
+                    ); // get registration status
+                if (status == IPermissionedRegistry.Status.RESERVED) {
+                    // premigration is still active => resolver = ENSV1Resolver
+                    // unmigrated and still active in v1 => resolver was cleared
+                    resolver = address(0); // so clear it to avoid loop
+                }
+            }
         }
     }
 }

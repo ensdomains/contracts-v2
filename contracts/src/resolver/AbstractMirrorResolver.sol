@@ -65,18 +65,40 @@ abstract contract AbstractMirrorResolver is
 
     /// @inheritdoc IExtendedResolver
     function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {
-        callResolver(_findResolver(name), name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways());
+        callResolver(
+            _findResolverRejectingOffchainLookup(name),
+            name,
+            data,
+            false,
+            "",
+            BATCH_GATEWAY_PROVIDER.gateways()
+        );
     }
 
     /// @inheritdoc ICompositeResolver
     function getResolver(bytes calldata name) external view returns (address, bool) {
-        return (_findResolver(name), false);
+        return (_findResolverRejectingOffchainLookup(name), false);
     }
+
+    /// @notice Determine the resolver for `name`.
+    /// @param name The DNS-encoded name.
+    /// @return The resolver address.
+    function findResolver(bytes calldata name) external view virtual returns (address);
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Determine the resolver for `name`.
-    function _findResolver(bytes calldata name) internal view virtual returns (address);
+    /// @dev Same as `findResolver()` but prevents `OffchainLookup` revert.
+    function _findResolverRejectingOffchainLookup(bytes memory name)
+        internal
+        view
+        returns (address)
+    {
+        return
+            abi.decode(
+                callRejectingOffchainLookup(address(this), abi.encodeCall(this.findResolver, (name))),
+                (address)
+            );
+    }
 }

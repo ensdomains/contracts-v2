@@ -96,10 +96,12 @@ export async function deployV1Fixture(
     name,
     resolverAddress = publicResolver.address,
     account = walletClient.account,
+    expiry = MAX_EXPIRY,
   }: {
     name: string;
     resolverAddress?: Address;
     account?: Account;
+    expiry?: bigint;
   }) {
     resolverAddress = getAddress(resolverAddress); // fix checksum
     const labels = splitName(name);
@@ -108,7 +110,7 @@ export async function deployV1Fixture(
       await baseRegistrar.write.register([
         BigInt(labelhash(labels[(i -= 2)])),
         account.address,
-        MAX_EXPIRY,
+        expiry,
       ]);
     }
     while (i > 0) {
