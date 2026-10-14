@@ -11,22 +11,105 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IOwnedRegistry} from "~src/registry/interfaces/IOwnedRegistry.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {LibResolution} from "~src/universalResolver/libraries/LibResolution.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {MockRevertingRegistry} from "~test/mocks/MockRevertingRegistry.sol";
 
 contract LibResolutionTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
+    MockRevertingRegistry revertingRegistry;
     LabelStore labelStore;
 
     address resolverAddress = makeAddr("resolver");
     address actor = makeAddr("actor");
 
+    string testLabel = "test";
+    bytes revertData = abi.encodeWithSelector(0x12345678);
+
     function setUp() external {
         labelStore = new LabelStore(IContractNamer(address(0)));
+        revertingRegistry = new MockRevertingRegistry();
         rootRegistry = _createRegistry();
+    }
+
+    function _revertingGetResolver() external view returns (address) {
+        return LibResolution.getResolver(revertingRegistry, testLabel);
+    }
+
+    function test_getResolver() external {
+        LibResolution.getResolver(revertingRegistry, testLabel); // no revert
+        revertingRegistry.setRevertData(IRegistry.getResolver.selector, revertData);
+        vm.expectRevert(revertData);
+        revertingRegistry.getResolver(testLabel);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LibResolution.ResolutionError.selector,
+                revertingRegistry,
+                revertData
+            )
+        );
+        this._revertingGetResolver();
+    }
+
+    function _revertingGetSubregistry() external view returns (IRegistry) {
+        return LibResolution.getSubregistry(revertingRegistry, testLabel);
+    }
+
+    function test_getSubregistry() external {
+        LibResolution.getResolver(revertingRegistry, testLabel); // no revert
+        revertingRegistry.setRevertData(IRegistry.getSubregistry.selector, revertData);
+        vm.expectRevert(revertData);
+        revertingRegistry.getSubregistry(testLabel);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LibResolution.ResolutionError.selector,
+                revertingRegistry,
+                revertData
+            )
+        );
+        this._revertingGetSubregistry();
+    }
+
+    function _revertingGetParent() external view returns (IRegistry, string memory) {
+        return LibResolution.getParent(revertingRegistry);
+    }
+
+    function test_getParent() external {
+        LibResolution.getParent(revertingRegistry); // no revert
+        revertingRegistry.setRevertData(IRegistry.getParent.selector, revertData);
+        vm.expectRevert(revertData);
+        revertingRegistry.getParent();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LibResolution.ResolutionError.selector,
+                revertingRegistry,
+                revertData
+            )
+        );
+        this._revertingGetParent();
+    }
+
+    function _revertingGetOwner() external view returns (address) {
+        return LibResolution.getOwner(revertingRegistry, testLabel);
+    }
+
+    function test_getOwner() external {
+        LibResolution.getOwner(revertingRegistry, testLabel); // no revert
+        revertingRegistry.setRevertData(IOwnedRegistry.findOwner.selector, revertData);
+        vm.expectRevert(revertData);
+        revertingRegistry.findOwner(testLabel);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LibResolution.ResolutionError.selector,
+                revertingRegistry,
+                revertData
+            )
+        );
+        this._revertingGetOwner();
     }
 
     function _expectFind(
