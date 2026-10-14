@@ -99,6 +99,7 @@ contract LibResolutionTest is Test, ERC1155Holder {
 
     function test_findOwner() external {
         LibResolution.findOwner(revertingRegistry, testLabel); // no revert
+        LibResolution.findOwner(IRegistry(address(1)), testLabel); // not a IOwnedRegistry
         revertingRegistry.setRevertData(IOwnedRegistry.findOwner.selector, revertData);
         vm.expectRevert(revertData);
         revertingRegistry.findOwner(testLabel);
