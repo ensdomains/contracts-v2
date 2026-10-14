@@ -11,7 +11,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
 /// discovery, canonical name construction, and ancestry enumeration.
 ///
-/// Since registry operations invoke untrusted contracts, ALL reverts are wrapped in `ResolverError`.
+/// Since registry operations invoke untrusted contracts, ALL reverts are wrapped in `ResolutionError`.
 ///
 library LibResolution {
     /// @notice `registry` reverted `errorData`.
