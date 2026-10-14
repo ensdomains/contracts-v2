@@ -450,7 +450,7 @@ describe("Migration", () => {
       await env.v2.ETHRenewerV1.write.syncWrapper([[unlocked.label]]);
     });
 
-    it.only("explicitly zero V1 resolver loop", async () => {
+    it("explicitly zero V1 resolver loop", async () => {
       const unlocked = await registerUnwrapped();
       await unlocked.setResolver(zeroAddress);
       await env.activateV2();
