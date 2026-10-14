@@ -256,7 +256,7 @@ abstract contract AbstractNormalizedUniversalResolver is
                 revert PrimaryNameNotNormalized(primary);
             }
         }
-        ResolverInfo memory info = _requireResolverRejectingOffchainLookup(name);
+        ResolverInfo memory info = requireResolver(name);
         _callResolver(
             info,
             args.coinType == COIN_TYPE_ETH
@@ -342,7 +342,7 @@ abstract contract AbstractNormalizedUniversalResolver is
         view
         returns (bytes memory, address)
     {
-        ResolverInfo memory info = _requireResolverRejectingOffchainLookup(name);
+        ResolverInfo memory info = requireResolver(name);
         _callResolver(
             info,
             data,
@@ -364,7 +364,7 @@ abstract contract AbstractNormalizedUniversalResolver is
         returns (bytes memory, address)
     {
         (bool wasNorm, bytes memory norm) = normalize(name, ensip15);
-        ResolverInfo memory info = _requireResolverRejectingOffchainLookup(norm);
+        ResolverInfo memory info = requireResolver(norm);
         _callResolver(
             info,
             ResolverProfileRewriterLib.replaceNode(data, info.node),
@@ -387,7 +387,7 @@ abstract contract AbstractNormalizedUniversalResolver is
     {
         // https://docs.ens.domains/ensip/19
         ResolverInfo memory info =
-            _requireResolverRejectingOffchainLookup(
+            requireResolver(
                 NameCoder.encode(ENSIP19.reverseName(lookupAddress, coinType)) // reverts EmptyAddress
             );
         _callResolver(
@@ -402,22 +402,6 @@ abstract contract AbstractNormalizedUniversalResolver is
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Same as `requireResolver()` but prevents `OffchainLookup` revert.
-    function _requireResolverRejectingOffchainLookup(bytes memory name)
-        internal
-        view
-        returns (ResolverInfo memory)
-    {
-        return
-            abi.decode(
-                callRejectingOffchainLookup(
-                    address(this),
-                    abi.encodeCall(this.requireResolver, (name))
-                ),
-                (ResolverInfo)
-            );
-    }
 
     /// @dev Asserts that the resolver information is valid.
     function _checkResolver(ResolverInfo memory info) internal view {

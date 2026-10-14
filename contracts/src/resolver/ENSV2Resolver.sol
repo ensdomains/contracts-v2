@@ -43,11 +43,11 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Implementation
+    // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractMirrorResolver
-    function findResolver(bytes calldata name) external view override returns (address resolver) {
+    function _findResolver(bytes calldata name) internal view override returns (address resolver) {
         // if this resolver was reached, all resolvers were null until this resolver was found
         bytes32 node;
         (, resolver, node, ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);

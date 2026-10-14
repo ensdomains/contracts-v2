@@ -105,29 +105,16 @@ contract DNSAliasResolver is
         returns (bytes memory)
     {
         bytes memory newName = rewriteNameWithContext(name, context);
-        address resolver =
-            abi.decode(
-                callRejectingOffchainLookup(
-                    address(this),
-                    abi.encodeCall(this.findResolver, (newName))
-                ),
-                (address)
-            );
+        (, address resolver, bytes32 node, ) =
+            LibResolution.findResolver(ROOT_REGISTRY, newName, 0);
         callResolver(
             resolver,
             newName,
-            ResolverProfileRewriterLib.replaceNode(data, NameCoder.namehash(newName, 0)),
+            ResolverProfileRewriterLib.replaceNode(data, node),
             false,
             "",
             BATCH_GATEWAY_PROVIDER.gateways()
         );
-    }
-
-    /// @notice An exposed `findResolver()` which can be incepted by `callRejectingOffchainLookup()`.
-    /// @param name The DNS-encoded name.
-    /// @return resolver The resolver address.
-    function findResolver(bytes memory name) external view returns (address resolver) {
-        (, resolver, , ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);
     }
 
     /// @notice Applies the rewrite rule encoded in `context` to `name`.
