@@ -14,9 +14,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 /// Since registry operations invoke untrusted contracts, ALL reverts are wrapped in `ResolverError`.
 ///
 library LibResolution {
-    /// @notice A wrapped registry revert.
-    /// @param registry The registry that reverted.
-    /// @param errorData The revert data.
+    /// @notice `registry` reverted `errorData`.
     /// @dev Error selector: `0x4e8547e9`
     error ResolutionError(IRegistry registry, bytes errorData);
 

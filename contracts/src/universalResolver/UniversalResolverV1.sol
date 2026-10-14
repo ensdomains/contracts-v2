@@ -47,7 +47,7 @@ contract UniversalResolverV1 is AbstractNormalizedUniversalResolver, ReverseClai
         override
         returns (address, bytes32, uint256)
     {
-        // https://docs.ens.domains/ensip/10       
+        // https://docs.ens.domains/ensip/10
         return RegistryUtils.findResolver(REGISTRY_V1, name, 0);
     }
 

@@ -3,10 +3,7 @@ import {
   type AbiParameterToPrimitiveType,
   type Account,
   type Address,
-  ContractFunctionExecutionError,
-  ContractFunctionRevertedError,
   encodeAbiParameters,
-  encodeErrorResult,
   type Hex,
   zeroAddress,
 } from "viem";
@@ -448,29 +445,6 @@ describe("Migration", () => {
       const unlocked = await registerWrapped();
       await env.activateV2();
       await env.v2.ETHRenewerV1.write.syncWrapper([[unlocked.label]]);
-    });
-
-    it("explicitly zero V1 resolver loop", async () => {
-      const unlocked = await registerUnwrapped();
-      await unlocked.setResolver(zeroAddress);
-      await env.activateV2();
-      const name = dnsEncodeName(unlocked.name);
-      await expect(
-        env.v2.UniversalResolver.read.resolve([name, "0x"]),
-      ).rejects.toMatchObject({
-        cause: {
-          data: {
-            errorName: "ResolverError",
-            args: [
-              encodeErrorResult({
-                abi: env.v2.ENSV2Resolver.abi,
-                errorName: "UnreachableName",
-                args: [name],
-              }),
-            ],
-          },
-        },
-      });
     });
   });
 

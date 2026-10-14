@@ -2,7 +2,9 @@
 pragma solidity 0.8.25;
 
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
+import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
@@ -52,22 +54,19 @@ contract ENSV2Resolver is AbstractMirrorResolver {
         bytes32 node;
         (, resolver, node, ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);
         if (node == NameCoder.ETH_NODE && address(ETH_RESOLVER) != address(0)) {
-            resolver = ETH_RESOLVER; // v1 "eth" should still return original OwnedResolver
-        } else {
-            (bool matched, , uint256 prevOffset, uint256 matchOffset) =
-                NameCoder.matchSuffix(name, 0, NameCoder.ETH_NODE); // check if "(*.){label}.eth"
-            if (matched && prevOffset < matchOffset) {
-                (bytes32 labelHash, ) = NameCoder.readLabel(name, prevOffset); // extract 2LD
-                IPermissionedRegistry.Status status =
-                    IPermissionedRegistry(address(ROOT_REGISTRY.getSubregistry("eth"))).getStatus(
-                        uint256(labelHash)
-                    ); // get registration status
-                if (status == IPermissionedRegistry.Status.RESERVED) {
-                    // premigration is still active => resolver = ENSV1Resolver
-                    // unmigrated and still active in v1 => resolver was cleared
-                    resolver = address(0); // so clear it to avoid loop
+            resolver = ETH_RESOLVER;
+        } else if (
+            ERC165Checker.supportsERC165InterfaceUnchecked(
+                resolver,
+                type(ICompositeResolver).interfaceId
+            )
+        ) {
+            // avoid trivial (V2 => V1)* loop
+            try ICompositeResolver(resolver).getResolver(name) returns (address underlying, bool) {
+                if (underlying == address(this)) {
+                    resolver = address(0);
                 }
-            }
+            } catch {}
         }
     }
 }
