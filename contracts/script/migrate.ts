@@ -275,6 +275,12 @@ import {
   loadV1NameIndex,
   readV1NameIndexMeta,
 } from "./premigrationIndex.js";
+import { writeChangedNames } from "./migrations/changedNames.js";
+import {
+  blockAtOrAfter,
+  labelControllers,
+  rpcLogReader,
+} from "./migrations/registrationLogs.js";
 import {
   PREMIGRATION_CSV_HEADER,
   premigrationCsvRow,
@@ -10037,6 +10043,121 @@ export async function main(argv = process.argv): Promise<void> {
 
         console.log(
           `index complete: ${meta.entries} names @ block ${meta.block} (${meta.source})`,
+        );
+      },
+    ),
+  );
+
+  premigration.addCommand(
+    addV1DeploymentOptions(
+      addNetworkOptions(
+        new Command("changed-names")
+          .description(
+            "List the v1 names registered or renewed in a block range as a pre-migration CSV",
+          )
+          .requiredOption("--out <path>", "CSV to write; its coverage goes to <path>.meta.json")
+          .option("--from-block <number>", "First block to read")
+          .option(
+            "--since <time>",
+            "Read from the first block at or after this ISO 8601 time, in place of --from-block",
+          )
+          .option(
+            "--to-block <block>",
+            "Last block to read: a number, latest, or finalized",
+            "finalized",
+          )
+          .option(
+            "--label-csv <paths...>",
+            "Registration exports that label names no controller log in the range labels",
+          )
+          .option("--v1-base-registrar <address>", "v1 BaseRegistrar address")
+          .option(
+            "--log-span <blocks>",
+            "Most blocks per eth_getLogs call; narrowed when the RPC refuses",
+            "50000",
+          )
+          .option("--log-concurrency <count>", "Block ranges read at once", "4"),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          V1DeploymentOptions & {
+            out: string;
+            fromBlock?: string;
+            since?: string;
+            toBlock: string;
+            labelCsv?: string[];
+            v1BaseRegistrar?: Address;
+            logSpan: string;
+            logConcurrency: string;
+          },
+      ) => {
+        if ((opts.fromBlock === undefined) === (opts.since === undefined)) {
+          throw new Error("give exactly one of --from-block and --since");
+        }
+        const networkOpts = withNetworkRpc(opts);
+        const client = publicClient(
+          networkOpts.rpcUrl,
+          migrationChain(networkOpts),
+        );
+        const toBlock = /^\d+$/.test(opts.toBlock)
+          ? BigInt(opts.toBlock)
+          : (
+              await client.getBlock({
+                blockTag: opts.toBlock as "latest" | "finalized",
+              })
+            ).number;
+        let fromBlock: bigint;
+        if (opts.since !== undefined) {
+          const since = Date.parse(opts.since);
+          if (Number.isNaN(since)) {
+            throw new Error(`--since ${opts.since} is not a time`);
+          }
+          fromBlock = await blockAtOrAfter(
+            client,
+            BigInt(Math.floor(since / 1000)),
+            toBlock,
+          );
+        } else {
+          fromBlock = BigInt(opts.fromBlock!);
+        }
+        if (fromBlock > toBlock + 1n) {
+          throw new Error(
+            `--from-block ${fromBlock} is past the last block to read, ${toBlock}`,
+          );
+        }
+        const registrar =
+          opts.v1BaseRegistrar ??
+          requireV1Deployment(
+            networkOpts.network,
+            V1_BASE_REGISTRAR_NAME,
+            opts,
+          ).address;
+        console.log(
+          `reading registrations and renewals in blocks ${fromBlock}–${toBlock}`,
+        );
+        const meta = await writeChangedNames(
+          rpcLogReader(
+            client,
+            getAddress(registrar),
+            labelControllers(networkOpts.network, opts),
+          ),
+          {
+            registrar: getAddress(registrar),
+            fromBlock,
+            toBlock,
+            span: BigInt(parseNumber(opts.logSpan, 50_000)),
+            concurrency: parseNumber(opts.logConcurrency, 4),
+            labelCsvs: opts.labelCsv,
+            out: opts.out,
+            onRetry: (error, span) =>
+              console.log(
+                `asking again for ${span} blocks after: ${error instanceof BaseError ? error.shortMessage : String(error)}`,
+              ),
+          },
+        );
+        console.log(
+          `changed names: ${meta.names} in blocks ${meta.fromBlock}–${meta.toBlock} (${meta.labelledFromLogs} labelled by controller logs, ${meta.labelledFromCsv} from exports, ${meta.unlabelled} unlabelled); wrote ${opts.out}`,
         );
       },
     ),

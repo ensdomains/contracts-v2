@@ -346,6 +346,38 @@ reporting the run as a success would hand back a green result over an incomplete
 Re-run with `--continue` after fixing the cause. The "already registered" and "already up to date"
 counters are not failures — nothing was lost in either case — and do not affect the exit status.
 
+## Syncing only changed names
+
+Once a run has reserved every name, a later sync only needs the names whose v1 expiry changed since.
+A v1 expiry changes only through the `BaseRegistrar`'s `NameRegistered` and `NameRenewed` events, so
+`premigration changed-names` reads those events in a block range and writes the names as a
+pre-migration CSV. A sync over that CSV checks a day's changes in minutes. A sync over a full export
+reads every name, which takes hours.
+
+```bash
+bun run migration -- premigration changed-names --network mainnet \
+  --from-block <first block not yet synced> --out .dev/sync/input.csv \
+  --label-csv <earlier export.csv> ...
+bun run migration -- premigration run --network mainnet \
+  --csv-file .dev/sync/input.csv --work-dir .dev/sync
+```
+
+- **Range.** Give `--from-block <n>`, or `--since <ISO time>` for the first block at or after a time.
+  `--to-block` defaults to the chain's `finalized` block, so a reorg cannot drop an event the next sync
+  then skips. It also takes a block number or `latest`. Start the next sync at the block after this
+  one's `toBlock`. Ranges may overlap, because pre-migration only extends an expiry.
+- **Labels.** A name's label comes from the registrar controller's event in the range, kept only when
+  it hashes to the labelhash. A name with no such event, such as one a controller with no label event
+  registered, takes its label from the `--label-csv` exports, matched on its labelhash. A name neither
+  labels is written as `[labelhash]`, which pre-migration counts as invalid, like an unlabelled export
+  row.
+- **Coverage.** `<out>.meta.json` records the range, the logs read, and how many names were labelled
+  by events, by exports, or not at all.
+- The list does no filtering. Pre-migration reads each name's v1 and v2 state and decides whether to
+  reserve, renew, skip, or leave it.
+- `--log-span` (default 50,000 blocks) and `--log-concurrency` (default 4) set the log queries. A
+  query the RPC refuses is halved and asked again.
+
 ## Cost estimate
 
 `bun run premigration:cost` estimates what the initial pre-migration (phase 2 of the

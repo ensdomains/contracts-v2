@@ -1367,6 +1367,7 @@ and idempotency rules.
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 (CSV-scoped; superseded as the phase 2/5 gate by `reconcile`) |
 | `premigration build-index` | Build an independent labelhash-keyed index of v1 names, from the subgraph or from v1 `BaseRegistrar` logs (`--source subgraph\|rpc`; `--resume` continues a partial build) |
+| `premigration changed-names` | List the v1 names registered or renewed in a block range as a pre-migration CSV, for a sync that checks only changed names (`--from-block` or `--since`; `--to-block` defaults to `finalized`; `--label-csv` labels names no controller event labels). See [premigration.md](./premigration.md#syncing-only-changed-names) |
 | `premigration index-status` | Print the local v1 name index metadata (local; `--work-dir` only) |
 | `premigration reconcile` | Reconcile the v1 name index against v2 in both directions — the phase 2/5 sign-off (`--check-fuses` also counts names `CANNOT_TRANSFER` makes unclaimable; needs `--csv-file` for the labels). Reads each registrant from v1, so it takes `--v1-base-registrar` and `--graveyards` like `run` |
 | `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
