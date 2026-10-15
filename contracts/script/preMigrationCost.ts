@@ -279,7 +279,6 @@ type FeeClient = {
   }): Promise<FeeHistory>;
 };
 
-
 /// The gas price of each block in the `days` ending at `toBlock`, oldest first: its
 /// base fee plus its median priority fee, the price pre-migration's gas price limit
 /// is measured in. Paged through `eth_feeHistory` from the newest block back,

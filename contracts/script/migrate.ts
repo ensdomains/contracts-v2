@@ -10055,7 +10055,10 @@ export async function main(argv = process.argv): Promise<void> {
           .description(
             "List the v1 names registered or renewed in a block range as a pre-migration CSV",
           )
-          .requiredOption("--out <path>", "CSV to write; its coverage goes to <path>.meta.json")
+          .requiredOption(
+            "--out <path>",
+            "CSV to write; its coverage goes to <path>.meta.json",
+          )
           .option("--from-block <number>", "First block to read")
           .option(
             "--since <time>",
@@ -10076,7 +10079,11 @@ export async function main(argv = process.argv): Promise<void> {
             "Most blocks per eth_getLogs call; narrowed when the RPC refuses",
             "50000",
           )
-          .option("--log-concurrency <count>", "Block ranges read at once", "4"),
+          .option(
+            "--log-concurrency <count>",
+            "Block ranges read at once",
+            "4",
+          ),
       ),
     ).action(
       async (
@@ -10128,11 +10135,8 @@ export async function main(argv = process.argv): Promise<void> {
         }
         const registrar =
           opts.v1BaseRegistrar ??
-          requireV1Deployment(
-            networkOpts.network,
-            V1_BASE_REGISTRAR_NAME,
-            opts,
-          ).address;
+          requireV1Deployment(networkOpts.network, V1_BASE_REGISTRAR_NAME, opts)
+            .address;
         console.log(
           `reading registrations and renewals in blocks ${fromBlock}–${toBlock}`,
         );
