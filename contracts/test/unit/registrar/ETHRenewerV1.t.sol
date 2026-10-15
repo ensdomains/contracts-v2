@@ -11,6 +11,7 @@ import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {NATIVE_ETH} from "~src/utils/ERC7528.sol";
 import {IETHRenewer, RenewData} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {ETHRenewerV1} from "~src/registrar/ETHRenewerV1.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
@@ -118,7 +119,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         (, uint256 tokenIdV1) = registerUnwrapped(testLabel);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         uint64 newExpiry = ethRegistry.getExpiry(tokenId) + testDuration;
-        uint256 amount = ethRenewerV1.getRenewPrice(testLabel, testDuration, testPaymentToken);
+        uint256 amount =
+            ethRenewerV1.getRenewPrice(testLabel, testDuration, address(testPaymentToken));
         vm.expectEmit();
         emit IRegistryEvents.ExpiryUpdated(tokenId, newExpiry, address(ethRenewerV1));
         vm.expectEmit();
@@ -129,13 +131,16 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
             testLabel,
             testDuration,
             newExpiry,
-            testPaymentToken,
+            address(testPaymentToken),
             testReferrer,
             amount
         );
         vm.prank(testOwner);
         uint256 g = gasleft();
-        ethRenewerV1.renew(RenewData(testLabel, testDuration, testReferrer), testPaymentToken);
+        ethRenewerV1.renew(
+            RenewData(testLabel, testDuration, testReferrer),
+            address(testPaymentToken)
+        );
         g -= gasleft();
         console.log("Gas: %s", g);
     }
@@ -245,10 +250,10 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         vm.warp(block.timestamp + during);
         uint256 owner0 = testPaymentToken.balanceOf(testOwner);
         uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
-        uint256 amount = ethRenewerV1.getRenewPrice(testLabel, duration, testPaymentToken);
+        uint256 amount = ethRenewerV1.getRenewPrice(testLabel, duration, address(testPaymentToken));
         testDuration = duration;
         this.renew();
-        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "owner");
+        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "payer");
         assertEq(beneficiary0 + amount, testPaymentToken.balanceOf(beneficiary), "beneficiary");
     }
 
@@ -266,7 +271,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         registerUnwrapped(testLabel);
         vm.prank(testOwner);
         testPaymentToken.approve(address(ethRenewerV1), 0);
-        uint256 amount = ethRenewerV1.getRenewPrice(testLabel, testDuration, testPaymentToken);
+        uint256 amount =
+            ethRenewerV1.getRenewPrice(testLabel, testDuration, address(testPaymentToken));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IERC20Errors.ERC20InsufficientAllowance.selector,
@@ -281,7 +287,8 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
     function test_renew_insufficientBalance() external {
         registerUnwrapped(testLabel);
         testPaymentToken.nuke(testOwner);
-        uint256 amount = ethRenewerV1.getRenewPrice(testLabel, testDuration, testPaymentToken);
+        uint256 amount =
+            ethRenewerV1.getRenewPrice(testLabel, testDuration, address(testPaymentToken));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IERC20Errors.ERC20InsufficientBalance.selector,
@@ -293,6 +300,35 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         this.renew();
     }
 
+    function test_renewWithETH() external {
+        registerUnwrapped(testLabel);
+        uint256 amount = ethRenewerV1.getRenewPrice(testLabel, testDuration, NATIVE_ETH);
+        uint256 overpay = amount / 100;
+        uint256 owner0 = testOwner.balance;
+        uint256 beneficiary0 = beneficiary.balance;
+        vm.prank(testOwner);
+        ethRenewerV1.renewWithETH{value: amount + overpay}(
+            RenewData(testLabel, testDuration, testReferrer),
+            refundTo
+        );
+        assertEq(owner0 - amount - overpay, testOwner.balance, "payer");
+        assertEq(beneficiary0 + amount, beneficiary.balance, "beneficiary");
+        assertEq(overpay, refundTo.balance, "refund");
+    }
+
+    function test_renewWithETH_insufficientETH() external {
+        registerUnwrapped(testLabel);
+        uint256 amount = ethRenewerV1.getRenewPrice(testLabel, testDuration, NATIVE_ETH);
+        vm.expectRevert(
+            abi.encodeWithSelector(IETHRenewer.InsufficientETH.selector, amount - 1, amount)
+        );
+        vm.prank(testOwner);
+        ethRenewerV1.renewWithETH{value: amount - 1}(
+            RenewData(testLabel, testDuration, testReferrer),
+            testOwner
+        );
+    }
+
     function test_renewBatch(uint8 n) external {
         vm.assume(n < 10);
         RenewData[] memory rds = new RenewData[](n);
@@ -302,13 +338,13 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
             registerUnwrapped(label);
             uint64 duration = testDuration + uint64(i);
             rds[i] = RenewData(label, duration, testReferrer);
-            total += ethRenewerV1.getRenewPrice(label, duration, testPaymentToken);
+            total += ethRenewerV1.getRenewPrice(label, duration, address(testPaymentToken));
         }
         uint256 owner0 = testPaymentToken.balanceOf(testOwner);
         uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
         vm.prank(testOwner);
         uint256 g = gasleft();
-        ethRenewerV1.renewBatch(rds, testPaymentToken);
+        ethRenewerV1.renewBatch(rds, address(testPaymentToken));
         g -= gasleft();
         console.log("Gas: %s", g);
         assertEq(owner0 - total, testPaymentToken.balanceOf(testOwner), "payer");
@@ -323,7 +359,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         }
         uint256 expiry = baseRegistrar.nameExpires(tokenIdV1);
         vm.prank(testOwner);
-        ethRenewerV1.renewBatch(rds, testPaymentToken);
+        ethRenewerV1.renewBatch(rds, address(testPaymentToken));
         assertEq(baseRegistrar.nameExpires(tokenIdV1), expiry + testDuration * rds.length);
     }
 
@@ -395,7 +431,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         }
         _activateV2(true);
         vm.prank(testOwner);
-        ethRenewerV1.renewBatch(rds, testPaymentToken);
+        ethRenewerV1.renewBatch(rds, address(testPaymentToken));
         for (uint256 i; i < n; ++i) {
             uint256 tokenIdV1 = LibLabel.id(rds[i].label);
             (, , uint64 expiry) =
@@ -412,7 +448,10 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
 
     function renew() external {
         vm.prank(testOwner);
-        ethRenewerV1.renew(RenewData(testLabel, testDuration, testReferrer), testPaymentToken);
+        ethRenewerV1.renew(
+            RenewData(testLabel, testDuration, testReferrer),
+            address(testPaymentToken)
+        );
     }
 
     function _activateV2(bool on) internal {

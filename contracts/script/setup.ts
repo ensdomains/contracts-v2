@@ -99,7 +99,7 @@ import {
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
 import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
 
-const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
+const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2", "fees"] as const;
 
 export type StateSnapshot = () => Promise<void>;
 export type DevnetEnvironment = Awaited<ReturnType<typeof setupDevnet>>;

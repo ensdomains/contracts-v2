@@ -2,13 +2,13 @@
 pragma solidity 0.8.25;
 
 import {StringUtils} from "@ens/contracts/utils/StringUtils.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 
+import {IChainlinkAggregator} from "./interfaces/IChainlinkAggregator.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {LibHalving} from "./libraries/LibHalving.sol";
 
@@ -47,14 +47,14 @@ struct DiscountPoint {
     uint128 numer;
 }
 
-/// @dev Initialization-time structure for a payment token and exchange rate.
-/// @param paymenToken The payment token.
-/// @param numer Exchange rate numerator, relative to base units.
-/// @param denom Exchange rate denominator, relative to base units.
-struct PaymentRatio {
-    IERC20 paymentToken;
+/// @dev Initialization-time structure for `PaymentConfig` with `paymentToken`
+struct PaymentConfigWithToken {
+    address paymentToken;
     uint128 numer;
     uint128 denom;
+    IChainlinkAggregator oracle;
+    bool flip;
+    uint64 maxAge;
 }
 
 /// @notice Rent pricing oracle with (4) components:
@@ -70,7 +70,9 @@ struct PaymentRatio {
 ///    recently expired names; renewals are exempt.
 /// 4. Configurable payment tokens: payment tokens and their exchange rates can be managed
 ///    with `ROLE_UPDATE_TOKEN`. The exchange rate converts the token to standard units.
-///    Since no external oracle is consulted, only stablecoins.
+///    Non-stablecoins must provide a `IChainlinkAggregrator` where one of the legs is USD.
+///    The expected quote is USD/X.  Use `flip=true` if the quote is X/USD.
+///    Use `maxAge` to limit the staleness of the quote.
 ///    Accounts with `ROLE_DISABLE_TOKEN` can only disable payment tokens.
 ///
 contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, IContractNamer {
@@ -78,10 +80,19 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     // Types
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Internal numerator/denominator pair representing a payment token's exchange rate relative to base pricing units.
-    struct Ratio {
+    /// @dev Storage structure for payment configuration.
+    /// @param paymentToken The payment token.
+    /// @param numer Exchange rate numerator, relative to base units.
+    /// @param denom Exchange rate denominator, relative to base units.
+    /// @param oracle USD-based Chainlink oracle (optional).
+    /// @param flip `true` if the oracle response should be flipped (USD/X => X/USD).
+    /// @param maxAge Maximum accepted age of the oracle response, in seconds.
+    struct PaymentConfig {
         uint128 numer;
         uint128 denom;
+        IChainlinkAggregator oracle;
+        bool flip;
+        uint64 maxAge;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -113,8 +124,8 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @dev Ordered discount points, relative to `DISCOUNT_DENOMINATOR`.
     DiscountPoint[] internal _discountPoints;
 
-    /// @dev Exchange rates for each accepted payment token, mapping token address to its numerator/denominator ratio.
-    mapping(IERC20 paymentToken => Ratio ratio) internal _paymentRatios;
+    /// @dev Exchange rates for each accepted payment token, mapping token address to its payment configuration.
+    mapping(address paymentToken => PaymentConfig pc) internal _paymentConfigs;
 
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -124,7 +135,17 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @param paymentToken The payment token.
     /// @param numer Exchange rate numerator, relative to base units.
     /// @param denom Exchange rate denominator, relative to base units, or 0 if disabled.
-    event PaymentTokenUpdated(IERC20 indexed paymentToken, uint128 numer, uint128 denom);
+    /// @param oracle USD-based Chainlink oracle (optional).
+    /// @param flip `true` if the oracle response should be flipped (USD/X => X/USD).
+    /// @param maxAge Maximum accepted age of the oracle response, in seconds.
+    event PaymentTokenUpdated(
+        address indexed paymentToken,
+        uint128 numer,
+        uint128 denom,
+        IChainlinkAggregator oracle,
+        bool flip,
+        uint64 maxAge
+    );
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -153,7 +174,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @param premiumPriceInitial Premium initial price, in standard units.
     /// @param premiumHalvingPeriod Premium halving period, in seconds.
     /// @param premiumPeriod Premium period, in seconds.
-    /// @param paymentRatios List of payment tokens with exchange rates.
+    /// @param paymentConfigs List of payment token configurations.
     constructor(
         address rootAccount,
         uint256[] memory baseRatePerCp,
@@ -162,7 +183,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         uint256 premiumPriceInitial,
         uint64 premiumHalvingPeriod,
         uint64 premiumPeriod,
-        PaymentRatio[] memory paymentRatios
+        PaymentConfigWithToken[] memory paymentConfigs
     )
     {
         _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, rootAccount, false);
@@ -200,13 +221,26 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
             premiumPeriod
         );
 
-        for (uint256 i; i < paymentRatios.length; ++i) {
-            PaymentRatio memory pr = paymentRatios[i];
-            if (pr.numer == 0 || pr.denom == 0) {
+        for (uint256 i; i < paymentConfigs.length; ++i) {
+            PaymentConfigWithToken memory pc = paymentConfigs[i];
+            if (pc.numer == 0 || pc.denom == 0) {
                 revert InvalidRatio();
             }
-            _paymentRatios[pr.paymentToken] = Ratio(pr.numer, pr.denom);
-            emit PaymentTokenUpdated(pr.paymentToken, pr.numer, pr.denom);
+            _paymentConfigs[pc.paymentToken] = PaymentConfig(
+                pc.numer,
+                pc.denom,
+                pc.oracle,
+                pc.flip,
+                pc.maxAge
+            );
+            emit PaymentTokenUpdated(
+                pc.paymentToken,
+                pc.numer,
+                pc.denom,
+                pc.oracle,
+                pc.flip,
+                pc.maxAge
+            );
         }
     }
 
@@ -224,33 +258,29 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
 
     /// @notice Update `paymentToken` support and/or exchange rate.
     /// @param paymentToken The payment token.
-    /// @param numer The numerator of the exchange rate.
-    /// @param denom The denominator of the exchange rate, or 0 to disable.
-    function updatePaymentToken(IERC20 paymentToken, uint128 numer, uint128 denom)
+    /// @param pc The new payment configuration.
+    function updatePaymentToken(address paymentToken, PaymentConfig calldata pc)
         external
         onlyRootRoles(ROLE_UPDATE_TOKEN)
     {
-        Ratio memory ratio = _paymentRatios[paymentToken];
-        if (denom > 0) {
-            if (numer == 0) {
+        if (pc.denom > 0) {
+            if (pc.numer == 0) {
                 revert InvalidRatio();
             }
-            if (ratio.numer != numer || ratio.denom != denom) {
-                _paymentRatios[paymentToken] = Ratio(numer, denom);
-                emit PaymentTokenUpdated(paymentToken, numer, denom);
-            }
-        } else if (ratio.denom > 0) {
-            delete _paymentRatios[paymentToken];
-            emit PaymentTokenUpdated(paymentToken, 0, 0);
+            _paymentConfigs[paymentToken] = pc;
+            emit PaymentTokenUpdated(paymentToken, pc.numer, pc.denom, pc.oracle, pc.flip, pc.maxAge);
+        } else if (_paymentConfigs[paymentToken].denom > 0) {
+            delete _paymentConfigs[paymentToken];
+            emit PaymentTokenUpdated(paymentToken, 0, 0, IChainlinkAggregator(address(0)), false, 0);
         }
     }
 
     /// @notice Disable `paymentToken` support.
     /// @param paymentToken The payment token.
-    function disablePaymentToken(IERC20 paymentToken) external onlyRootRoles(ROLE_DISABLE_TOKEN) {
-        if (_paymentRatios[paymentToken].denom > 0) {
-            delete _paymentRatios[paymentToken];
-            emit PaymentTokenUpdated(paymentToken, 0, 0);
+    function disablePaymentToken(address paymentToken) external onlyRootRoles(ROLE_DISABLE_TOKEN) {
+        if (_paymentConfigs[paymentToken].denom > 0) {
+            delete _paymentConfigs[paymentToken];
+            emit PaymentTokenUpdated(paymentToken, 0, 0, IChainlinkAggregator(address(0)), false, 0);
         }
     }
 
@@ -276,22 +306,32 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         return getBasePrice(label, 1) > 0;
     }
 
-    /// @notice Get numerator/denominator for `paymentToken`.
+    /// @notice Get effective numerator/denominator for `paymentToken` including oracle.
     /// @param paymentToken The payment token.
     /// @return numer The numerator of the exchange rate.
     /// @return denom The denominator of the exchange rate.
-    function getPaymentTokenRatio(IERC20 paymentToken)
+    function getPaymentTokenRatio(address paymentToken)
         external
         view
-        returns (uint128 numer, uint128 denom)
+        returns (uint256 numer, uint256 denom)
     {
-        Ratio storage ratio = _paymentRatios[paymentToken];
-        return (ratio.numer, ratio.denom);
+        (numer, denom) = _computePaymentRatio(paymentToken);
+    }
+
+    /// @notice Get underlying `paymentToken` configuration.
+    /// @param paymentToken The payment token.
+    /// @return The payment configuration.
+    function getPaymentTokenConfiguration(address paymentToken)
+        external
+        view
+        returns (PaymentConfig memory)
+    {
+        return _paymentConfigs[paymentToken];
     }
 
     /// @inheritdoc IRentPriceOracle
-    function isPaymentToken(IERC20 paymentToken) external view returns (bool) {
-        return _paymentRatios[paymentToken].denom > 0;
+    function isPaymentToken(address paymentToken) external view returns (bool) {
+        return _paymentConfigs[paymentToken].denom > 0;
     }
 
     /// @inheritdoc IRentPriceOracle
@@ -299,20 +339,20 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         string calldata label,
         uint64 available,
         uint64 duration,
-        IERC20 paymentToken
+        address paymentToken
     )
         external
         view
         returns (uint256 base, uint256 premium)
     {
         base = _requireBasePrice(label, duration);
-        Ratio memory ratio = _requirePaymentToken(paymentToken);
+        (uint256 numer, uint256 denom) = _computePaymentRatio(paymentToken);
         premium = getPremiumPriceAfter(available);
         if (premium > 0) {
             base += premium; // total
-            premium = _toAmount(premium, ratio);
+            premium = _toAmount(premium, numer, denom);
         }
-        base = _toAmount(base, ratio) - premium; // ensure: f(a+b) - f(a) == f(b)
+        base = _toAmount(base, numer, denom) - premium; // ensure: f(a+b) - f(a) == f(b)
     }
 
     /// @inheritdoc IRentPriceOracle
@@ -320,21 +360,23 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         string calldata label,
         uint64 /*expiry*/,
         uint64 duration,
-        IERC20 paymentToken
+        address paymentToken
     )
         external
         view
         returns (uint256)
     {
-        return _toAmount(_requireBasePrice(label, duration), _requirePaymentToken(paymentToken));
+        (uint256 numer, uint256 denom) = _computePaymentRatio(paymentToken);
+        return _toAmount(_requireBasePrice(label, duration), numer, denom);
     }
 
     /// @notice Convert arbitrary standard units to payment token amount.
     /// @param value An arbitrary value, in standard units.
     /// @param paymentToken The payment token.
     /// @return The amount of payment token.
-    function convertUnits(uint256 value, IERC20 paymentToken) external view returns (uint256) {
-        return _toAmount(value, _requirePaymentToken(paymentToken));
+    function convertUnits(uint256 value, address paymentToken) external view returns (uint256) {
+        (uint256 numer, uint256 denom) = _computePaymentRatio(paymentToken);
+        return _toAmount(value, numer, denom);
     }
 
     /// @notice Apply discount function to an arbitrary value.
@@ -346,8 +388,9 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         uint128 numer;
         for (uint256 i; i < n; ++i) {
             DiscountPoint storage p = _discountPoints[i];
-            if (duration < p.duration)
+            if (duration < p.duration) {
                 break;
+            }
             numer = p.numer;
         }
         return
@@ -362,8 +405,9 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
     /// @return The base price, in standard units, or 0 if not valid.
     function getBasePrice(string calldata label, uint64 duration) public view returns (uint256) {
         uint256 n = bytes(label).length;
-        if (n == 0 || n > 255)
+        if (n == 0 || n > 255) {
             return 0; // too long or too short
+        }
         uint256 i = getLength(label);
         if (i > _baseRatePerCp.length) {
             i = _baseRatePerCp.length;
@@ -406,19 +450,46 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         }
     }
 
-    /// @dev Ensure `paymentToken` is supported.
-    function _requirePaymentToken(IERC20 paymentToken) internal view returns (Ratio memory ratio) {
-        ratio = _paymentRatios[paymentToken];
-        if (ratio.denom == 0) {
+    /// @dev Determine ratio for `paymentToken` including oracle.
+    function _computePaymentRatio(address paymentToken)
+        internal
+        view
+        returns (uint256 numer, uint256 denom)
+    {
+        PaymentConfig memory pc = _paymentConfigs[paymentToken];
+        numer = pc.numer;
+        denom = pc.denom;
+        if (denom == 0) {
             revert PaymentTokenNotSupported(paymentToken);
+        }
+        if (address(pc.oracle) != address(0)) {
+            (, int256 answer, , uint256 updatedAt, ) = pc.oracle.latestRoundData();
+            if (answer < 1) {
+                revert InvalidOracleResponse(paymentToken, answer);
+            }
+            if (
+                updatedAt == 0 ||
+                updatedAt > block.timestamp ||
+                (block.timestamp - updatedAt) > pc.maxAge
+            ) {
+                revert StaleOracleResponse(paymentToken, updatedAt, block.timestamp);
+            }
+            uint256 scale = 10 ** pc.oracle.decimals();
+            if (pc.flip) {
+                numer *= uint256(answer);
+                denom *= scale;
+            } else {
+                numer *= scale;
+                denom *= uint256(answer);
+            }
         }
     }
 
     /// @dev Convert standard units to token amount.
-    function _toAmount(uint256 value, Ratio memory ratio) internal pure returns (uint256) {
+    function _toAmount(uint256 value, uint256 numer, uint256 denom) internal pure returns (uint256) {
         return
-            ratio.numer == ratio.denom
+            numer == denom
                 ? value
-                : Math.mulDiv(value, ratio.numer, ratio.denom, Math.Rounding.Ceil);
+                : Math.mulDiv(value, numer, denom, Math.Rounding.Ceil);
     }
 }
