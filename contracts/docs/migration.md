@@ -394,6 +394,19 @@ renewer is an authorized controller.
   ```
 - **Prerequisites:** phase 3 freeze done. Export a **fresh** post-freeze registration CSV so names
   registered or renewed since phase 2 are caught up.
+- **Syncing only the changed names.** A sync over the whole export reads every name, which takes
+  hours. When the earlier syncs ran from v1 registrar events, list the names changed since the last
+  one instead, up to a finalized block at or after the freeze, and sync that list. See
+  [Syncing only changed names](./premigration.md#syncing-only-changed-names).
+  ```bash
+  bun run migration -- premigration changed-names --network mainnet \
+    --from-block <first block not yet synced> --out .dev/premig-2/input.csv --label-csv <exports...>
+  bun run migration -- premigration run --network mainnet \
+    --csv-file .dev/premig-2/input.csv --work-dir .dev/premig-2
+  ```
+  Every change to a v1 expiry, whoever makes it, emits a registrar event, so the list holds every name
+  that can need a write. The fresh export is still what `premigration reconcile` checks its index
+  against.
 - **Env / args:** same BatchRegistrar owner key as [phase 2](#phase-2-initial-pre-migration);
   `THEGRAPH_API_KEY` for `build-index`, or `--source rpc` to index from the chain instead.
 - **Expected outcome:** names whose v1 expiry grew since phase 2 have their reservation extended —
