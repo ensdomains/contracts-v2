@@ -2,10 +2,9 @@ import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/
 import hre from "hardhat";
 import {
   type Address,
-  concat,
+  encodeAbiParameters,
   encodeErrorResult,
   getAddress,
-  namehash,
   stringToHex,
   zeroAddress,
 } from "viem";
@@ -30,7 +29,7 @@ import { FEATURES } from "../../../lib/ens-contracts/test/utils/features.js";
 
 const network = await hre.network.connect();
 
-const dnsTXTResolverName = "dnstxt.ens.eth";
+const dnsTXTResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
 const testData = "0xabcdef";
@@ -40,9 +39,19 @@ const basicProfile: KnownProfile = {
   addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
 };
 
-// sufficient to satisfy: `abi.decode(DNSSEC.RRSetWithSignature[])`
-const dnsOracleGateway =
-  'data:application/json,{"data":"0x0000000000000000000000000000000000000000000000000000000000000000"}';
+const dnsOracleGatewayDataURL = `data:application/json,{"data":"${encodeAbiParameters(
+  [
+    {
+      internalType: "struct DNSSEC.RRSetWithSignature[]",
+      type: "tuple[]",
+      components: [
+        { type: "bytes", name: "rrset" },
+        { type: "bytes", name: "sig" },
+      ],
+    },
+  ],
+  [[{ rrset: "0x", sig: "0x" }]],
+)}"}`;
 
 async function fixture() {
   const v1 = await deployV1Fixture(network);
@@ -53,11 +62,11 @@ async function fixture() {
   const mockDNSSEC = await network.viem.deployContract("MockDNSSEC");
   const dnsTLDResolverV1 = await network.viem.deployContract(
     "OffchainDNSResolver",
-    [v1.ensRegistry.address, mockDNSSEC.address, dnsOracleGateway],
+    [v1.ensRegistry.address, mockDNSSEC.address, dnsOracleGatewayDataURL],
   );
   const oracleGatewayProvider = await network.viem.deployContract(
     "GatewayProvider",
-    [v2.walletClient.account.address, [dnsOracleGateway]],
+    [v2.walletClient.account.address, [dnsOracleGatewayDataURL]],
   );
   const myResolver = await v2.deployPermissionedResolver();
   const dnsTLDResolver = await network.viem.deployContract("DNSTLDResolver", [
@@ -221,7 +230,7 @@ describe("DNSTLDResolver", () => {
       dnsEncodeName(basicProfile.name),
     ]);
     expectVar({ verifier }).toEqualAddress(F.mockDNSSEC.address);
-    expectVar({ gateways }).toStrictEqual([dnsOracleGateway]);
+    expectVar({ gateways }).toStrictEqual([dnsOracleGatewayDataURL]);
   });
 
   function testProfiles(
