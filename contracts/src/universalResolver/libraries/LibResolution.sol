@@ -9,8 +9,58 @@ import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
-///      discovery, canonical name construction, and ancestry enumeration.
+/// discovery, canonical name construction, and ancestry enumeration.
+///
+/// Since registry operations invoke untrusted contracts, ALL reverts are wrapped in `ResolutionError`.
+///
 library LibResolution {
+    /// @notice `registry` reverted `errorData`.
+    /// @dev Error selector: `0x4e8547e9`
+    error ResolutionError(IRegistry registry, bytes errorData);
+
+    /// @dev Call `IRegistry.getResolver(label)` and wrap revert in `ResolutionError`.
+    function getResolver(IRegistry registry, string memory label) internal view returns (address) {
+        try registry.getResolver(label) returns (address resolver) {
+            return resolver;
+        } catch (bytes memory err) {
+            revert ResolutionError(registry, err);
+        }
+    }
+
+    /// @dev Call `IRegistry.getSubregistry(label)` and wrap revert in `ResolutionError`.
+    function getSubregistry(IRegistry registry, string memory label)
+        internal
+        view
+        returns (IRegistry)
+    {
+        try registry.getSubregistry(label) returns (IRegistry subregistry) {
+            return subregistry;
+        } catch (bytes memory err) {
+            revert ResolutionError(registry, err);
+        }
+    }
+
+    /// @dev Call `IRegistry.getParent()` and wrap revert in `ResolutionError`.
+    function getParent(IRegistry registry) internal view returns (IRegistry, string memory) {
+        try registry.getParent() returns (IRegistry parent, string memory label) {
+            return (parent, label);
+        } catch (bytes memory err) {
+            revert ResolutionError(registry, err);
+        }
+    }
+
+    /// @dev Call `IOwnedRegistry.findOwner()` if supported and wrap revert in `ResolutionError`.
+    function findOwner(IRegistry registry, string memory label) internal view returns (address) {
+        if (!ERC165Checker.supportsInterface(address(registry), type(IOwnedRegistry).interfaceId)) {
+            return address(0);
+        }
+        try IOwnedRegistry(address(registry)).findOwner(label) returns (address owner) {
+            return owner;
+        } catch (bytes memory err) {
+            revert ResolutionError(registry, err);
+        }
+    }
+
     /// @dev Find the valid resolver address for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
@@ -74,12 +124,12 @@ library LibResolution {
         // if there was a parent registry...
         if (address(exactRegistry) != address(0)) {
             // remember the resolver (if it exists)
-            address res = exactRegistry.getResolver(label);
+            address res = getResolver(exactRegistry, label);
             if (res != address(0)) {
                 resolver = res;
                 foundOffset = offset;
             }
-            exactRegistry = exactRegistry.getSubregistry(label);
+            exactRegistry = getSubregistry(exactRegistry, label);
         }
         node = NameCoder.namehash(node, keccak256(bytes(label))); // update namehash
     }
@@ -128,11 +178,11 @@ library LibResolution {
             if (address(registry) == address(rootRegistry)) {
                 return abi.encodePacked(name, uint8(0)); // add terminator
             }
-            (IRegistry parent, string memory label) = registry.getParent();
+            (IRegistry parent, string memory label) = getParent(registry);
             if (address(parent) == address(0)) {
                 return ""; // no canonical parent
             }
-            IRegistry child = parent.getSubregistry(label);
+            IRegistry child = getSubregistry(parent, label);
             if (address(child) != address(registry)) {
                 return ""; // wrong canonical child
             }
@@ -177,7 +227,7 @@ library LibResolution {
         (registry, registryOffset) = findNearestRegistry(rootRegistry, name, next);
         // if registry exists and is the parent
         if (address(registry) != address(0) && registryOffset == next) {
-            IRegistry child = registry.getSubregistry(label); // get child
+            IRegistry child = getSubregistry(registry, label); // get child
             if (address(child) != address(0)) {
                 registry = child; // remember
                 registryOffset = offset;
@@ -244,15 +294,13 @@ library LibResolution {
         }
         (parent, owner, foundOffset) = _findNearestOwner(rootRegistry, name, next);
         if (address(parent) != address(0)) {
-            if (ERC165Checker.supportsInterface(address(parent), type(IOwnedRegistry).interfaceId)) {
-                address child = IOwnedRegistry(address(parent)).findOwner(label);
-                // if registry exists and has child owner
-                if (child != address(0)) {
-                    owner = child; // remember
-                    foundOffset = offset;
-                }
+            address child = findOwner(parent, label);
+            // if registry exists and has child owner
+            if (child != address(0)) {
+                owner = child; // remember
+                foundOffset = offset;
             }
-            parent = parent.getSubregistry(label); // always get child
+            parent = getSubregistry(parent, label); // always get child
         }
     }
 
@@ -273,7 +321,7 @@ library LibResolution {
         }
         registry = _findRegistries(name, nextOffset, registries, index + 1);
         if (address(registry) != address(0)) {
-            registry = registry.getSubregistry(label);
+            registry = getSubregistry(registry, label);
             registries[index] = registry;
         }
     }

@@ -22,6 +22,7 @@ import {
   dnsEncodeName,
   namehash,
   getLabelAt,
+  idFromLabel,
 } from "../utils/utils.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -44,11 +45,39 @@ async function fixture() {
   );
   const ss1 = await network.viem.deployContract("DummyShapeshiftResolver");
   const ss2 = await network.viem.deployContract("DummyShapeshiftResolver");
+  const revertingRegistry = await network.viem.deployContract(
+    "MockRevertingRegistry",
+  );
   const old = await network.viem.deployContract(oldResolverArtifact);
   const ensip15 = await network.viem.deployContract("MockENSIP15");
   const owner = getAddress(v2.walletClient.account.address);
   const myResolver = await v2.deployPermissionedResolver();
-  return { ...v2, ur, ss1, ss2, old, ensip15, owner, myResolver };
+  return {
+    ...v2,
+    ur,
+    ss1,
+    ss2,
+    old,
+    ensip15,
+    owner,
+    myResolver,
+    revertingRegistry,
+    createMaliciousOffchainLookup,
+  };
+  function createMaliciousOffchainLookup() {
+    return encodeErrorResult({
+      abi: ur.abi,
+      errorName: "OffchainLookup",
+      args: [
+        ur.address, // top level
+        // resolveDirectImmediateCallback(response, extraData) will return response
+        [`data:application/json,{"data":"0xBAAD"}`], // response
+        "0x", // callData (ignored) by data url
+        toFunctionSelector("resolveDirectImmediateCallback(bytes,bytes)"),
+        "0x", // extraData (ignored)
+      ],
+    });
+  }
 }
 
 const dummyCalldata = "0x12345678";
@@ -944,6 +973,121 @@ describe("UniversalResolverV2", () => {
       expectVar({ name }).toStrictEqual(testName);
       expectVar({ resolver }).toEqualAddress(F.ss2.address);
       expectVar({ reverseResolver }).toEqualAddress(F.ss1.address);
+    });
+  });
+
+  describe("Untrusted External Call Guards", () => {
+    for (const method of ["getResolver(string)", "getSubregistry(string)"]) {
+      it(`${method} during findResolver() during resolve()`, async () => {
+        const F = await loadFixture();
+        const { parentRegistry } = await F.setupName({ name: testName });
+        await parentRegistry.write.setSubregistry([
+          idFromLabel(getLabelAt(testName)),
+          F.revertingRegistry.address,
+        ]);
+        const revertData = F.createMaliciousOffchainLookup(); // arbitrary
+        await F.revertingRegistry.write.setRevertData([
+          toFunctionSelector(method),
+          revertData,
+        ]);
+        await expect(
+          F.ur.read.resolve([dnsEncodeName(`sub.${testName}`), "0x"]), // arbitrary
+        )
+          .toBeRevertedWithCustomError("ResolutionError")
+          .withArgs([getAddress(F.revertingRegistry.address), revertData]);
+      });
+    }
+
+    for (const method of ["getResolver(string)"]) {
+      it(`${method} during findResolver() during reverse()`, async () => {
+        const F = await loadFixture();
+        const reverseParentName = getParentName(getReverseName(F.owner));
+        const { parentRegistry } = await F.setupName({
+          name: reverseParentName,
+        });
+        await parentRegistry.write.setSubregistry([
+          idFromLabel(getLabelAt(reverseParentName)),
+          F.revertingRegistry.address,
+        ]);
+        const revertData = F.createMaliciousOffchainLookup(); // arbitrary
+        await F.revertingRegistry.write.setRevertData([
+          toFunctionSelector(method),
+          revertData,
+        ]);
+        await expect(F.ur.read.reverse([F.owner, COIN_TYPE_ETH]))
+          .toBeRevertedWithCustomError("ResolutionError")
+          .withArgs([getAddress(F.revertingRegistry.address), revertData]);
+      });
+    }
+
+    for (const method of ["getResolver(string)", "getSubregistry(string)"]) {
+      it(`${method} during findResolver() during reverse() callback`, async () => {
+        const F = await loadFixture();
+        const reverseName = getReverseName(F.owner);
+        await F.setupName({
+          name: reverseName,
+          resolverAddress: F.myResolver.address,
+        });
+        await F.myResolver.write.setName([
+          dnsEncodeName(reverseName),
+          `sub.${testName}`, // arbitrary
+        ]);
+        const { parentRegistry } = await F.setupName({ name: testName });
+        await parentRegistry.write.setSubregistry([
+          idFromLabel(getLabelAt(testName)),
+          F.revertingRegistry.address,
+        ]);
+        const revertData = F.createMaliciousOffchainLookup(); // arbitrary
+        await F.revertingRegistry.write.setRevertData([
+          toFunctionSelector(method),
+          revertData,
+        ]);
+        await expect(F.ur.read.reverse([F.owner, COIN_TYPE_ETH]))
+          .toBeRevertedWithCustomError("ResolutionError")
+          .withArgs([getAddress(F.revertingRegistry.address), revertData]);
+      });
+    }
+
+    it("supportsInterface()", async () => {
+      const F = await loadFixture();
+      const resolver = await network.viem.deployContract(
+        "MockRevertingERC165Resolver",
+        [F.createMaliciousOffchainLookup()],
+      );
+      await F.setupName({
+        name: testName,
+        resolverAddress: resolver.address,
+      });
+      const [res] = makeResolutions({
+        name: testName,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: resolver.address }],
+      });
+      const [answer] = await F.ur.read.resolve([
+        dnsEncodeName(testName),
+        res.call,
+      ]);
+      res.expect(answer);
+    });
+
+    it("supportsFeature()", async () => {
+      const F = await loadFixture();
+      const resolver = await network.viem.deployContract(
+        "MockRevertingERC7996Resolver",
+        [F.createMaliciousOffchainLookup()],
+      );
+      await F.setupName({
+        name: testName,
+        resolverAddress: resolver.address,
+      });
+      const [res] = makeResolutions({
+        name: testName,
+        addresses: [{ coinType: COIN_TYPE_ETH, value: resolver.address }],
+      });
+      const [answer] = await F.ur.read.resolve([
+        dnsEncodeName(testName),
+        res.call,
+      ]);
+      res.expect(answer);
     });
   });
 });
