@@ -32,6 +32,7 @@ import {
   keccak256,
   namehash,
   parseAbiItem,
+  parseGwei,
   parseEther,
   slice,
   stringToHex,
@@ -123,13 +124,18 @@ import {
 } from "./migrations/directRegistrations.js";
 import {
   archiveReplacedRecords,
+  CONTRACT_REDEPLOY_KIND,
+  driftedRecords,
   driftedReusedRecords,
-  findRootArchive,
+  findRedeployArchive,
   namespaceBeforeRedeploy,
   readNamespaceRecords,
-  REPLACED_DEPLOYMENTS,
-  rootRedeployDiff,
-} from "./migrations/rootRedeploy.js";
+  redeployDiff,
+  ROOT_REDEPLOY,
+  type RedeploySet,
+  withDependents,
+} from "./migrations/redeploy.js";
+import { firstReservations, nextTldStep } from "./migrations/dnsTlds.js";
 import {
   assertRejected,
   assertV1Owner,
@@ -225,8 +231,10 @@ import {
   isClaimableOnV1,
   parseGraveyardAddresses,
   readV1Registrations,
+  resolveMaxGasPrice,
   resolveV1Contracts,
   v1Eligibility,
+  waitForGasPriceAtOrBelow,
   type V1Contracts,
 } from "./preMigration.js";
 import {
@@ -5286,10 +5294,10 @@ async function rootRegistryReferences(
 
 type AbiItemLike = { type: string; name?: string; inputs?: readonly unknown[] };
 
-// A root registry may only be replaced while nothing yet depends on it beyond this
-// deployment: before the DAO hands v1 over, before go-live, and while the deployer
-// can still repoint the `.eth` registry.
-async function assertRootRedeployAllowed(opts: {
+// Deployed contracts may only be replaced while nothing yet depends on them beyond
+// this deployment: before the DAO hands v1 over and before go-live. Replacing the
+// root registry also needs the deployer able to repoint the `.eth` registry.
+async function assertRedeployAllowed(opts: {
   client: ReturnType<typeof publicClient>;
   network: MigrationNetwork;
   deploymentsDir: string;
@@ -5297,6 +5305,10 @@ async function assertRootRedeployAllowed(opts: {
   deployer: Address;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
+  // What is replaced, as the refusal names it.
+  subject: string;
+  set: Pick<RedeploySet, "kind" | "marker">;
+  requireSetParent: boolean;
 }) {
   const { client } = opts;
   const failures: string[] = [];
@@ -5342,7 +5354,11 @@ async function assertRootRedeployAllowed(opts: {
   }
   // A resumed redeploy has moved the registrar's record to the archive and may not
   // have deployed its replacement yet, so both namespaces are checked.
-  const archive = findRootArchive(opts.deploymentsDir, opts.deploymentNetwork);
+  const archive = findRedeployArchive(
+    opts.deploymentsDir,
+    opts.deploymentNetwork,
+    opts.set,
+  );
   for (const namespace of [opts.deploymentNetwork, archive]) {
     const registrar = namespace
       ? maybeLoadV2Deployment(opts.deploymentsDir, namespace, "ETHRegistrar")
@@ -5356,14 +5372,17 @@ async function assertRootRedeployAllowed(opts: {
       );
     }
   }
-  if (!(await hasRootRoles(ROLES.REGISTRY.SET_PARENT, opts.deployer))) {
+  if (
+    opts.requireSetParent &&
+    !(await hasRootRoles(ROLES.REGISTRY.SET_PARENT, opts.deployer))
+  ) {
     failures.push(
       `the deployer ${opts.deployer} cannot set the .eth registry's parent`,
     );
   }
   if (failures.length > 0) {
     throw new Error(
-      `the root registry cannot be redeployed: ${failures.join("; ")}`,
+      `${opts.subject} cannot be redeployed: ${failures.join("; ")}`,
     );
   }
 }
@@ -5405,6 +5424,35 @@ const abiHasFunction = (abi: readonly unknown[], name: string) =>
       (item as { name?: string }).name === name,
   );
 
+// The current build's creation bytecode for each contract the records name, read
+// from the generated artifacts; undefined for a contract the build lacks. A contract
+// whose name another source also uses is generated under its source path, which is
+// tried first.
+async function buildBytecodes(
+  records: ReturnType<typeof readNamespaceRecords>,
+): Promise<(contractName: string) => string | undefined> {
+  const generated = resolve(import.meta.dirname, "../generated/artifacts");
+  const builds = new Map<string, string | undefined>();
+  for (const record of records.values()) {
+    const name = record?.contractName;
+    if (!name || builds.has(name)) continue;
+    const sourceName = (record as { sourceName?: string }).sourceName;
+    const file = [
+      ...(sourceName ? [join(generated, sourceName, `${name}.ts`)] : []),
+      join(generated, `${name}.ts`),
+    ].find((path) => existsSync(path));
+    builds.set(
+      name,
+      file
+        ? ((await import(file))[`Artifact_${name}`]?.bytecode as
+            | string
+            | undefined)
+        : undefined,
+    );
+  }
+  return (name) => builds.get(name);
+}
+
 // Takes away every authority a contract the redeploy replaced still holds: each
 // access-control role it holds on any contract of the namespace or of the archive,
 // an approval in a permissioned address set, and an approved HCA implementation,
@@ -5425,8 +5473,9 @@ async function revokeReplacedContractAuthority(opts: {
   deployerPrivateKey?: `0x${string}`;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
+  replacedNames: readonly string[];
 }) {
-  const replaced = REPLACED_DEPLOYMENTS.flatMap((name) => {
+  const replaced = opts.replacedNames.flatMap((name) => {
     const old = opts.before.get(name)?.address;
     const now = opts.after.get(name)?.address;
     return old && !(now && sameAddress(old, now))
@@ -5583,20 +5632,25 @@ export async function redeployRootRegistry(
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
 
   const active = readNamespaceRecords(deploymentsDir, deploymentNetwork);
-  const archive = findRootArchive(deploymentsDir, deploymentNetwork);
+  const archive = findRedeployArchive(
+    deploymentsDir,
+    deploymentNetwork,
+    ROOT_REDEPLOY,
+  );
   const archived = archive
     ? readNamespaceRecords(deploymentsDir, archive)
     : (new Map() as typeof active);
-  const replacedAlready = REPLACED_DEPLOYMENTS.every((name) => {
+  const replacedAlready = ROOT_REDEPLOY.replaced.every((name) => {
     const now = active.get(name)?.address;
     const old = archived.get(name)?.address;
     if (!now && !old) return true;
     return now && old && !sameAddress(now, old);
   });
   if (archive && replacedAlready) {
-    const { replaced, problems } = rootRedeployDiff(
-      namespaceBeforeRedeploy(active, archived),
+    const { replaced, problems } = redeployDiff(
+      namespaceBeforeRedeploy(active, archived, ROOT_REDEPLOY.replaced),
       active,
+      ROOT_REDEPLOY.replaced,
     );
     for (const line of replaced) console.log(`  replaced ${line}`);
     if (problems.length > 0) {
@@ -5614,12 +5668,13 @@ export async function redeployRootRegistry(
       deploymentsDir,
       deploymentNetwork,
       archive,
-      before: namespaceBeforeRedeploy(active, archived),
+      before: namespaceBeforeRedeploy(active, archived, ROOT_REDEPLOY.replaced),
       after: active,
       deployerAddress: opts.deployerAddress,
       deployerPrivateKey: opts.deployerPrivateKey,
       v1DeploymentsDir: opts.v1DeploymentsDir,
       v1DeploymentNetwork: opts.v1DeploymentNetwork,
+      replacedNames: ROOT_REDEPLOY.replaced,
     });
     console.log(
       `the root registry was already redeployed: the replaced records are in ${archive}`,
@@ -5656,7 +5711,7 @@ export async function redeployRootRegistry(
     }
   }
 
-  await assertRootRedeployAllowed({
+  await assertRedeployAllowed({
     client,
     network: opts.network,
     deploymentsDir,
@@ -5664,36 +5719,29 @@ export async function redeployRootRegistry(
     deployer: opts.deployerAddress,
     v1DeploymentsDir: opts.v1DeploymentsDir,
     v1DeploymentNetwork: opts.v1DeploymentNetwork,
+    subject: "the root registry",
+    set: ROOT_REDEPLOY,
+    requireSetParent: true,
   });
-  const builds = new Map<string, string | undefined>();
-  for (const record of active.values()) {
-    const name = record?.contractName;
-    if (!name || builds.has(name)) continue;
-    const file = resolve(
-      import.meta.dirname,
-      "../generated/artifacts",
-      `${name}.ts`,
-    );
-    builds.set(
-      name,
-      existsSync(file)
-        ? ((await import(file))[`Artifact_${name}`]?.bytecode as
-            | string
-            | undefined)
-        : undefined,
-    );
-  }
-  const drifted = driftedReusedRecords(active, (name) => builds.get(name));
+  const drifted = driftedReusedRecords(
+    active,
+    await buildBytecodes(active),
+    ROOT_REDEPLOY.replaced,
+  );
   if (drifted.length > 0) {
     throw new Error(
       `the root registry cannot be redeployed without replacing more than it should: ${drifted.join("; ")}`,
     );
   }
 
-  const before = namespaceBeforeRedeploy(active, archived);
+  const before = namespaceBeforeRedeploy(
+    active,
+    archived,
+    ROOT_REDEPLOY.replaced,
+  );
   const resuming =
     archive !== undefined &&
-    REPLACED_DEPLOYMENTS.some((name) => {
+    ROOT_REDEPLOY.replaced.some((name) => {
       const now = active.get(name)?.address;
       const old = archived.get(name)?.address;
       return old !== undefined && (!now || !sameAddress(now, old));
@@ -5705,9 +5753,10 @@ export async function redeployRootRegistry(
       deploymentsDir,
       deploymentNetwork,
       new Date(),
+      ROOT_REDEPLOY,
     );
     console.log(
-      `moved the records to replace to ${moved}: ${REPLACED_DEPLOYMENTS.join(", ")}`,
+      `moved the records to replace to ${moved}: ${ROOT_REDEPLOY.replaced.join(", ")}`,
     );
   }
 
@@ -5719,7 +5768,11 @@ export async function redeployRootRegistry(
   });
 
   const after = readNamespaceRecords(deploymentsDir, deploymentNetwork);
-  const { replaced, problems } = rootRedeployDiff(before, after);
+  const { replaced, problems } = redeployDiff(
+    before,
+    after,
+    ROOT_REDEPLOY.replaced,
+  );
   for (const line of replaced) console.log(`  replaced ${line}`);
   if (problems.length > 0) {
     for (const problem of problems) console.error(`  ${problem}`);
@@ -5735,16 +5788,487 @@ export async function redeployRootRegistry(
     network: opts.network,
     deploymentsDir,
     deploymentNetwork,
-    archive: findRootArchive(deploymentsDir, deploymentNetwork),
+    archive: findRedeployArchive(
+      deploymentsDir,
+      deploymentNetwork,
+      ROOT_REDEPLOY,
+    ),
     before,
     after,
     deployerAddress: opts.deployerAddress,
     deployerPrivateKey: opts.deployerPrivateKey,
     v1DeploymentsDir: opts.v1DeploymentsDir,
     v1DeploymentNetwork: opts.v1DeploymentNetwork,
+    replacedNames: ROOT_REDEPLOY.replaced,
   });
   console.log(
     "root registry redeployed; the .eth registry's parent is unchanged until phase set-eth-parent",
+  );
+}
+
+const sameNames = (a: readonly string[], b: readonly string[]) => {
+  const sorted = [...b].sort();
+  return (
+    a.length === b.length &&
+    [...a].sort().every((name, i) => name === sorted[i])
+  );
+};
+
+/// Replaces the deployed contracts whose build has changed under a live namespace,
+/// with every contract holding one of them as a constructor argument, and reuses
+/// the rest. The set is worked out from the records and the build, less `keep`,
+/// whose deploy scripts reuse what is recorded, and the caller must name it in
+/// `replace`, so a build that changes more than expected stops the run before
+/// anything is sent. Refuses once v1 has been handed over or go-live has begun, and
+/// for the root registry, which `redeployRootRegistry` replaces. Re-running after an
+/// interruption resumes the archived set, and after completion finds nothing to
+/// replace.
+export async function redeployContracts(
+  opts: DeployV2Options & {
+    rpcUrl: string;
+    deployerAddress: Address;
+    keep: readonly string[];
+    replace: readonly string[];
+  },
+) {
+  const network = NETWORKS[opts.network];
+  const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const kind = { kind: CONTRACT_REDEPLOY_KIND };
+
+  const active = readNamespaceRecords(deploymentsDir, deploymentNetwork);
+  const archive = findRedeployArchive(deploymentsDir, deploymentNetwork, kind);
+  const archived = archive
+    ? readNamespaceRecords(deploymentsDir, archive)
+    : (new Map() as typeof active);
+  // An archived record without a replacement at a new address means a run stopped
+  // part way, and resumes with the set it archived.
+  const resuming = [...archived].some(([name, record]) => {
+    const now = active.get(name)?.address;
+    return !now || (record.address && sameAddress(now, record.address));
+  });
+
+  let replaced: string[];
+  if (resuming) {
+    replaced = [...archived.keys()].sort();
+    console.log(
+      `resuming the redeploy archived in ${archive}: ${replaced.join(", ")}`,
+    );
+  } else {
+    const { drifted, metadataOnly, uncomparable } = driftedRecords(
+      active,
+      await buildBytecodes(active),
+    );
+    if (uncomparable.length > 0) {
+      throw new Error(
+        `cannot tell what the build changes: ${uncomparable.map(({ name, reason }) => `${name}: ${reason}`).join("; ")}`,
+      );
+    }
+    // The deploy tool would replace these too, though their code is unchanged.
+    const unkeptMetadataOnly = metadataOnly.filter(
+      (name) => !opts.keep.includes(name),
+    );
+    if (unkeptMetadataOnly.length > 0) {
+      throw new Error(
+        `the build differs from ${unkeptMetadataOnly.join(", ")} only in an embedded metadata trailer, yet the deploy tool would replace ${unkeptMetadataOnly.length === 1 ? "it" : "them"}; keep ${unkeptMetadataOnly.length === 1 ? "it" : "them"} with --keep, with a deploy script that reuses the record`,
+      );
+    }
+    const unknownKeep = opts.keep.filter(
+      (name) => !drifted.includes(name) && !metadataOnly.includes(name),
+    );
+    if (unknownKeep.length > 0) {
+      throw new Error(
+        `nothing to keep: ${unknownKeep.join(", ")} ${unknownKeep.length === 1 ? "matches" : "match"} the build or ${unknownKeep.length === 1 ? "is" : "are"} not recorded`,
+      );
+    }
+    replaced = withDependents(
+      active,
+      drifted.filter((name) => !opts.keep.includes(name)),
+      opts.keep,
+    );
+    if (replaced.length === 0) {
+      console.log(
+        "every deployed contract matches the build; nothing to replace",
+      );
+      return;
+    }
+  }
+  if (replaced.includes("RootRegistry")) {
+    throw new Error(
+      "the build changes the root registry, which only phase redeploy-root replaces",
+    );
+  }
+  if (!sameNames(replaced, opts.replace)) {
+    throw new Error(
+      `the redeploy would replace ${replaced.join(", ")}, not the ${opts.replace.join(", ") || "nothing"} named; pass exactly that set to proceed`,
+    );
+  }
+  await assertRedeployAllowed({
+    client,
+    network: opts.network,
+    deploymentsDir,
+    deploymentNetwork,
+    deployer: opts.deployerAddress,
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork,
+    subject: "the contracts",
+    set: kind,
+    requireSetParent: false,
+  });
+
+  const before = namespaceBeforeRedeploy(active, archived, replaced);
+  if (!resuming) {
+    const moved = archiveReplacedRecords(
+      deploymentsDir,
+      deploymentNetwork,
+      new Date(),
+      { ...kind, replaced },
+    );
+    console.log(
+      `moved the records to replace to ${moved}: ${replaced.join(", ")}`,
+    );
+  }
+
+  await deployV2({
+    ...opts,
+    fresh: false,
+    saveDeployments: true,
+    deferEthParent: true,
+  });
+
+  const after = readNamespaceRecords(deploymentsDir, deploymentNetwork);
+  const diff = redeployDiff(before, after, replaced);
+  for (const line of diff.replaced) console.log(`  replaced ${line}`);
+  if (diff.problems.length > 0) {
+    for (const problem of diff.problems) console.error(`  ${problem}`);
+    throw new Error(
+      `the redeploy changed the namespace unexpectedly: ${diff.problems.length} problem(s)`,
+    );
+  }
+  await revokeReplacedContractAuthority({
+    client,
+    chain,
+    rpcUrl: opts.rpcUrl,
+    provider: opts.provider,
+    network: opts.network,
+    deploymentsDir,
+    deploymentNetwork,
+    archive: findRedeployArchive(deploymentsDir, deploymentNetwork, kind),
+    before,
+    after,
+    deployerAddress: opts.deployerAddress,
+    deployerPrivateKey: opts.deployerPrivateKey,
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork,
+    replacedNames: replaced,
+  });
+  console.log(`redeployed ${replaced.length} contract(s)`);
+}
+
+const LABEL_RESERVED_EVENT = parseAbiItem(
+  "event LabelReserved(uint256 indexed tokenId, bytes32 indexed labelHash, string label, uint64 expiry, address indexed sender)",
+);
+
+/// Points every reserved top-level name of the root registry at the namespace's
+/// DNSTLDResolver. Each name not yet reserved with it is registered to the sender
+/// with only the role to unregister and its expiry, unregistered, and reserved again
+/// with the resolver and its original expiry (see `migrations/dnsTlds.ts`). Names
+/// move `batchSize` at a time, one transaction per name per step, under the gas price
+/// limit. Sends nothing unless the sender may register both available and reserved
+/// names and, unless skipped, the resolver's source is verified on Etherscan. Ends by
+/// checking every name: reserved, with the resolver, its original expiry, and no
+/// role left to the sender.
+export async function rereserveDnsTlds(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  privateKey?: `0x${string}`;
+  impersonateAccount?: Address;
+  maxGasPrice?: bigint;
+  batchSize: number;
+  labels?: readonly string[];
+  dryRun?: boolean;
+  skipSourceVerification?: boolean;
+}) {
+  const network = NETWORKS[opts.network];
+  const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  if (opts.impersonateAccount && !isLocalRpcUrl(opts.rpcUrl)) {
+    throw new Error(
+      `--impersonate-account needs a local fork, not ${opts.rpcUrl}`,
+    );
+  }
+  const sender = opts.privateKey
+    ? privateKeyToAccount(opts.privateKey).address
+    : opts.impersonateAccount;
+  if (!sender) {
+    throw new Error(
+      "rereserve-dns-tlds needs the deployer: set DEPLOYER_KEY or pass --impersonate-account on a fork",
+    );
+  }
+  const root = loadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "RootRegistry",
+  );
+  const resolver = loadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "DNSTLDResolver",
+  ).address;
+  const registry = {
+    address: root.address,
+    abi: Artifact_PermissionedRegistry.abi,
+  };
+  // A run reads every name several times; a failed read is asked again rather
+  // than ending the run.
+  const read = <T>(functionName: string, args: readonly unknown[]) =>
+    readUntilComplete(
+      () =>
+        client.readContract({
+          ...registry,
+          functionName,
+          args,
+        } as never) as Promise<T>,
+      () => undefined,
+    );
+
+  const allowed = await read<boolean>("hasRootRoles", [
+    ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.REGISTER_RESERVED,
+    sender,
+  ]);
+  if (!allowed) {
+    throw new Error(
+      `${sender} may not register both available and reserved names on the root registry ${root.address}`,
+    );
+  }
+  if (opts.skipSourceVerification) {
+    console.log("source verification on Etherscan: skipped");
+  } else {
+    const apiKey = envValue("ETHERSCAN_API_KEY");
+    if (!apiKey) {
+      throw new Error(
+        "ETHERSCAN_API_KEY is not set, so the resolver's source verification cannot be checked",
+      );
+    }
+    if (!(await isSourceVerifiedOnEtherscan(chain.id, resolver, apiKey))) {
+      throw new Error(
+        `DNSTLDResolver ${resolver} has no verified source on Etherscan`,
+      );
+    }
+  }
+
+  const receipt = readNamespaceRecords(deploymentsDir, deploymentNetwork).get(
+    "RootRegistry",
+  )?.receipt as { blockNumber?: string | number } | undefined;
+  const logs = await readEventLogs(client, {
+    address: root.address,
+    event: LABEL_RESERVED_EVENT,
+    fromBlock:
+      receipt?.blockNumber !== undefined ? BigInt(receipt.blockNumber) : 0n,
+    toBlock: await client.getBlockNumber(),
+  });
+  const expiries = firstReservations(
+    logs.map((log) => {
+      const args = log.args as { label: string; expiry: bigint };
+      return { label: args.label, expiry: args.expiry };
+    }),
+  );
+  const unknown = (opts.labels ?? []).filter((label) => !expiries.has(label));
+  if (unknown.length > 0) {
+    throw new Error(
+      `never reserved on the root registry: ${unknown.join(", ")}`,
+    );
+  }
+  const labels = opts.labels ? [...opts.labels] : [...expiries.keys()];
+  console.log(
+    `${labels.length} reserved top-level name(s) to point at DNSTLDResolver ${resolver}, sent by ${sender}`,
+  );
+
+  // A name's registry state and resolver.
+  const readTld = async (label: string) => {
+    const [state, current] = await Promise.all([
+      read<{
+        status: number;
+        expiry: bigint;
+        latestOwner: Address;
+        resource: bigint;
+      }>("getState", [labelId(label)]),
+      read<Address>("getResolver", [label]),
+    ]);
+    return { ...state, resolver: current };
+  };
+  // Each name's next step.
+  const readSteps = (batch: readonly string[]) =>
+    Promise.all(
+      batch.map(async (label) => {
+        const tld = await readTld(label);
+        const senderCanUnregister =
+          tld.status === STATUS.REGISTERED &&
+          (await read<boolean>("hasRoles", [
+            tld.resource,
+            ROLES.REGISTRY.UNREGISTER,
+            sender,
+          ]));
+        return {
+          label,
+          step: nextTldStep(
+            {
+              status: tld.status,
+              owner: tld.latestOwner,
+              resolver: tld.resolver,
+              senderCanUnregister,
+            },
+            resolver,
+            sender,
+          ),
+        };
+      }),
+    );
+  const batches = labels.flatMap((_, i) =>
+    i % opts.batchSize === 0 ? [labels.slice(i, i + opts.batchSize)] : [],
+  );
+
+  const wallet = walletClient({
+    rpcUrl: opts.rpcUrl,
+    chain,
+    privateKey: opts.privateKey,
+    account: opts.privateKey ? undefined : opts.impersonateAccount,
+    provider: opts.provider,
+  });
+  if (opts.impersonateAccount)
+    await impersonate(client, opts.impersonateAccount);
+  const maxGasPrice = resolveMaxGasPrice(opts.maxGasPrice, chain.id);
+  const tally = new Map<string, number>();
+  let checked = 0;
+  for (const batch of batches) {
+    // At most one round per step, and one more to see every name done.
+    for (let round = 0; ; round++) {
+      const steps = await readSteps(batch);
+      const blocked = steps.flatMap(({ label, step }) =>
+        step.kind === "blocked" ? [`${label}: ${step.reason}`] : [],
+      );
+      if (blocked.length > 0) {
+        throw new Error(`cannot move ${blocked.join("; ")}`);
+      }
+      const pending = steps.filter(({ step }) => step.kind !== "done");
+      if (opts.dryRun) {
+        for (const { step } of steps) {
+          tally.set(step.kind, (tally.get(step.kind) ?? 0) + 1);
+        }
+        break;
+      }
+      if (pending.length === 0) break;
+      if (round >= 3) {
+        throw new Error(
+          `names still not moved after every step: ${pending.map(({ label }) => label).join(", ")}`,
+        );
+      }
+      const fees = await waitForGasPriceAtOrBelow(client, maxGasPrice);
+      let nonce = await client.getTransactionCount({
+        address: sender,
+        blockTag: "pending",
+      });
+      const sent: Array<{ label: string; hash: Hex; kind: string }> = [];
+      for (const { label, step } of pending) {
+        const id = labelId(label);
+        const call =
+          step.kind === "register"
+            ? {
+                functionName: "register",
+                args: [
+                  label,
+                  sender,
+                  zeroAddress,
+                  zeroAddress,
+                  ROLES.REGISTRY.UNREGISTER,
+                  0n,
+                ],
+              }
+            : step.kind === "unregister"
+              ? { functionName: "unregister", args: [id] }
+              : {
+                  functionName: "register",
+                  args: [
+                    label,
+                    zeroAddress,
+                    zeroAddress,
+                    resolver,
+                    0n,
+                    expiries.get(label)!,
+                  ],
+                };
+        const hash = await wallet.writeContract({
+          ...registry,
+          ...call,
+          nonce: nonce++,
+          ...fees,
+        } as never);
+        sent.push({ label, hash, kind: step.kind });
+      }
+      for (const { label, hash, kind } of sent) {
+        await waitForSuccessfulReceipt(client, hash, `${kind} ${label}`);
+      }
+      console.log(
+        `  names ${checked + 1}-${checked + batch.length}: sent ${sent.length} ${sent[0]?.kind ?? ""} transaction(s)`,
+      );
+    }
+    checked += batch.length;
+    if (!opts.dryRun) {
+      console.log(`${checked}/${labels.length} name(s) checked`);
+    }
+  }
+  if (opts.dryRun) {
+    console.log(
+      `dry run, nothing sent: ${[...tally].map(([kind, count]) => `${count} ${kind}`).join(", ")}`,
+    );
+    return;
+  }
+
+  const failures: string[] = [];
+  for (const batch of batches) {
+    await Promise.all(
+      batch.map(async (label) => {
+        const tld = await readTld(label);
+        const held = await read<bigint>("roles", [tld.resource, sender]);
+        if (tld.status !== STATUS.RESERVED) {
+          failures.push(`${label}: not reserved`);
+        }
+        if (!sameAddress(tld.resolver, resolver)) {
+          failures.push(`${label}: resolver ${tld.resolver}`);
+        }
+        if (tld.expiry !== expiries.get(label)) {
+          failures.push(
+            `${label}: expiry ${tld.expiry}, not ${expiries.get(label)}`,
+          );
+        }
+        if (held !== 0n) {
+          failures.push(
+            `${label}: the sender holds ${describeRoleBitmap(held)}`,
+          );
+        }
+      }),
+    );
+  }
+  if (failures.length > 0) {
+    for (const line of failures) console.error(`  ${line}`);
+    throw new Error(
+      `${failures.length} problem(s) after moving the top-level names`,
+    );
+  }
+  console.log(
+    `every one of ${labels.length} top-level name(s) is reserved with DNSTLDResolver ${resolver}, its original expiry, and no role left to the sender`,
   );
 }
 
@@ -5827,7 +6351,11 @@ export async function setEthParent(opts: {
   }
 
   const failures: string[] = [];
-  const archive = findRootArchive(deploymentsDir, deploymentNetwork);
+  const archive = findRedeployArchive(
+    deploymentsDir,
+    deploymentNetwork,
+    ROOT_REDEPLOY,
+  );
   if (!archive) {
     failures.push(
       "no archived root registry namespace: run phase redeploy-root first",
@@ -5835,7 +6363,7 @@ export async function setEthParent(opts: {
   } else {
     const archived = readNamespaceRecords(deploymentsDir, archive);
     const active = readNamespaceRecords(deploymentsDir, deploymentNetwork);
-    for (const name of REPLACED_DEPLOYMENTS) {
+    for (const name of ROOT_REDEPLOY.replaced) {
       const now = active.get(name)?.address;
       const old = archived.get(name)?.address;
       if (!now && !old) continue;
@@ -5870,7 +6398,7 @@ export async function setEthParent(opts: {
         "ETHERSCAN_API_KEY is not set, so source verification cannot be checked",
       );
     } else {
-      for (const name of REPLACED_DEPLOYMENTS) {
+      for (const name of ROOT_REDEPLOY.replaced) {
         const record = maybeLoadV2Deployment(
           deploymentsDir,
           deploymentNetwork,
@@ -10394,6 +10922,79 @@ export async function main(argv = process.argv): Promise<void> {
     }),
   );
   phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("redeploy-contracts")
+            .description(
+              "Replace the deployed contracts whose build has changed, with every contract holding one of them as a constructor argument, reusing the rest; the set must be named with --replace. Refuses once the DAO proposal has executed or go-live has begun",
+            )
+            .requiredOption(
+              "--replace <names>",
+              "Comma-separated deployments the redeploy is expected to replace; it refuses unless this is exactly the set it works out",
+            )
+            .option(
+              "--keep <names>",
+              "Comma-separated deployments whose build has changed but whose deploy scripts keep the recorded contract",
+              "",
+            )
+            .option(
+              "--defer-v1-owner-transactions",
+              "Record v1-owner transactions instead of broadcasting them",
+              false,
+            )
+            .option(
+              "--deferred-v1-owner-transactions-file <path>",
+              "JSONL file for deferred v1-owner transactions",
+            )
+            .option("--deployer <address>", "Deployer account address")
+            .option("--owner <address>", "Owner/admin address")
+            .option(
+              "--ur-manager <address>",
+              "Managed URP admin address (default: the network's security council, else the deployer)",
+            )
+            .option("--v1-owner <address>", "v1 owner address for v1 writes")
+            .option(
+              "--impersonate-v1-owner",
+              "Impersonate v1 owner on a fork",
+              false,
+            )
+            .option(
+              "--rpc-compatibility",
+              "Enable compatibility fallbacks for fork RPCs",
+              false,
+            )
+            .option("--debug-rpc", "Log JSON-RPC error responses", false),
+        ),
+      ),
+    ).action(
+      async (opts: DeployV2CliOptions & { replace: string; keep: string }) => {
+        const networkOpts = withNetworkRpc(opts);
+        const { options, deployerAccount } = deployV2Signers(opts);
+        if (!deployerAccount) {
+          throw new Error(
+            "redeploy-contracts needs the deployer: set DEPLOYER_KEY or pass --deployer",
+          );
+        }
+        const names = (list: string) =>
+          list
+            .split(",")
+            .map((name) => name.trim())
+            .filter(Boolean);
+        await redeployContracts({
+          ...networkOpts,
+          ...options,
+          // The default phase 1 tags, so every script that builds a replaced
+          // contract runs.
+          tags: undefined,
+          deployerAddress: getAddress(deployerAccount),
+          keep: names(opts.keep),
+          replace: names(opts.replace),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
         new Command("set-eth-parent")
@@ -10430,6 +11031,86 @@ export async function main(argv = process.argv): Promise<void> {
             (opts.impersonateAccount
               ? undefined
               : envPrivateKey("DEPLOYER_KEY")),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        new Command("rereserve-dns-tlds")
+          .description(
+            "Point every reserved top-level name of the root registry at the namespace's DNSTLDResolver: each is registered to the deployer, unregistered and reserved again with the resolver and its original expiry. Resumes from each name's state; refuses unless the deployer may register available and reserved names and the resolver's source is verified on Etherscan",
+          )
+          .option(
+            "--private-key <key>",
+            "Deployer private key; falls back to DEPLOYER_KEY",
+          )
+          .option(
+            "--impersonate-account <address>",
+            "Impersonate the deployer on a fork",
+          )
+          .option(
+            "--max-gas-price <gwei>",
+            "Wait to send while the gas price (base fee plus median tip) is above this many gwei (default on mainnet: the median mainnet price; none elsewhere)",
+          )
+          .option(
+            "--batch-size <count>",
+            "Names moved together, one transaction each per step",
+            "25",
+          )
+          .option(
+            "--labels <labels>",
+            "Comma-separated top-level names to move instead of every reserved one",
+          )
+          .option(
+            "--dry-run",
+            "Report each name's next step and send nothing",
+            false,
+          )
+          .option(
+            "--skip-source-verification",
+            "Do not require verified source on Etherscan, for a fork whose contracts Etherscan cannot see",
+            false,
+          ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            privateKey?: `0x${string}`;
+            impersonateAccount?: Address;
+            maxGasPrice?: string;
+            batchSize: string;
+            labels?: string;
+            dryRun?: boolean;
+            skipSourceVerification?: boolean;
+          },
+      ) => {
+        const batchSize = Number.parseInt(opts.batchSize, 10);
+        if (!Number.isInteger(batchSize) || batchSize < 1) {
+          throw new Error(
+            `--batch-size must be a positive whole number, not ${opts.batchSize}`,
+          );
+        }
+        await rereserveDnsTlds({
+          ...withNetworkRpc(opts),
+          privateKey:
+            opts.privateKey ??
+            (opts.impersonateAccount
+              ? undefined
+              : envPrivateKey("DEPLOYER_KEY")),
+          impersonateAccount: opts.impersonateAccount
+            ? getAddress(opts.impersonateAccount)
+            : undefined,
+          maxGasPrice: opts.maxGasPrice
+            ? parseGwei(opts.maxGasPrice)
+            : undefined,
+          batchSize,
+          labels: opts.labels
+            ?.split(",")
+            .map((label) => label.trim())
+            .filter(Boolean),
         });
       },
     ),

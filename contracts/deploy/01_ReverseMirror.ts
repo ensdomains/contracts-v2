@@ -41,8 +41,8 @@ export default execute(
       });
     }
 
-    // A resume can redeploy ENSV1Resolver, leaving reverse pointing at the
-    // old one; repoint it so reverse resolution follows the live resolver.
+    // A run that replaced the ENSV1Resolver record leaves reverse pointing at
+    // the old one; repoint it so reverse resolution follows the live resolver.
     const currentResolver = await read(rootRegistry, {
       functionName: "getResolver",
       args: ["reverse"],
