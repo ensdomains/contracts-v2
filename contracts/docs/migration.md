@@ -178,7 +178,10 @@ leaves the rest of the namespace untouched.
 > CSV's label count beside the index's claimable count. Two independent views of the same chain must
 > agree on how many names are live, and a disagreement there is a CSV problem rather than a
 > pre-migration problem. The line is meaningful even before phase 2 has written anything, so it can be
-> read as a standalone probe of a freshly exported CSV.
+> read as a standalone probe of a freshly exported CSV. The counts are compared only when the CSV
+> records each name's expiry in Unix seconds, as `expiryDate` (the subgraph schema and its exporter)
+> or `expires_raw` (a Dune export). Without one the line reports every row the CSV carries, which is
+> not a claimable count, and no comparison is made.
 >
 > **The independence refusal is opt-in.** It compares a source stamp written beside the CSV, so it
 > fires only for a CSV that carries one — `fetch-data` writes a stamp, a manual Dune export does not.

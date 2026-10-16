@@ -1060,6 +1060,19 @@ export function csvLabelColumns(header: readonly string[]): CsvLabelColumns {
   };
 }
 
+/// Where a registration CSV keeps each name's v1 expiry in Unix seconds, or -1 when
+/// no column holds it. The subgraph schema and its exporter name it `expiryDate`; a
+/// Dune export names it `expires_raw`, beside a human-readable date that is not read.
+/// Matching ignores case and surrounding whitespace.
+export function csvExpiryColumnIndex(header: readonly string[]): number {
+  const normalized = header.map((field) => field.trim().toLowerCase());
+  for (const column of ["expirydate", "expires_raw"]) {
+    const index = normalized.indexOf(column);
+    if (index !== -1) return index;
+  }
+  return -1;
+}
+
 /// The label in a parsed CSV row, exactly as written, or `undefined` when the cell is
 /// empty or holds only whitespace. v1 accepts labels with leading or trailing spaces,
 /// so trimming the cell would name a different label from the one registered.

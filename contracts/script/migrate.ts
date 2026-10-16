@@ -212,6 +212,7 @@ import {
   FailedNamesError,
   type CsvLabelColumns,
   csvLabelCell,
+  csvExpiryColumnIndex,
   csvLabelColumns,
   isEncodedLabelhash,
   isValidLabel,
@@ -421,9 +422,7 @@ function countClaimableCsvRows(
   if (columns.label < 0) {
     return { count: 0, filtered: false, unknownExpiry: 0 };
   }
-  const expiryIndex = header
-    .map((field) => field.trim().toLowerCase())
-    .indexOf("expirydate");
+  const expiryIndex = csvExpiryColumnIndex(header);
 
   let labelled = 0;
   let expired = 0;

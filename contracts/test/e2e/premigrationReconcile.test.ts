@@ -73,6 +73,27 @@ function writeDatedCsv(
   writeFileSync(csvFile, [PREMIGRATION_CSV_HEADER, ...rows].join("\n"));
 }
 
+// A Dune export: the bare label in `name`, and the expiry in Unix seconds in
+// `expires_raw` beside a human-readable date.
+function writeDuneCsv(
+  csvFile: string,
+  labels: string[],
+  entries: Array<{ expiry: bigint }>,
+) {
+  const rows = labels.map((label, index) => {
+    const expiry = entries[index].expiry;
+    const date = new Date(Number(expiry) * 1000).toISOString();
+    return `${label},${label}.eth,${labelhash(label)},,${date},,${expiry},active`;
+  });
+  writeFileSync(
+    csvFile,
+    [
+      "name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status",
+      ...rows,
+    ].join("\n"),
+  );
+}
+
 function writeIndex(
   workDir: string,
   entries: Array<{ id: string; expiry: bigint }>,
@@ -316,6 +337,19 @@ describe("premigration reconcile", () => {
     // An index holding one of the two names, as a lagging indexer would produce.
     // Both sources are internally consistent, so nothing but the counts reports that
     // a name went unexamined.
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    await expect(run(workDir, fromBlock, { csvFile })).rejects.toThrow(
+      /disagree on how many names are live/,
+    );
+  });
+
+  it("compares live counts against a Dune export's expiries", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeDuneCsv(csvFile, ["alpha", "beta"], indexEntries);
     writeIndex(workDir, indexEntries.slice(0, 1));
 
     await expect(run(workDir, fromBlock, { csvFile })).rejects.toThrow(
