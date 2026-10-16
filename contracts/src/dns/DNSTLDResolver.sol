@@ -31,8 +31,7 @@ bytes constant TXT_PREFIX = "ENS1 ";
 
 /// @notice Multi-step resolver for DNS TLD names. Resolution follows this priority:
 ///
-/// 1. Check for an existing resolver in the ENSv1 registry. If found (and it's not the v1
-///    DNS TLD resolver or this contract), delegate to it directly.
+/// 1. Check for an imported name in the ENSv1 registry. If found, delegate to it directly.
 /// 2. Otherwise, query the DNSSEC oracle via CCIP-Read (EIP-3668) for TXT records.
 /// 3. Verify the DNSSEC proof, find the first `ENS1`-prefixed TXT record, parse it into a
 ///    resolver address and context.
@@ -278,9 +277,9 @@ contract DNSTLDResolver is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Looks up the resolver for `name` in the ENSv1 registry. Returns `address(0)` if
-    ///      no resolver is set, or if the resolver is the v1 DNS TLD resolver or this contract
-    ///      (indicating the name has not been explicitly configured in v1).
+    /// @dev Lookup the resolver for `name` in the ENSv1 registry. Returns `address(0)` if
+    ///      no resolver is set, the resolver is this contract, or if the resolved node owner 
+    ///      is a Root controller (eg. DNSRegistrar).
     /// @param name The DNS-encoded name to look up.
     /// @return resolver The v1 resolver address, or `address(0)` if none is applicable.
     function _getResolverV1(bytes memory name) internal view returns (address resolver) {
