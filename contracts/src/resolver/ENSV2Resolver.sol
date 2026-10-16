@@ -2,7 +2,9 @@
 pragma solidity 0.8.25;
 
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
+import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
@@ -52,6 +54,18 @@ contract ENSV2Resolver is AbstractMirrorResolver {
         (, resolver, node, ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);
         if (node == NameCoder.ETH_NODE && address(ETH_RESOLVER) != address(0)) {
             resolver = ETH_RESOLVER;
+        } else if (
+            ERC165Checker.supportsERC165InterfaceUnchecked(
+                resolver,
+                type(ICompositeResolver).interfaceId
+            )
+        ) {
+            // avoid trivial (V2 => V1)* loop
+            try ICompositeResolver(resolver).getResolver(name) returns (address underlying, bool) {
+                if (underlying == address(this)) {
+                    resolver = address(0);
+                }
+            } catch {}
         }
     }
 }

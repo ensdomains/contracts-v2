@@ -13,6 +13,7 @@ import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {IUniversalResolver} from "@ens/contracts/universalResolver/IUniversalResolver.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {ENSIP19, COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
+import {ERC7996Checker} from "@ens/contracts/utils/ERC7996Checker.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -443,7 +444,10 @@ abstract contract AbstractNormalizedUniversalResolver is
             ERC165Checker.supportsERC165InterfaceUnchecked(info.resolver, type(IERC7996).interfaceId) &&
             (!multi ||
                 (info.extended &&
-                    IERC7996(info.resolver).supportsFeature(ResolverFeatures.RESOLVE_MULTICALL)))
+                    ERC7996Checker.supportsFeatureUnchecked(
+                        info.resolver,
+                        ResolverFeatures.RESOLVE_MULTICALL
+                    )))
         ) {
             ccipRead(
                 address(info.resolver),
