@@ -2,10 +2,9 @@ import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/
 import hre from "hardhat";
 import {
   type Address,
-  concat,
+  encodeAbiParameters,
   encodeErrorResult,
   getAddress,
-  namehash,
   stringToHex,
   zeroAddress,
 } from "viem";
@@ -30,7 +29,7 @@ import { FEATURES } from "../../../lib/ens-contracts/test/utils/features.js";
 
 const network = await hre.network.connect();
 
-const dnsTXTResolverName = "dnstxt.ens.eth";
+const dnsTXTResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
 const testData = "0xabcdef";
@@ -40,9 +39,19 @@ const basicProfile: KnownProfile = {
   addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
 };
 
-// sufficient to satisfy: `abi.decode(DNSSEC.RRSetWithSignature[])`
-const dnsOracleGateway =
-  'data:application/json,{"data":"0x0000000000000000000000000000000000000000000000000000000000000000"}';
+const dnsOracleGatewayDataURL = `data:application/json,{"data":"${encodeAbiParameters(
+  [
+    {
+      internalType: "struct DNSSEC.RRSetWithSignature[]",
+      type: "tuple[]",
+      components: [
+        { type: "bytes", name: "rrset" },
+        { type: "bytes", name: "sig" },
+      ],
+    },
+  ],
+  [[{ rrset: "0x", sig: "0x" }]],
+)}"}`;
 
 async function fixture() {
   const v1 = await deployV1Fixture(network);
@@ -53,11 +62,11 @@ async function fixture() {
   const mockDNSSEC = await network.viem.deployContract("MockDNSSEC");
   const dnsTLDResolverV1 = await network.viem.deployContract(
     "OffchainDNSResolver",
-    [v1.ensRegistry.address, mockDNSSEC.address, dnsOracleGateway],
+    [v1.ensRegistry.address, mockDNSSEC.address, dnsOracleGatewayDataURL],
   );
   const oracleGatewayProvider = await network.viem.deployContract(
     "GatewayProvider",
-    [v2.walletClient.account.address, [dnsOracleGateway]],
+    [v2.walletClient.account.address, [dnsOracleGatewayDataURL]],
   );
   const myResolver = await v2.deployPermissionedResolver();
   const dnsTLDResolver = await network.viem.deployContract("DNSTLDResolver", [
@@ -137,7 +146,11 @@ async function fixture() {
       name,
       resolverAddress: myResolver.address,
     });
-    await myResolver.write.setAddr([namehash(name), resolver]);
+    await myResolver.write.setAddress([
+      dnsEncodeName(name),
+      COIN_TYPE_ETH,
+      resolver,
+    ]);
   }
 }
 
@@ -217,7 +230,7 @@ describe("DNSTLDResolver", () => {
       dnsEncodeName(basicProfile.name),
     ]);
     expectVar({ verifier }).toEqualAddress(F.mockDNSSEC.address);
-    expectVar({ gateways }).toStrictEqual([dnsOracleGateway]);
+    expectVar({ gateways }).toStrictEqual([dnsOracleGatewayDataURL]);
   });
 
   function testProfiles(
@@ -237,12 +250,43 @@ describe("DNSTLDResolver", () => {
   }
 
   describe("still registered on V1", () => {
+    it("invalid resolver", async () => {
+      const F = await network.networkHelpers.loadFixture(fixture);
+      const kp = { ...basicProfile, name: `sub.${basicProfile.name}` };
+      const subName = dnsEncodeName(kp.name);
+      await expect(
+        F.dnsTLDResolver.read.getResolver([subName]),
+        "before",
+      ).resolves.toStrictEqual([zeroAddress, true]);
+      await F.v1.setupName(basicProfile);
+      await expect(
+        F.dnsTLDResolver.read.getResolver([subName]),
+        "after",
+      ).resolves.toStrictEqual([zeroAddress, true]);
+      await F.v1.publicResolver.write.multicall([
+        makeResolutions(basicProfile).map((x) => x.writeV1),
+      ]);
+      const bundle = bundleCalls(makeResolutions(kp));
+      await expect(F.dnsTLDResolver.read.resolve([subName, bundle.call]))
+        .toBeRevertedWithCustomError("UnreachableName")
+        .withArgs([subName]);
+      await expect(F.v2.universalResolver.read.resolve([subName, bundle.call]))
+        .toBeRevertedWithCustomError("ResolverError")
+        .withArgs([
+          encodeErrorResult({
+            abi: F.dnsTLDResolver.abi,
+            errorName: "UnreachableName",
+            args: [subName],
+          }),
+        ]);
+    });
+
     testProfiles("immediate", (kp) => async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.v1.setupName(kp);
-      for (const res of makeResolutions(kp)) {
-        await F.v1.publicResolver.write.multicall([[res.write]]);
-      }
+      await F.v1.publicResolver.write.multicall([
+        makeResolutions(kp).map((x) => x.writeV1),
+      ]);
       await F.expectResolution(kp, F.v1.publicResolver.address);
     });
 
@@ -282,7 +326,7 @@ describe("DNSTLDResolver", () => {
       resolverAddress: F.myResolver.address,
     });
     await F.myResolver.write.multicall([
-      bundle.resolutions.map((x) => x.write),
+      bundle.resolutions.map((x) => x.writeV2),
     ]);
     const [answer, resolverAddress] = await F.v2.universalResolver.read.resolve(
       [dnsEncodeName(basicProfile.name), bundle.call],
@@ -317,7 +361,7 @@ describe("DNSTLDResolver", () => {
           encodeRRs([makeTXT(kp.name, `ENS1 ${F.myResolver.address}`)]),
         ]);
         await F.myResolver.write.multicall([
-          makeResolutions(kp).map((x) => x.write),
+          makeResolutions(kp).map((x) => x.writeV2),
         ]);
         await F.expectGasless(kp, F.myResolver.address);
       });
@@ -357,9 +401,7 @@ describe("DNSTLDResolver", () => {
   describe("DNSTXTResolver", () => {
     const contenthash = "0xabcdef";
     const anotherAddress = "0x1234567812345678123456781234567812345678";
-    const x = `0x${"a".repeat(64)}` as const;
-    const y = `0x${"b".repeat(64)}` as const;
-    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' d[abc]=${testData} c=${contenthash} xy=${concat([x, y])}`;
+    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' d[abc]=${testData} c=${contenthash}`;
     const encodedRRs = encodeRRs([
       makeTXT(basicProfile.name, `ENS1 ${dnsTXTResolverName} ${context}`),
     ]);
@@ -435,36 +477,6 @@ describe("DNSTLDResolver", () => {
             abi: F.dnsTXTResolver.abi,
             errorName: "InvalidDataLength",
             args: [dummyBytes4, 20n],
-          }),
-        ]);
-    });
-
-    it("invalid length: pubkey", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      await F.mockDNSSEC.write.setResponse([
-        encodeRRs([
-          makeTXT(
-            basicProfile.name,
-            `ENS1 ${dnsTXTResolverName} xy=${dummyBytes4}`,
-          ),
-        ]),
-      ]);
-      const [res] = makeResolutions({
-        name: basicProfile.name,
-        pubkey: { x, y },
-      });
-      await expect(
-        F.v2.universalResolver.read.resolve([
-          dnsEncodeName(basicProfile.name),
-          res.call,
-        ]),
-      )
-        .toBeRevertedWithCustomError("ResolverError")
-        .withArgs([
-          encodeErrorResult({
-            abi: F.dnsTXTResolver.abi,
-            errorName: "InvalidDataLength",
-            args: [dummyBytes4, 64n],
           }),
         ]);
     });
@@ -560,15 +572,6 @@ describe("DNSTLDResolver", () => {
       });
     });
 
-    it("pubkey()", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      await F.mockDNSSEC.write.setResponse([encodedRRs]);
-      await F.expectTXT({
-        name: basicProfile.name,
-        pubkey: { x, y },
-      });
-    });
-
     it("multicall", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
@@ -581,7 +584,6 @@ describe("DNSTLDResolver", () => {
         ],
         texts: [{ key: "url", value: testURL }],
         contenthash: { value: contenthash },
-        pubkey: { x, y },
       });
     });
   });
