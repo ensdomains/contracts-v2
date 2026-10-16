@@ -24,12 +24,6 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
-/// @dev DNS resource-record class for the Internet (`IN`), as defined in RFC 1035 section 3.2.4.
-uint16 constant CLASS_INET = 1;
-
-/// @dev DNS resource-record type for TXT records, as defined in RFC 1035 section 3.3.14.
-uint16 constant QTYPE_TXT = 16;
-
 /// @dev The prefix string that identifies an ENS-aware DNS TXT record (`"ENS1 "`).
 ///      Only TXT records beginning with this prefix are considered during resolution.
 bytes constant TXT_PREFIX = "ENS1 ";
@@ -149,7 +143,7 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.getDNSSECRecordsCallback.selector, // ==> step 2
             name
         );
@@ -212,7 +206,7 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.getResolverCallback.selector, // ==> step 2
             name
         );
@@ -246,7 +240,7 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.resolveOracleCallback.selector, // ==> step 2
             abi.encode(name, data)
         );
@@ -386,8 +380,8 @@ contract DNSTLDResolver is
         returns (bool)
     {
         return
-            iter.class == CLASS_INET &&
-            iter.dnstype == QTYPE_TXT &&
+            iter.class == RRUtils.CLASS_INET &&
+            iter.dnstype == RRUtils.DNSTYPE_TXT &&
             BytesUtils.equals(iter.data, iter.offset, name, 0, name.length);
     }
 
