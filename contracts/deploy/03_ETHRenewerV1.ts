@@ -16,6 +16,7 @@ export default execute(
     execute: write,
     get,
     getV1,
+    read,
     namedAccounts: { beneficiary, deployer, owner },
   }) => {
     const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
@@ -42,11 +43,17 @@ export default execute(
       ],
     });
 
-    await write(ethRegistry, {
-      functionName: "grantRootRoles",
+    const granted = await read(ethRegistry, {
+      functionName: "hasRootRoles",
       args: [DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT, ethRenewerV1.address],
-      account: deployer,
     });
+    if (!granted) {
+      await write(ethRegistry, {
+        functionName: "grantRootRoles",
+        args: [DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT, ethRenewerV1.address],
+        account: deployer,
+      });
+    }
   },
   {
     tags: ["ETHRenewerV1", "migration:phase1:deploy-v2", "v2"],

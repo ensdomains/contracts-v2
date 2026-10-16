@@ -89,12 +89,18 @@ export default execute(
       });
     }
 
-    console.log("  - Granting manager roles");
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "grantRootRoles",
+    const ownerIsManager = await read(ethRegistry, {
+      functionName: "hasRootRoles",
       args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
     });
+    if (!ownerIsManager) {
+      console.log("  - Granting manager roles");
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "grantRootRoles",
+        args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
+      });
+    }
   },
   {
     tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],
