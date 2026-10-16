@@ -11,7 +11,11 @@
 ///   contract naming. None of them reaches a name, so both registries leave their
 ///   names emancipated;
 /// - the batch registrars have no owner, so nothing can ever send through them
-///   again, even if a registry grants them roles.
+///   again, even if a registry grants them roles;
+/// - the deployer holds no role on a root registry a root replacement set aside, and
+///   that root's batch registrar has no owner. The `eth` and `reverse` tokens of such
+///   a root stay with the deployer, since no role there lets them move, but carry no
+///   role.
 ///
 /// This module plans the calls from the roles currently held, so a re-run sends only
 /// what is missing. It knows nothing about signing or sending them.
@@ -31,6 +35,18 @@ export type HandoverContract =
 /// The root registry names whose tokens the handover moves to the name owner.
 export const HANDED_OVER_ROOT_NAMES = ["eth", "reverse"] as const;
 export type HandedOverRootName = (typeof HANDED_OVER_ROOT_NAMES)[number];
+
+/// What the deployer still holds on a root registry a root replacement set aside.
+export type ArchivedRootState = {
+  /// The archive namespace that holds the root's record.
+  archive: string;
+  /// The deployer's roles on each root name's entry in that root, by the name's id.
+  nameRoles: Array<{ label: HandedOverRootName; id: bigint; roles: bigint }>;
+  /// The deployer's root roles on that root.
+  deployerRootRoles: bigint;
+  /// The owner of the archive's RootBatchRegistrar, when it holds one.
+  batchRegistrarOwner?: Address;
+};
 
 /// What the deployer, the owner and the name owner currently hold, as the plan reads it.
 export type RegistryHandoverState = {
@@ -58,18 +74,24 @@ export type RegistryHandoverState = {
   ownerEthRegistryRoles: bigint;
   /// `ETHRegistry` root roles of the deployer.
   deployerEthRegistryRoles: bigint;
+  /// The root registries earlier root replacements set aside, oldest first.
+  archivedRoots: ArchivedRootState[];
 };
 
 export type RegistryHandoverCall = {
   contract: HandoverContract;
+  /// The archive namespace whose contract the call writes to, when not the active one.
+  archive?: string;
   functionName:
     | "grantRootRoles"
     | "revokeRootRoles"
+    | "revokeRoles"
     | "safeTransferFrom"
     | "renounceOwnership";
   args:
     | readonly []
     | readonly [bigint, Address]
+    | readonly [bigint, bigint, Address]
     | readonly [Address, Address, bigint, bigint, Hex];
   label: string;
 };
@@ -80,7 +102,8 @@ export type RegistryHandoverCall = {
 /// move with them.
 /// Every grant to the owner comes before the deployer's revocations, while the
 /// deployer still holds the admin roles that make it, so no role passes through a
-/// moment with nobody able to grant it. Empty once handed over.
+/// moment with nobody able to grant it. Last, the deployer drops what it holds on
+/// each archived root. Empty once handed over.
 export function planRegistryHandover(
   state: RegistryHandoverState,
 ): RegistryHandoverCall[] {
@@ -149,18 +172,67 @@ export function planRegistryHandover(
     });
   }
   for (const { contract, owner } of state.batchRegistrars) {
-    if (sameAddress(owner, state.deployer)) {
+    calls.push(...renounceIfDeployer(state.deployer, contract, owner));
+  }
+  for (const root of state.archivedRoots) {
+    const where = `the root registry archived in ${root.archive}`;
+    for (const { label, id, roles } of root.nameRoles) {
+      if (roles === 0n) continue;
       calls.push({
-        contract,
-        functionName: "renounceOwnership",
-        args: [],
-        label: `renounce ownership of ${contract}, leaving it with no owner`,
+        contract: "RootRegistry",
+        archive: root.archive,
+        functionName: "revokeRoles",
+        args: [id, roles, state.deployer],
+        label: `revoke the deployer's roles on the ${label} entry of ${where}`,
       });
-    } else if (!sameAddress(owner, zeroAddress)) {
-      throw new Error(
-        `${contract} is owned by ${owner}, neither the deployer nor nobody`,
+    }
+    if (root.deployerRootRoles !== 0n) {
+      calls.push({
+        contract: "RootRegistry",
+        archive: root.archive,
+        functionName: "revokeRootRoles",
+        args: [root.deployerRootRoles, state.deployer],
+        label: `revoke the deployer's root roles on ${where}`,
+      });
+    }
+    if (root.batchRegistrarOwner) {
+      calls.push(
+        ...renounceIfDeployer(
+          state.deployer,
+          "RootBatchRegistrar",
+          root.batchRegistrarOwner,
+          root.archive,
+        ),
       );
     }
   }
   return calls;
+}
+
+// The call that leaves a batch registrar the deployer owns with no owner, none when
+// it already has none, or a refusal when someone else owns it.
+function renounceIfDeployer(
+  deployer: Address,
+  contract: "BatchRegistrar" | "RootBatchRegistrar",
+  owner: Address,
+  archive?: string,
+): RegistryHandoverCall[] {
+  const name = archive ? `the ${contract} archived in ${archive}` : contract;
+  if (sameAddress(owner, deployer)) {
+    return [
+      {
+        contract,
+        ...(archive ? { archive } : {}),
+        functionName: "renounceOwnership",
+        args: [],
+        label: `renounce ownership of ${name}, leaving it with no owner`,
+      },
+    ];
+  }
+  if (!sameAddress(owner, zeroAddress)) {
+    throw new Error(
+      `${name} is owned by ${owner}, neither the deployer nor nobody`,
+    );
+  }
+  return [];
 }

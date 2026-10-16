@@ -7,6 +7,7 @@ import {
   ROLES,
 } from "../../script/deploy-constants.js";
 import {
+  type ArchivedRootState,
   planRegistryHandover,
   type RegistryHandoverState,
 } from "../../script/migrations/registryHandover.js";
@@ -16,6 +17,35 @@ const OWNER = getAddress("0x00000000000000000000000000000000000000a1");
 const NAME_OWNER = getAddress("0x00000000000000000000000000000000000000e1");
 const ETH_TOKEN_ID = 123n;
 const REVERSE_TOKEN_ID = 456n;
+const ETH_ID = 789n;
+const REVERSE_ID = 1011n;
+const ARCHIVE = "mainnet-root-20261013";
+
+// The roles the deployer keeps on a root's eth entry once its token cannot move.
+const ARCHIVED_ETH_ROLES =
+  ROLES.REGISTRY.SET_SUBREGISTRY |
+  ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
+  ROLES.REGISTRY.SET_RESOLVER |
+  ROLES.ADMIN.REGISTRY.SET_RESOLVER;
+
+// A root registry a root replacement set aside, as the deployer left it.
+const archivedRoot: ArchivedRootState = {
+  archive: ARCHIVE,
+  nameRoles: [
+    { label: "eth", id: ETH_ID, roles: ARCHIVED_ETH_ROLES },
+    { label: "reverse", id: REVERSE_ID, roles: 0n },
+  ],
+  deployerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+  batchRegistrarOwner: DEPLOYER,
+};
+
+// The same root once the deployer has dropped everything on it.
+const clearedArchivedRoot: ArchivedRootState = {
+  ...archivedRoot,
+  nameRoles: archivedRoot.nameRoles.map((name) => ({ ...name, roles: 0n })),
+  deployerRootRoles: 0n,
+  batchRegistrarOwner: zeroAddress,
+};
 
 // The registries as the deploy leaves them.
 const deployed: RegistryHandoverState = {
@@ -34,6 +64,7 @@ const deployed: RegistryHandoverState = {
   deployerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
   ownerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
   deployerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+  archivedRoots: [],
 };
 
 // The registries once handed over.
@@ -198,6 +229,59 @@ describe("planRegistryHandover", () => {
 
   it("plans nothing once handed over", () => {
     expect(planRegistryHandover(handedOver)).toEqual([]);
+  });
+
+  it("clears the deployer from an archived root last: its names' roles, then its root roles, then its batch registrar", () => {
+    const calls = planRegistryHandover({
+      ...deployed,
+      archivedRoots: [archivedRoot],
+    });
+    expect(calls.slice(0, -3)).toEqual(planRegistryHandover(deployed));
+    expect(calls.slice(-3)).toEqual([
+      {
+        contract: "RootRegistry",
+        archive: ARCHIVE,
+        functionName: "revokeRoles",
+        args: [ETH_ID, ARCHIVED_ETH_ROLES, DEPLOYER],
+        label: expect.stringContaining(
+          `eth entry of the root registry archived in ${ARCHIVE}`,
+        ),
+      },
+      {
+        contract: "RootRegistry",
+        archive: ARCHIVE,
+        functionName: "revokeRootRoles",
+        args: [DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT, DEPLOYER],
+        label: expect.stringContaining(ARCHIVE),
+      },
+      {
+        contract: "RootBatchRegistrar",
+        archive: ARCHIVE,
+        functionName: "renounceOwnership",
+        args: [],
+        label: expect.stringContaining(ARCHIVE),
+      },
+    ]);
+  });
+
+  it("plans nothing on an archived root the deployer holds nothing on", () => {
+    expect(
+      planRegistryHandover({
+        ...handedOver,
+        archivedRoots: [clearedArchivedRoot],
+      }),
+    ).toEqual([]);
+  });
+
+  it("refuses an archived batch registrar owned by someone other than the deployer", () => {
+    expect(() =>
+      planRegistryHandover({
+        ...handedOver,
+        archivedRoots: [{ ...clearedArchivedRoot, batchRegistrarOwner: OWNER }],
+      }),
+    ).toThrow(
+      new RegExp(`RootBatchRegistrar archived in ${ARCHIVE} is owned by`),
+    );
   });
 
   it("refuses to hand the registries from the deployer to itself", () => {

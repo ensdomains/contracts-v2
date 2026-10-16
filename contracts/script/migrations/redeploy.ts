@@ -243,15 +243,23 @@ export function withDependents(
   return [...set].sort();
 }
 
-/// The newest archive namespace of `kind`, if one exists: the newest
-/// `<namespace>-<kind>-*` directory holding the kind's marker record, or any record
-/// when the kind has none.
+/// The newest archive namespace of `kind`, if one exists.
 export function findRedeployArchive(
   deploymentsDir: string,
   namespace: string,
   set: Pick<RedeploySet, "kind" | "marker">,
 ): string | undefined {
-  if (!existsSync(deploymentsDir)) return undefined;
+  return findRedeployArchives(deploymentsDir, namespace, set).at(-1);
+}
+
+/// Every archive namespace of `kind`, oldest first: each `<namespace>-<kind>-*`
+/// directory holding the kind's marker record, or any record when the kind has none.
+export function findRedeployArchives(
+  deploymentsDir: string,
+  namespace: string,
+  set: Pick<RedeploySet, "kind" | "marker">,
+): string[] {
+  if (!existsSync(deploymentsDir)) return [];
   const holdsRecords = (dir: string) =>
     set.marker
       ? existsSync(join(dir, `${set.marker}.json`))
@@ -266,8 +274,7 @@ export function findRedeployArchive(
         holdsRecords(join(deploymentsDir, entry.name)),
     )
     .map((entry) => entry.name)
-    .sort()
-    .at(-1);
+    .sort();
 }
 
 /// Moves the records `set` replaces into a new archive namespace beside the active

@@ -158,8 +158,9 @@ On both `RootRegistry` and `ETHRegistry` the owner takes every root role except 
 upgrading the registry), each with its admin role. It can add top-level names, give reserved ones,
 such as DNS top-level names, to their operators, and authorize `.eth` registrars, but no root role
 reaches a registered name, so both registries' names are emancipated. The `eth` and `reverse` tokens move to the name owner (the ENS DAO name owner
-Safe on mainnet) with every role they carry. The deployer drops every role it holds and renounces
-both batch registrars. `phase verify-roles` records
+Safe on mainnet) with every role they carry. The deployer drops every role it holds, on these
+registries and on any root registry a root replacement set aside, and renounces every batch
+registrar. `phase verify-roles` records
 the roles actually held in `deployments/<namespace>/roles.md`._
 
 #### Creating Emancipated Names

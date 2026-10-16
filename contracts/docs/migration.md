@@ -569,11 +569,16 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
     account can send through them again, even if a registry later grants them a role.
     `RootBatchRegistrar` already gives up its root registry role once phase 1 has registered the
     DNS top-level names, and `BatchRegistrar` loses its `.eth` registry roles in phase 6.
+  - On every root registry a root replacement archived (`<namespace>-root-<date>`), the deployer
+    holds no role, root-wide or on the `eth` or `reverse` entry, and that archive's
+    `RootBatchRegistrar` has no owner. Such a root's `eth` and `reverse` tokens stay with the
+    deployer, since nothing there lets them move, but carry no role.
   - The registrar, renewer and migration controllers keep the regular roles they need.
 
   The command first transfers the `eth` and `reverse` tokens, while the deployer is still the only
   account with a role on each entry, as a safe transfer requires. It then makes every grant to the owner before the
-  deployer drops anything, and sends only the transfer, grants and revocations still missing. It
+  deployer drops anything, then strips the deployer from every archived root, and sends only the
+  transfer, grants and revocations still missing. It
   then checks the end state from the registries' own role counts, so a holder it did not look for
   is caught too: the owner is the only admin on each registry, nobody holds a dangerous root role,
   and both registries report themselves emancipated. The handover is the end of the deployment.
@@ -626,7 +631,8 @@ bun ./script/generateAddressDocs.ts --network mainnet
 - The deploy rewrites `deployments/<namespace>/addresses.md`, and `verify-roles` rewrites
   `roles.md`. `generateAddressDocs.ts` then rewrites `docs/addresses/<network>.md`, so the published
   addresses name the new contracts.
-- The old root registry and the other replaced contracts stay on chain, unused.
+- The old root registry and the other replaced contracts stay on chain, unused. The deployer keeps
+  its roles on the old root until phase 8, which strips them along with those on the live root.
 
 ## Replacing changed contracts under a live deployment
 
@@ -894,7 +900,8 @@ The phases run in this order:
    since v1 no longer changes — then phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
 7. **Phase 8**, `hand-over-registry-admin`, signed by the deployer: the `eth` token goes to the ENS
    DAO name owner Safe, and every root role but the dangerous ones on both registries to the DAO.
-   The handover also renounces both batch registrars, and ends the deployment.
+   The handover also renounces every batch registrar, strips the deployer from the archived root,
+   and ends the deployment.
 
 ## ENSv1 test fixture corpus
 
@@ -1468,7 +1475,7 @@ and idempotency rules.
 | `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions, and write `deployments/<namespace>/roles.md` with every role, owner and proxy admin on the namespace's contracts; `--stage` picks the point in the migration (`pre-handoff`, `post-handoff`, `post-registry-handover`) |
 | `phase register-direct-names` | Phase 5: register the network's listed names straight to their owners, with every role and admin role, and the resolver and expiry the list gives or v1 holds |
 | `phase verify-direct-names` | Check each listed name is registered to its owner, who alone holds its roles, and that the deployer kept no registering role |
-| `phase hand-over-registry-admin` | Phase 8: the `eth` token, with every role on it, goes to the name owner; the owner takes the root registry's and the `.eth` registry's root roles; the deployer drops every role it holds on them and renounces both batch registrars |
+| `phase hand-over-registry-admin` | Phase 8: the `eth` token, with every role on it, goes to the name owner; the owner takes the root registry's and the `.eth` registry's root roles; the deployer drops every role it holds on them and on every archived root registry, and renounces every batch registrar |
 | `phase redeploy-root` | Replace the v2 root registry under a live namespace, with every contract built over it, before the DAO proposal executes and before go-live; the `.eth` registry and its reservations are reused, and its parent is left for `set-eth-parent` |
 | `phase redeploy-contracts` | Replace the deployed contracts whose build has changed, with every contract built over one of them, before the DAO proposal executes and before go-live; the set must be named with `--replace` |
 | `phase rereserve-dns-tlds` | Point the root registry's reserved DNS top-level names at the namespace's `DNSTLDResolver` by registering, unregistering and reserving each again; before phase 8 |

@@ -113,6 +113,7 @@ import {
 import { buildDaoProposal } from "./migrations/daoProposal.js";
 import {
   type HandoverContract,
+  type RegistryHandoverCall,
   HANDED_OVER_ROOT_NAMES,
   planRegistryHandover,
   type RegistryHandoverState,
@@ -128,6 +129,7 @@ import {
   driftedRecords,
   driftedReusedRecords,
   findRedeployArchive,
+  findRedeployArchives,
   namespaceBeforeRedeploy,
   readNamespaceRecords,
   redeployDiff,
@@ -4470,6 +4472,46 @@ function handoverBatchRegistrars(ctx: RegistryAdminContext) {
   );
 }
 
+// The root registries earlier root replacements set aside, with the batch registrar
+// each archive holds, oldest first.
+function archivedRootRegistries(ctx: RegistryAdminContext) {
+  return findRedeployArchives(
+    ctx.deploymentsDir,
+    ctx.deploymentNetwork,
+    ROOT_REDEPLOY,
+  ).map((archive) => {
+    const batchRegistrar = maybeLoadV2Deployment(
+      ctx.deploymentsDir,
+      archive,
+      "RootBatchRegistrar",
+    );
+    return {
+      archive,
+      rootRegistry: {
+        address: loadV2Deployment(ctx.deploymentsDir, archive, "RootRegistry")
+          .address,
+        abi: Artifact_PermissionedRegistry.abi,
+      } as ContractRef,
+      batchRegistrar: batchRegistrar
+        ? ({
+            address: batchRegistrar.address,
+            abi: batchRegistrar.abi,
+          } as ContractRef)
+        : undefined,
+    };
+  });
+}
+
+async function readOwner(ctx: RegistryAdminContext, ref: ContractRef) {
+  return getAddress(
+    (await ctx.client.readContract({
+      address: ref.address,
+      abi: ref.abi,
+      functionName: "owner",
+    } as never)) as Address,
+  );
+}
+
 async function readRegistryHandoverState(
   ctx: RegistryAdminContext,
   deployer: Address,
@@ -4498,14 +4540,32 @@ async function readRegistryHandoverState(
   const batchRegistrars = await Promise.all(
     handoverBatchRegistrars(ctx).map(async ({ contract, ref }) => ({
       contract,
-      owner: getAddress(
-        (await ctx.client.readContract({
-          address: ref.address,
-          abi: ref.abi,
-          functionName: "owner",
-        } as never)) as Address,
-      ),
+      owner: await readOwner(ctx, ref),
     })),
+  );
+  const archivedRoots = await Promise.all(
+    archivedRootRegistries(ctx).map(
+      async ({ archive, rootRegistry, batchRegistrar }) => {
+        const [nameRoles, deployerRootRoles, batchRegistrarOwner] =
+          await Promise.all([
+            Promise.all(
+              HANDED_OVER_ROOT_NAMES.map(async (label) => ({
+                label,
+                id: labelId(label),
+                roles: await ctx.roles(rootRegistry, labelId(label), deployer),
+              })),
+            ),
+            ctx.roles(rootRegistry, ROOT_RESOURCE, deployer),
+            batchRegistrar ? readOwner(ctx, batchRegistrar) : undefined,
+          ]);
+        return {
+          archive,
+          nameRoles,
+          deployerRootRoles,
+          ...(batchRegistrarOwner ? { batchRegistrarOwner } : {}),
+        };
+      },
+    ),
   );
   return {
     deployer,
@@ -4517,6 +4577,7 @@ async function readRegistryHandoverState(
     deployerRootRoles,
     ownerEthRegistryRoles,
     deployerEthRegistryRoles,
+    archivedRoots,
   };
 }
 
@@ -4584,7 +4645,7 @@ async function assertRegistryHandoverComplete(
     throw new Error(`registry handover check failed: ${failures.join("; ")}`);
   }
   console.log(
-    `registry handover complete: ${state.nameOwner} holds the eth and reverse tokens and every role on their entries; ${ctx.owner} holds every safe root role on the root registry and the .eth registry; the deployer holds nothing, the batch registrars have no owner, and both registries are emancipated`,
+    `registry handover complete: ${state.nameOwner} holds the eth and reverse tokens and every role on their entries; ${ctx.owner} holds every safe root role on the root registry and the .eth registry; the deployer holds nothing, on ${state.archivedRoots.length} archived root registr${state.archivedRoots.length === 1 ? "y" : "ies"} either, the batch registrars have no owner, and both registries are emancipated`,
   );
 }
 
@@ -4614,8 +4675,8 @@ function registryAdminDeployer(
 /// Hands the deployer's authority over the v2 registries to their final holders: the
 /// `eth` token, with every role on its entry, goes to the name owner; the owner takes
 /// the root registry's and the `.eth` registry's root roles; the deployer drops every
-/// role it holds on them and renounces both batch registrars. Sends only what is
-/// missing, then checks the end state.
+/// role it holds on them and on every archived root registry, and renounces every
+/// batch registrar. Sends only what is missing, then checks the end state.
 export async function handOverRegistryAdmin(
   opts: RegistryAdminOptions & { deployer?: Address },
 ) {
@@ -4631,6 +4692,16 @@ export async function handOverRegistryAdmin(
       (b) => b.contract === "RootBatchRegistrar",
     )?.ref,
   };
+  const archivedRoots = archivedRootRegistries(ctx);
+  const target = (call: RegistryHandoverCall) => {
+    if (!call.archive) return targets[call.contract];
+    const archived = archivedRoots.find((r) => r.archive === call.archive);
+    return call.contract === "RootBatchRegistrar"
+      ? archived?.batchRegistrar
+      : call.contract === "RootRegistry"
+        ? archived?.rootRegistry
+        : undefined;
+  };
   const calls = planRegistryHandover(
     await readRegistryHandoverState(ctx, deployer),
   );
@@ -4638,14 +4709,18 @@ export async function handOverRegistryAdmin(
     `registry handover from ${deployer} to ${ctx.owner}, eth and reverse tokens to ${ctx.nameOwner}: ${calls.length} call(s) to make`,
   );
   for (const call of calls) {
-    const target = targets[call.contract];
-    if (!target) throw new Error(`no ${call.contract} in the namespace`);
+    const ref = target(call);
+    if (!ref) {
+      throw new Error(
+        `no ${call.contract} in ${call.archive ?? "the namespace"}`,
+      );
+    }
     await sendAdminWrite({
       client: ctx.client,
       chain: ctx.chain,
       rpcUrl: opts.rpcUrl,
       provider: opts.provider,
-      target,
+      target: ref,
       functionName: call.functionName,
       args: call.args,
       receiptLabel: call.label,
