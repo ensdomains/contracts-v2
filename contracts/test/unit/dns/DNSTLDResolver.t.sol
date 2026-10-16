@@ -123,7 +123,6 @@ contract MockDNS is DNSTLDResolver {
     constructor(IPermissionedRegistry rootRegistry)
         DNSTLDResolver(
             ENS(address(0)),
-            address(0),
             rootRegistry,
             DNSSEC(address(0)),
             new GatewayProvider(address(1), new string[](0)),

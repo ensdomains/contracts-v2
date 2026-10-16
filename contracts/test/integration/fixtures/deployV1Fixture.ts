@@ -14,7 +14,7 @@ export async function deployV1Fixture(
   const publicClient = await network.viem.getPublicClient({
     ccipRead: enableCcipRead ? undefined : false,
   });
-  const [walletClient] = await network.viem.getWalletClients();
+  const [walletClient, rootClient] = await network.viem.getWalletClients();
   const ensRegistry = await network.viem.deployContract("ENSRegistry");
   const baseRegistrar = await network.viem.deployContract(
     "BaseRegistrarImplementation",
@@ -76,6 +76,13 @@ export async function deployV1Fixture(
     baseRegistrar.address,
     zeroAddress, // IMetadataService
   ]);
+  const root = await network.viem.deployContract(
+    "Root",
+    [ensRegistry.address],
+    { client: { wallet: rootClient } },
+  );
+  await root.write.setController([rootClient.account.address, true]); // allow setSubnode on root
+  await ensRegistry.write.setOwner([namehash(""), root.address]);
   return {
     network,
     publicClient,
@@ -88,6 +95,7 @@ export async function deployV1Fixture(
     batchGatewayProvider,
     universalResolver,
     nameWrapper,
+    root,
     setupName,
   };
   // clobbers registry ownership up to name
@@ -114,10 +122,14 @@ export async function deployV1Fixture(
     while (i > 0) {
       const parent = labels.slice(i).join(".");
       const child = labels[--i];
-      await ensRegistry.write.setSubnodeOwner(
-        [namehash(parent), labelhash(child), account.address],
-        { account },
-      );
+      if (parent) {
+        await ensRegistry.write.setSubnodeOwner(
+          [namehash(parent), labelhash(child), account.address],
+          { account },
+        );
+      } else {
+        await root.write.setSubnodeOwner([labelhash(child), account.address]);
+      }
     }
     // set resolver on leaf
     const node = namehash(name);
