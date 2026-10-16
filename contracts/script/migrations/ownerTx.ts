@@ -5,7 +5,13 @@
 /// module prepares, reads back and replays those transactions. Everything here is
 /// about that hand-off — nothing in it knows what a phase does.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { getAddress, type Address, type Chain } from "viem";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
@@ -24,7 +30,7 @@ import {
   waitForSuccessfulReceipt,
   type MigrationNetwork,
 } from "./plumbing.js";
-import { walletClient } from "./rpc.js";
+import { impersonate, isLocalRpcUrl, walletClient } from "./rpc.js";
 
 type WalletAccount =
   | ReturnType<typeof privateKeyToAccount>
@@ -44,6 +50,19 @@ export type PreparedOwnerTransaction = {
   deployment?: string;
 };
 
+// Where `printPreparedCall` also records each call, when a command was asked to.
+let preparedCallFile: string | undefined;
+
+/// Makes every later `printPreparedCall` also append its call to `file`, one JSON
+/// line each, in the format `readPreparedOwnerTransactions` reads. A printed call
+/// is copied by hand; a recorded one can be checked, replayed and bundled into a
+/// proposal without anyone transcribing hex. Pass `undefined` to stop recording.
+export function recordPreparedCallsTo(file: string | undefined): void {
+  preparedCallFile = file === undefined ? undefined : resolve(file);
+  if (preparedCallFile)
+    mkdirSync(dirname(preparedCallFile), { recursive: true });
+}
+
 export function printPreparedCall(
   label: string,
   target: Address,
@@ -52,6 +71,15 @@ export function printPreparedCall(
   console.log(`${label}`);
   console.log(`  to:   ${target}`);
   console.log(`  data: ${data}`);
+  if (preparedCallFile) {
+    const tx: PreparedOwnerTransaction = {
+      to: getAddress(target),
+      value: "0",
+      data,
+      label,
+    };
+    appendFileSync(preparedCallFile, `${JSON.stringify(tx)}\n`, "utf8");
+  }
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -279,6 +307,9 @@ export async function executePreparedOwnerTransactions(opts: {
   file: string;
   role?: string;
   privateKey?: `0x${string}`;
+  // Send as this address on a local fork instead of signing: how a rehearsal plays
+  // a DAO proposal, whose timelock executes each call as itself.
+  impersonateAccount?: Address;
   dryRun?: boolean;
   journalFile?: string;
   // Re-send transactions the journal already records as executed.
@@ -288,16 +319,32 @@ export async function executePreparedOwnerTransactions(opts: {
   if (transactions.length === 0) {
     throw new Error(`No prepared owner transactions found in ${opts.file}`);
   }
+  if (opts.impersonateAccount && !isLocalRpcUrl(opts.rpcUrl)) {
+    throw new Error(
+      `--impersonate-account needs a local fork; refusing ${opts.rpcUrl}`,
+    );
+  }
 
-  const account = ownerTransactionSigner(opts.role, opts.privateKey);
+  const account = opts.impersonateAccount
+    ? getAddress(opts.impersonateAccount)
+    : ownerTransactionSigner(opts.role, opts.privateKey);
   if (!account && !opts.dryRun) {
     throw new Error(
       "Missing --private-key, owner key env var, or owner mnemonic env var for prepared owner transactions",
     );
   }
+  const signer =
+    account === undefined
+      ? undefined
+      : typeof account === "string"
+        ? account
+        : account.address;
 
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain);
+  if (opts.impersonateAccount && !opts.dryRun) {
+    await impersonate(client, getAddress(opts.impersonateAccount));
+  }
   const wallet = account
     ? walletClient({ rpcUrl: opts.rpcUrl, chain, account })
     : null;
@@ -343,9 +390,9 @@ export async function executePreparedOwnerTransactions(opts: {
       console.log(`  note: already executed as ${previous.hash}`);
     }
 
-    if (account && tx.from && !sameAddress(account.address, tx.from)) {
+    if (signer && tx.from && !sameAddress(signer, tx.from)) {
       throw new Error(
-        `Signer ${account.address} does not match prepared tx sender ${tx.from} for ${label}`,
+        `Signer ${signer} does not match prepared tx sender ${tx.from} for ${label}`,
       );
     }
     if (opts.dryRun) continue;

@@ -33,7 +33,11 @@ import {
   isLogSpanRefusal,
   isLogSpanRefusalMessage,
 } from "./migrations/logSpanRefusal.js";
-import { QueryRetry } from "./migrations/queryRetry.js";
+import {
+  ONE_CALL_PER_BATCH,
+  QueryRetry,
+  readUntilComplete,
+} from "./migrations/queryRetry.js";
 import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
 
 export const V1_INDEX_FILE = "v1-name-index.ndjson";
@@ -312,6 +316,44 @@ export class RangeTooWideError extends Error {
   }
 }
 
+/// The first block at which `address` holds code, which is the block that deployed it.
+/// It bisects code lookups over the chain's history, so it needs an archive node and
+/// makes about one lookup per bit of the head block number. A failed lookup is asked
+/// again as `QueryRetry` allows, since a load-balanced endpoint can route one to a
+/// node that has pruned old state.
+export async function firstBlockWithCode(
+  client: {
+    getBlockNumber(): Promise<bigint>;
+    getCode(args: {
+      address: `0x${string}`;
+      blockNumber: bigint;
+    }): Promise<`0x${string}` | undefined>;
+  },
+  address: `0x${string}`,
+  retryDelayMs?: number,
+): Promise<number> {
+  const retry = new QueryRetry(retryDelayMs);
+  const hasCode = async (block: number): Promise<boolean> => {
+    const code = await readUntilComplete(
+      () => client.getCode({ address, blockNumber: BigInt(block) }),
+      () => undefined,
+      retry,
+    );
+    return code !== undefined && code !== "0x";
+  };
+  let high = Number(await client.getBlockNumber());
+  if (!(await hasCode(high))) {
+    throw new Error(`no contract at ${address} at block ${high}`);
+  }
+  let low = 0;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (await hasCode(mid)) high = mid;
+    else low = mid + 1;
+  }
+  return low;
+}
+
 function idsPath(workDir: string) {
   return join(workDir, V1_INDEX_IDS_FILE);
 }
@@ -480,18 +522,31 @@ export async function buildV1NameIndexFromRpc(
   const after = cursor === "" ? -1 : ids.findIndex((id) => id > cursor);
   const resumeAt = cursor === "" ? 0 : after === -1 ? ids.length : after;
 
+  // A batch is read in calls the provider can fail one at a time, and a failed call
+  // leaves every name in it unread. A batch with an unread name is asked again as
+  // `QueryRetry` allows.
+  const readExpiries = async (batch: string[]): Promise<bigint[]> =>
+    (await readUntilComplete(
+      () => client.getExpiries(batch, block),
+      (expiries) => {
+        const unread = batch.findIndex(
+          (_, index) =>
+            expiries[index] === null || expiries[index] === undefined,
+        );
+        return unread === -1
+          ? undefined
+          : `could not read nameExpires for ${batch[unread]} at block ${block}; re-run with --resume`;
+      },
+      retry,
+    )) as bigint[];
+
   for (let start = resumeAt; start < ids.length; start += batchSize) {
     const batch = ids.slice(start, start + batchSize);
-    const expiries = await client.getExpiries(batch, block);
+    const expiries = await readExpiries(batch);
 
     const lines: string[] = [];
     for (let index = 0; index < batch.length; index++) {
       const expiry = expiries[index];
-      if (expiry === null || expiry === undefined) {
-        throw new Error(
-          `could not read nameExpires for ${batch[index]} at block ${block}; re-run with --resume`,
-        );
-      }
       // A name released long ago cannot be claimed by its former owner. Dropping it
       // here keeps the index proportional to live names rather than to all history.
       if (expiry === 0n || expiry <= cutoff) continue;
@@ -592,6 +647,7 @@ export function createRpcIndexClient(opts: {
 
     async getExpiries(ids, block) {
       const results = await opts.client.multicall({
+        ...ONE_CALL_PER_BATCH,
         allowFailure: true,
         blockNumber: BigInt(block),
         multicallAddress: opts.multicallAddress ?? MULTICALL3_ADDRESS,

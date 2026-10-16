@@ -17,6 +17,7 @@ export default execute(
     get,
     read,
     namedAccounts: { deployer, owner },
+    tags,
   }) => {
     const rootRegistry =
       get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
@@ -45,7 +46,7 @@ export default execute(
           deployer,
           ethRegistry.address,
           zeroAddress,
-          DEPLOYMENT_ROLES.ETH_TOKEN,
+          DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
           MAX_EXPIRY,
         ],
       });
@@ -57,7 +58,17 @@ export default execute(
         read(ethRegistry, { functionName: "getURI" }),
       ]);
 
+    // A root registry redeployed over a live namespace leaves the parent alone until
+    // the redeploy has been checked; `phase set-eth-parent` sets it then.
     if (
+      (!isAddressEqual(currentParent, rootRegistry.address) ||
+        currentLabel !== "eth") &&
+      tags.deferEthParent
+    ) {
+      console.log(
+        `  - Canonical parent held back: still ${currentParent} (${currentLabel})`,
+      );
+    } else if (
       !isAddressEqual(currentParent, rootRegistry.address) ||
       currentLabel !== "eth"
     ) {
@@ -78,12 +89,18 @@ export default execute(
       });
     }
 
-    console.log("  - Granting manager roles");
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "grantRootRoles",
+    const ownerIsManager = await read(ethRegistry, {
+      functionName: "hasRootRoles",
       args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
     });
+    if (!ownerIsManager) {
+      console.log("  - Granting manager roles");
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "grantRootRoles",
+        args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
+      });
+    }
   },
   {
     tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],

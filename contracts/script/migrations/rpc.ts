@@ -219,11 +219,78 @@ export function withRpcCompatibility(
   };
 }
 
-export function httpRpcProvider(rpcUrl: string): RpcProvider {
+/// JSON-RPC error codes for a refusal that passes: drpc's rate limit (15) and
+/// temporary internal error (19), and the standard limit-exceeded and timeout codes.
+const TRANSIENT_RPC_CODES = new Set([15, 19, -32005, -32002]);
+/// HTTP statuses for an overloaded or briefly unavailable endpoint.
+const TRANSIENT_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+/// Whether a JSON-RPC error is a refusal that a later attempt can get past, rather
+/// than an answer about the chain such as a revert.
+export function isTransientRpcError(error: {
+  code?: number;
+  message?: string;
+}): boolean {
+  return (
+    (error.code !== undefined && TRANSIENT_RPC_CODES.has(error.code)) ||
+    /rate limit|too many requests|temporar|timed out/i.test(error.message ?? "")
+  );
+}
+
+/// Requests one provider keeps in flight at once; the rest wait their turn. A
+/// throttled endpoint refuses a burst it would have served at a steadier pace.
+export const RPC_MAX_IN_FLIGHT = 8;
+/// Attempts at a refused read, and the wait before the first retry, which doubles
+/// with each refusal in a row up to a cap. Each wait is spread at random by half
+/// its length either way, so queued reads do not all retry at the same moment.
+export const REFUSED_READ_ATTEMPTS = 10;
+const REFUSED_READ_BACKOFF_MS = 1_000;
+const REFUSED_READ_BACKOFF_CAP_MS = 30_000;
+
+/// The wait before a refused read is asked again, after `refusal` refusals in a row.
+export function refusedReadWaitMs(
+  refusal: number,
+  baseMs = REFUSED_READ_BACKOFF_MS,
+): number {
+  const wait = Math.min(
+    REFUSED_READ_BACKOFF_CAP_MS,
+    baseMs * 2 ** (refusal - 1),
+  );
+  return wait / 2 + Math.random() * wait;
+}
+
+/// A JSON-RPC provider over HTTP that returns a node's answer as it is, `null`
+/// included, and throws only the errors a node sends.
+///
+/// It keeps a few requests in flight at once and queues the rest, and a read
+/// refused for a reason that passes — a rate limit, a busy or briefly unreachable
+/// node — is asked again after a growing wait, so a burst of reads against a
+/// throttled endpoint slows down instead of stopping a deploy. Anything else is
+/// thrown at once, and a send is never repeated, since a second submission could
+/// land a second transaction.
+export function httpRpcProvider(
+  rpcUrl: string,
+  retryDelayMs = REFUSED_READ_BACKOFF_MS,
+): RpcProvider {
   let id = 0;
-  return {
-    async request(args) {
-      const response = await fetch(rpcUrl, {
+  let inFlight = 0;
+  const waiting: Array<() => void> = [];
+  // A freed slot passes straight to the next waiter, so the count never overshoots.
+  const acquire = async () => {
+    if (inFlight < RPC_MAX_IN_FLIGHT) inFlight++;
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+  };
+  const release = () => {
+    const next = waiting.shift();
+    if (next) next();
+    else inFlight--;
+  };
+  const attempt = async (
+    args: Parameters<RpcProvider["request"]>[0],
+  ): Promise<{ result: unknown } | { error: unknown; transient: boolean }> => {
+    let response: Response;
+    try {
+      response = await fetch(rpcUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         signal: AbortSignal.timeout(RPC_REPLY_DEADLINE_MS),
@@ -234,22 +301,51 @@ export function httpRpcProvider(rpcUrl: string): RpcProvider {
           params: args.params ?? [],
         }),
       });
-      const payload = (await response.json()) as {
-        result?: unknown;
-        error?: { code?: number; message?: string; data?: unknown };
+    } catch (error) {
+      return { error, transient: true };
+    }
+    if (TRANSIENT_HTTP_STATUSES.has(response.status)) {
+      return {
+        error: new Error(`HTTP ${response.status} from ${args.method}`),
+        transient: true,
       };
-      if (payload.error) {
-        const error = new Error(
-          payload.error.message ?? "JSON-RPC error",
-        ) as Error & {
-          code?: number;
-          data?: unknown;
-        };
-        error.code = payload.error.code;
-        error.data = payload.error.data;
-        throw error;
+    }
+    let payload: {
+      result?: unknown;
+      error?: { code?: number; message?: string; data?: unknown };
+    };
+    try {
+      payload = (await response.json()) as typeof payload;
+    } catch (error) {
+      // An error page in place of a JSON-RPC reply.
+      return { error, transient: true };
+    }
+    if (!payload.error) return { result: payload.result };
+    const error = new Error(
+      payload.error.message ?? "JSON-RPC error",
+    ) as Error & {
+      code?: number;
+      data?: unknown;
+    };
+    error.code = payload.error.code;
+    error.data = payload.error.data;
+    return { error, transient: isTransientRpcError(payload.error) };
+  };
+  return {
+    async request(args) {
+      const attempts = isRetryableRpcRequest(args) ? REFUSED_READ_ATTEMPTS : 1;
+      for (let refusal = 1; ; refusal++) {
+        await acquire();
+        let outcome: Awaited<ReturnType<typeof attempt>>;
+        try {
+          outcome = await attempt(args);
+        } finally {
+          release();
+        }
+        if ("result" in outcome) return outcome.result;
+        if (!outcome.transient || refusal >= attempts) throw outcome.error;
+        await sleep(refusedReadWaitMs(refusal, retryDelayMs));
       }
-      return payload.result;
     },
   };
 }
