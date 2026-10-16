@@ -237,7 +237,7 @@ contract DNSTLDResolver is
     }
 
     /// @notice CCIP-Read callback for `resolve()` from calling the DNSSEC oracle.
-    ///         Reverts `UnreachableName` if resolver is found.
+    ///         Reverts `UnreachableName` if gasless resolver is not found.
     /// @param response The response data.
     /// @param extraData The contextual data passed from `resolve()`.
     /// @return The abi-encoded result from the resolver.
