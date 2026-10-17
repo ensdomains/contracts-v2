@@ -21,6 +21,7 @@ import {
   dnsEncodeName,
   COIN_TYPE_DEFAULT,
   COIN_TYPE_ETH,
+  namehash,
 } from "../../utils/utils.js";
 import { deployV1Fixture } from "../fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
@@ -71,21 +72,19 @@ async function fixture() {
   const myResolver = await v2.deployPermissionedResolver();
   const dnsTLDResolver = await network.viem.deployContract("DNSTLDResolver", [
     v1.ensRegistry.address,
-    dnsTLDResolverV1.address,
     v2.rootRegistry.address,
     mockDNSSEC.address,
     oracleGatewayProvider.address,
     v2.batchGatewayProvider.address,
     v2.contractNamer.address,
   ]);
-  await v1.setupName({
-    name: "com",
-    resolverAddress: dnsTLDResolverV1.address,
-  });
-  await v2.setupName({
-    name: "com",
-    resolverAddress: dnsTLDResolver.address,
-  });
+  const fakeDNSRegistrarV1 = await v1.root.read.owner();
+  const suffixes = ["com"];
+  for (const name of suffixes) {
+    await v2.setupName({ name, resolverAddress: dnsTLDResolver.address });
+    await v1.setupName({ name, resolverAddress: dnsTLDResolverV1.address });
+    await v1.ensRegistry.write.setOwner([namehash(name), fakeDNSRegistrarV1]); // must be owned
+  }
   const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver", [
     v2.contractNamer.address,
   ]);
