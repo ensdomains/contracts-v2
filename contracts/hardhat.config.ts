@@ -118,6 +118,11 @@ const config = {
     },
   },
   networks: {
+    mainnet: {
+      type: "http",
+      url: configVariable("MAINNET_RPC_URL"),
+      chainId: 1,
+    },
     sepolia: {
       type: "http",
       url: configVariable("SEPOLIA_RPC_URL"),
