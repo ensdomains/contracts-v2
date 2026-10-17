@@ -286,17 +286,15 @@ contract DNSTLDResolver is
         uint256 offset;
         (resolver, , offset) = RegistryUtils.findResolver(ENS_REGISTRY_V1, name, 0);
         resolver = LibResolution.validateResolver(resolver, offset == 0);
-        if (resolver != address(0)) {
-            if (
-                resolver == address(this) ||
-                // nodes owned by DNSRegistrar use OffchainDNSResolver as the resolver
-                // DNSRegistrar is a Root controller and the node owner of unimported nodes
-                Controllable(ENS_REGISTRY_V1.owner(bytes32(0))).controllers(
-                    ENS_REGISTRY_V1.owner(NameCoder.namehash(name, offset)) // node owner
-                )
-            ) {
-                resolver = address(0); // prevent trivial loops
-            }
+        if (
+            resolver == address(this) ||
+            // nodes owned by DNSRegistrar use OffchainDNSResolver as the resolver
+            // DNSRegistrar is a Root controller and the node owner of unimported nodes
+            Controllable(ENS_REGISTRY_V1.owner(bytes32(0))).controllers(
+                ENS_REGISTRY_V1.owner(NameCoder.namehash(name, offset)) // node owner
+            )
+        ) {
+            resolver = address(0); // prevent trivial loops
         }
     }
 
