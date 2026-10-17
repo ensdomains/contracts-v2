@@ -88,7 +88,7 @@ describe("Phased migration rehearsal", () => {
     // to carry through the phases.
     await wrapLockedV1Name(lockedMigrationLabel, user);
 
-    const initialOwner = await env.v1.BaseRegistrar.read.ownerOf([
+    const initialOwner = await env.v1.BaseRegistrarImplementation.read.ownerOf([
       idFromLabel(initialLabel),
     ]);
     expect(initialOwner.toLowerCase()).toBe(user.address.toLowerCase());
@@ -113,10 +113,14 @@ describe("Phased migration rehearsal", () => {
     await disableV1Registrars();
 
     await expect(
-      env.v1.BaseRegistrar.read.controllers([ethRegistrarControllerAddress()]),
+      env.v1.BaseRegistrarImplementation.read.controllers([
+        ethRegistrarControllerAddress(),
+      ]),
     ).resolves.toBe(false);
     await expect(
-      env.v1.BaseRegistrar.read.controllers([env.v1.NameWrapper.address]),
+      env.v1.BaseRegistrarImplementation.read.controllers([
+        env.v1.NameWrapper.address,
+      ]),
     ).resolves.toBe(false);
     // v1 BaseRegistrar rejects register() from a removed controller with a
     // bare require (no reason string), so only the reverted call is matchable.
@@ -207,7 +211,9 @@ describe("Phased migration rehearsal", () => {
   }
 
   async function enableV1Controller(address: Address) {
-    const enabled = await env.v1.BaseRegistrar.read.controllers([address]);
+    const enabled = await env.v1.BaseRegistrarImplementation.read.controllers([
+      address,
+    ]);
     if (enabled) return;
     await env.v1.RegistrarSecurityController.write.addRegistrarController(
       [address],
@@ -221,7 +227,9 @@ describe("Phased migration rehearsal", () => {
       env.v1.NameWrapper.address,
     ];
     for (const address of controllerAddresses) {
-      const enabled = await env.v1.BaseRegistrar.read.controllers([address]);
+      const enabled = await env.v1.BaseRegistrarImplementation.read.controllers(
+        [address],
+      );
       if (!enabled) continue;
       await env.v1.RegistrarSecurityController.write.removeRegistrarController(
         [address],
@@ -257,7 +265,7 @@ describe("Phased migration rehearsal", () => {
   /// Wraps a v1 name and burns CANNOT_UNWRAP, giving the locked migration route
   /// a name in the form it requires.
   async function wrapLockedV1Name(label: string, account: Account) {
-    await env.v1.BaseRegistrar.write.safeTransferFrom(
+    await env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
       [
         account.address,
         env.v1.NameWrapper.address,
@@ -317,7 +325,7 @@ describe("Phased migration rehearsal", () => {
         },
       ],
     );
-    await env.v1.BaseRegistrar.write.safeTransferFrom(
+    await env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
       [
         account.address,
         env.v2.UnlockedMigrationController.address,

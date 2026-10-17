@@ -8,6 +8,7 @@ import {
   encodeFunctionData,
   getContract,
   getContractAddress,
+  getCreateAddress,
   keccak256,
   parseAbi,
   parseEventLogs,
@@ -15,12 +16,15 @@ import {
   type Transport,
   type WalletClient,
 } from "viem";
-import { waitForSuccessfulTransactionReceipt } from "../../utils/waitForSuccessfulTransactionReceipt.ts";
+import { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.js";
+import { waitForSuccessfulTransactionReceipt } from "../../utils/waitForSuccessfulTransactionReceipt.js";
 
-const verifiableFactoryAbi = parseAbi([
-  "function deployProxy(address implementation, uint256 salt, bytes data)",
-  "event ProxyDeployed(address indexed sender, address indexed proxyAddress, uint256 salt, address implementation)",
-]);
+export function computeProxyLogicAddress(factoryAddress: Address) {
+  return getCreateAddress({
+    from: factoryAddress,
+    nonce: 1n, // https://github.com/ensdomains/verifiable-factory/blob/main/src/VerifiableFactory.sol#L15
+  });
+}
 
 export async function deployVerifiableProxy<
   const abi extends Abi | readonly unknown[],
@@ -43,7 +47,7 @@ export async function deployVerifiableProxy<
 }) {
   const hash = await walletClient.writeContract({
     address: factoryAddress,
-    abi: verifiableFactoryAbi,
+    abi: Abi_VerifiableFactory,
     functionName: "deployProxy",
     args: [
       implAddress,
@@ -59,7 +63,7 @@ export async function deployVerifiableProxy<
     hash,
   });
   const [log] = parseEventLogs({
-    abi: verifiableFactoryAbi,
+    abi: Abi_VerifiableFactory,
     eventName: "ProxyDeployed",
     logs: receipt.logs,
   });
@@ -81,7 +85,7 @@ export function computeVerifiableProxyAddress({
   salt,
 }: {
   factoryAddress: Address;
-  proxyLogic: Address;
+  proxyLogic?: Address;
   deployer: Address;
   salt: bigint;
 }) {
@@ -93,7 +97,7 @@ export function computeVerifiableProxyAddress({
   );
   const bytecode = concat([
     "0x3d604d80600a3d3981f3363d3d373d3d3d363d73",
-    proxyLogic,
+    proxyLogic ?? computeProxyLogicAddress(factoryAddress),
     "0x5af43d82803e903d91602b57fd5bf3",
     outerSalt,
   ]);

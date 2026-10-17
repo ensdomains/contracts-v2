@@ -11,6 +11,7 @@ import { Abi_ReverseRegistrar } from "generated/abis/ReverseRegistrar.js";
 import { Abi_ReverseRegistrarAdapter } from "generated/abis/ReverseRegistrarAdapter.js";
 import { Abi_DefaultReverseRegistrarAdapter } from "generated/abis/DefaultReverseRegistrarAdapter.js";
 import { Abi_NameCoder } from "generated/abis/NameCoder.js";
+import { Abi_DNSSECImpl } from "generated/abis/DNSSECImpl.js";
 // v1
 import { Abi_Root } from "generated/abis/Root.js";
 import { Abi_ENSRegistry } from "generated/abis/ENSRegistry.js";
@@ -18,7 +19,7 @@ import { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImp
 import { Abi_NameWrapper } from "generated/abis/NameWrapper.js";
 import { Abi_RegistrarSecurityController } from "generated/abis/RegistrarSecurityController.js";
 import { Abi_PublicResolver } from "generated/abis/PublicResolver.js";
-import { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
+import { Abi_UniversalResolverV1 } from "generated/abis/UniversalResolverV1.js";
 // v2
 import { Abi_ContractNamer } from "generated/abis/ContractNamer.js";
 import { Abi_LabelStore } from "generated/abis/LabelStore.js";
@@ -64,12 +65,9 @@ import {
   createPublicClient,
   createWalletClient,
   decodeAbiParameters,
-  encodeAbiParameters,
   getContract,
   type Hex,
   hexToString,
-  keccak256,
-  namehash,
   publicActions,
   slice,
   stringToHex,
@@ -77,6 +75,7 @@ import {
   http,
   zeroAddress,
   defineChain,
+  encodeFunctionData,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
@@ -88,6 +87,7 @@ import {
   COIN_TYPE_ETH,
   dnsEncodeName,
   getReverseName,
+  namehash,
   splitName,
 } from "../test/utils/utils.js";
 import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
@@ -98,6 +98,12 @@ import {
 } from "./deploy-constants.js";
 import { patchArtifactsV1 } from "./patchArtifactsV1.js";
 import { bootstrapForkDeployments, ENS_DAO_MULTISIG } from "./forkBootstrap.js";
+import { getContractNames } from "./contractNames.js";
+import {
+  computeOwnedResolverSalt,
+  computeUserRegistrySalt,
+  computeWrapperRegistrySalt,
+} from "./salts.js";
 
 const NAMED_ACCOUNTS = ["deployer", "owner", "user", "user2"] as const;
 
@@ -139,11 +145,13 @@ export async function setupDevnet({
   }
   let unquiet = () => {};
   if (quiet) {
-    const { log, table } = console;
+    const { log, error, table } = console;
     console.log = () => {};
+    console.error = () => {};
     console.table = () => {};
     unquiet = () => {
       console.log = log;
+      console.error = error;
       console.table = table;
     };
   }
@@ -361,17 +369,54 @@ export async function setupDevnet({
     console.log("Deployed contracts");
 
     // note: TypeScript is too slow when the following is generalized
-    const shared = {
+    const v1 = {
       BatchGatewayProvider: getContract({
         abi: Abi_GatewayProvider,
         address: rocketh.get("BatchGatewayProvider").address,
         client,
       }),
-      DNSSECGatewayProvider: getContract({
-        abi: Abi_GatewayProvider,
-        address: rocketh.get("DNSSECGatewayProvider").address,
+      Root: getContract({
+        abi: Abi_Root,
+        address: rocketh.get("Root").address,
         client,
       }),
+      ENSRegistry: getContract({
+        abi: Abi_ENSRegistry,
+        address: rocketh.get("ENSRegistry").address,
+        client,
+      }),
+      BaseRegistrarImplementation: getContract({
+        abi: Abi_BaseRegistrarImplementation,
+        address: rocketh.get("BaseRegistrarImplementation").address,
+        client,
+      }),
+      NameWrapper: getContract({
+        abi: Abi_NameWrapper,
+        address: rocketh.get("NameWrapper").address,
+        client,
+      }),
+      DNSSECImpl: getContract({
+        abi: Abi_DNSSECImpl,
+        address: rocketh.get("DNSSECImpl").address,
+        client,
+      }),
+      RegistrarSecurityController: getContract({
+        abi: Abi_RegistrarSecurityController,
+        address: rocketh.get("RegistrarSecurityController").address,
+        client,
+      }),
+      // resolvers
+      PublicResolver: getContract({
+        abi: Abi_PublicResolver,
+        address: rocketh.get("PublicResolver").address,
+        client,
+      }),
+      UniversalResolver: getContract({
+        abi: Abi_UniversalResolverV1,
+        address: rocketh.get("UniversalResolverV1").address,
+        client,
+      }),
+      // reverse
       DefaultReverseRegistrar: getContract({
         abi: Abi_DefaultReverseRegistrar,
         address: rocketh.get("DefaultReverseRegistrar").address,
@@ -387,59 +432,15 @@ export async function setupDevnet({
         address: rocketh.get("ReverseRegistrar").address,
         client,
       }),
-      ReverseRegistrarAdapter: getContract({
-        abi: Abi_ReverseRegistrarAdapter,
-        address: rocketh.get("ReverseRegistrarAdapter").address,
-        client,
-      }),
-      DefaultReverseRegistrarAdapter: getContract({
-        abi: Abi_DefaultReverseRegistrarAdapter,
-        address: rocketh.get("DefaultReverseRegistrarAdapter").address,
-        client,
-      }),
-    };
-
-    const v1 = {
-      Root: getContract({
-        abi: Abi_Root,
-        address: rocketh.get("Root").address,
-        client,
-      }),
-      ENSRegistry: getContract({
-        abi: Abi_ENSRegistry,
-        address: rocketh.get("ENSRegistry").address,
-        client,
-      }),
-      BaseRegistrar: getContract({
-        abi: Abi_BaseRegistrarImplementation,
-        address: rocketh.get("BaseRegistrarImplementation").address,
-        client,
-      }),
-      NameWrapper: getContract({
-        abi: Abi_NameWrapper,
-        address: rocketh.get("NameWrapper").address,
-        client,
-      }),
-      RegistrarSecurityController: getContract({
-        abi: Abi_RegistrarSecurityController,
-        address: rocketh.get("RegistrarSecurityController").address,
-        client,
-      }),
-      // resolvers
-      PublicResolver: getContract({
-        abi: Abi_PublicResolver,
-        address: rocketh.get("PublicResolver").address,
-        client,
-      }),
-      UniversalResolver: getContract({
-        abi: Abi_UniversalResolver,
-        address: rocketh.get("UniversalResolver").address,
-        client,
-      }),
     };
 
     const Abi_NameCoderErrors = Abi_NameCoder.filter((x) => x.type === "error");
     const v2 = {
+      DNSSECGatewayProvider: getContract({
+        abi: Abi_GatewayProvider,
+        address: rocketh.get("DNSSECGatewayProvider").address,
+        client,
+      }),
       ContractNamer: getContract({
         abi: Abi_ContractNamer,
         address: rocketh.get("ContractNamer").address,
@@ -581,6 +582,17 @@ export async function setupDevnet({
         address: rocketh.get("PublicResolverV2").address,
         client,
       }),
+      // reverse
+      ReverseRegistrarAdapter: getContract({
+        abi: Abi_ReverseRegistrarAdapter,
+        address: rocketh.get("ReverseRegistrarAdapter").address,
+        client,
+      }),
+      DefaultReverseRegistrarAdapter: getContract({
+        abi: Abi_DefaultReverseRegistrarAdapter,
+        address: rocketh.get("DefaultReverseRegistrarAdapter").address,
+        client,
+      }),
     };
 
     const erc20 = {
@@ -624,9 +636,7 @@ export async function setupDevnet({
       }),
     };
 
-    const verifiableProxyLogic = await v2.VerifiableFactory.read.proxyLogic();
-
-    [shared, v1, v2, erc20, hca]
+    [v1, v2, erc20, hca]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
@@ -663,7 +673,6 @@ export async function setupDevnet({
       accounts,
       namedAccounts,
       rocketh,
-      shared,
       v1,
       v2,
       erc20,
@@ -674,8 +683,6 @@ export async function setupDevnet({
       shutdown,
       createClient,
       computeVerifiableProxyAddress,
-      computeUserRegistrySalt,
-      computeOwnedResolverSalt,
       castUserRegistry,
       castPermissionedResolver,
       deployUserRegistry,
@@ -761,40 +768,9 @@ export async function setupDevnet({
     function computeVerifiableProxyAddress(deployer: Address, salt: bigint) {
       return computeVerifiableProxyAddress_({
         factoryAddress: v2.VerifiableFactory.address,
-        proxyLogic: verifiableProxyLogic as Address,
         deployer,
         salt,
       });
-    }
-
-    function computeOwnedResolverSalt(owner: Address, version = 0n) {
-      return BigInt(
-        keccak256(
-          encodeAbiParameters(
-            [
-              { name: "id", type: "bytes32" },
-              { name: "owner", type: "address" },
-              { name: "version", type: "uint256" },
-            ],
-            [keccak256(stringToHex("OwnedResolver")), owner, version],
-          ),
-        ),
-      );
-    }
-
-    function computeUserRegistrySalt(name: string, version = 0n) {
-      return BigInt(
-        keccak256(
-          encodeAbiParameters(
-            [
-              { name: "id", type: "bytes32" },
-              { name: "node", type: "bytes32" },
-              { name: "version", type: "uint256" },
-            ],
-            [keccak256(stringToHex("UserRegistry")), namehash(name), version],
-          ),
-        ),
-      );
     }
 
     async function deployPermissionedResolver({
@@ -904,7 +880,7 @@ export async function setupDevnet({
         currentName = `${labels.pop()}.${currentName}`;
         address = computeVerifiableProxyAddress(
           address,
-          BigInt(namehash(currentName)),
+          computeWrapperRegistrySalt(currentName),
         );
       }
       return address;
@@ -976,7 +952,7 @@ export async function setupDevnet({
         { account },
       );
       // on fork, also grant deployer registrar-controller rights so morticia's
-      // e2e harness can call into v1.BaseRegistrar from the test mnemonic
+      // e2e harness can call into v1.BaseRegistrarImplementation from the test mnemonic
       // (matches the synthetic devnet's implicit "deployer can register" stance)
       if (isFork) {
         await v1.RegistrarSecurityController.write.addRegistrarController(
@@ -993,7 +969,37 @@ export async function setupDevnet({
     }
 
     async function setupEnsDotEth() {
-      const { resolver } = namedAccounts.owner;
+      const account = namedAccounts.owner;
+      const { resolver } = account;
+
+      // fix V1 deployment issues:
+      // NameWrapper is ReverseClaimer; reverse node owned by deployer => change to DAO
+      // note: it is also Ownable, but disowned on mainnet
+      await v1.ENSRegistry.write.setOwner([
+        namehash(getReverseName(v1.NameWrapper.address)),
+        account.address,
+      ]);
+      // PublicResolver is ReverseClaimer; reverse node owned by deployer => change to DAO
+      await v1.ENSRegistry.write.setOwner([
+        namehash(getReverseName(v1.PublicResolver.address)),
+        account.address,
+      ]);
+      // DNSSECImpl is Ownable; owned by deployer => change to DAO
+      await v1.DNSSECImpl.write.setOwner([account.address]);
+      // BaseRegistrarImplementation is Ownable; but has indirect ownership => juggle and change to DAO
+      // note: already claimed on mainnet
+      await v1.RegistrarSecurityController.write.transferRegistrarOwnership(
+        [account.address],
+        { account },
+      );
+      await v1.ReverseRegistrar.write.claimForAddr(
+        [v1.BaseRegistrarImplementation.address, account.address, zeroAddress],
+        { account },
+      );
+      await v1.BaseRegistrarImplementation.write.transferOwnership(
+        [v1.RegistrarSecurityController.address],
+        { account },
+      );
 
       // temporary registration of "ens.eth" by deployer
       // (normally would be migrated by current ens.eth owner)
@@ -1005,86 +1011,61 @@ export async function setupDevnet({
       // create "ens.eth" (owner gets full roles for devnet setup)
       await v2.ETHRegistry.write.register([
         "ens",
-        namedAccounts.owner.address,
+        account.address,
         zeroAddress,
         resolver.address,
         ROLES.ALL,
         MAX_EXPIRY,
       ]);
-
-      await setName("namer", v2.ContractNamer.address);
-
-      await setName("root", v2.RootRegistry.address);
-      await setName("registry", v2.ETHRegistry.address);
-      await setName("impl.registry", v2.UserRegistryImpl.address);
-      await setName("uri-renderer.registry", v2.ENSURIRenderer.address);
-      await setName("impl.wrapper-registry", v2.WrapperRegistryImpl.address);
-      await setName(
-        "boxed-uri-renderer.registry",
-        v2.BoxedENSURIRenderer.address,
-      );
-
-      await setName("2to1.resolver", v2.ENSV1Resolver.address);
-      await setName("1to2.resolver", v2.ENSV2Resolver.address);
-      await setName("impl.resolver", v2.PermissionedResolverImpl.address);
-      await setName("universal", v2.UniversalResolver.address);
-      await setName("impl.universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
-      await setName("helper", v2.UniversalHelper.address);
-      await setName("public.resolver", v2.PublicResolver.address);
-      await setName("dns.resolver", v2.DNSTLDResolver.address);
-
-      await setName("dnsname", v2.DNSTXTResolver.address); // remap v1 ExtendedDNSResolver
-      await setName("dnstxt", v2.DNSTXTResolver.address); // TODO: could just use "dnsname"?
-      await setName("dnsalias", v2.DNSAliasResolver.address);
-
-      await setName("registrar", v2.ETHRegistrar.address);
-      await setName("renewer", v2.ETHRenewerV1.address);
-      await setName("oracle", v2.StandardRentPriceOracle.address);
-      // await setName("batch.migration", v2.BatchRegistrar.address); // this is only used internally for premigration
-      await setName("addr.reverse", shared.ReverseRegistrarAdapter.address);
-      await setName(
-        "default.reverse",
-        shared.DefaultReverseRegistrarAdapter.address,
-      );
-
-      await setName(
-        "unlocked.migration",
-        v2.UnlockedMigrationController.address,
-      );
-      await setName("locked.migration", v2.LockedMigrationController.address);
-      await setName("graveyard", v2.Graveyard.address);
-      await setName("helper.migration", v2.MigrationHelper.address);
-      await setName("upgradeset.registry", v2.RegistryUpgradeSet.address);
-      await setName("prset.migration", v2.PublicResolverSet.address);
-
-      await setName("batch.gateways", shared.BatchGatewayProvider.address);
-      await setName("dnssec.gateways", shared.DNSSECGatewayProvider.address);
-      await setName("labelstore", v2.LabelStore.address);
-      await setName("verifiable-factory", v2.VerifiableFactory.address);
-
-      async function setName(
-        prefix: string,
-        address: Address,
-        namer = namedAccounts.owner,
-      ) {
-        const name = `${prefix}.ens.eth`;
+      const writes: Hex[] = [];
+      for (const x of await getContractNames()) {
         try {
-          await shared.ReverseRegistrarAdapter.write.claim(
-            [address, resolver.address],
-            { account: namer },
+          const { address } = rocketh.get(x.deployment);
+          const reverseName = getReverseName(address);
+          writes.push(
+            encodeFunctionData({
+              abi: resolver.abi,
+              functionName: "setName",
+              args: [dnsEncodeName(reverseName), x.name],
+            }),
           );
-          await resolver.write.setName([
-            dnsEncodeName(getReverseName(address)),
-            name,
-          ]);
+          writes.push(
+            encodeFunctionData({
+              abi: resolver.abi,
+              functionName: "setAddress",
+              args: [dnsEncodeName(x.name), COIN_TYPE_ETH, address],
+            }),
+          );
+          if (x.claim && x.claim !== "ReverseClaimer") {
+            await v2.ReverseRegistrarAdapter.write.claim(
+              [address, resolver.address],
+              { account },
+            );
+          } else {
+            const owner = await v1.ENSRegistry.read.owner([
+              namehash(reverseName),
+            ]);
+            if (owner === zeroAddress) {
+              throw new Error("unclaimed V1");
+            }
+            try {
+              await v1.ENSRegistry.write.setResolver(
+                [namehash(reverseName), resolver.address],
+                { account },
+              );
+            } catch {
+              throw new Error("not owned by DAO");
+            }
+          }
         } catch (err) {
-          console.log(`Cannot name: ${name}`);
+          if (err instanceof ContractFunctionExecutionError) {
+            err = err.metaMessages?.[0] || err.shortMessage;
+          }
+          console.error(`Cannot name: ${x.name}: ${err}`);
         }
-        await resolver.write.setAddress([
-          dnsEncodeName(name),
-          COIN_TYPE_ETH,
-          address,
-        ]);
+      }
+      if (writes.length) {
+        await resolver.write.multicall([writes]);
       }
     }
 
