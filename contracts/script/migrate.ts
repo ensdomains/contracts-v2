@@ -4268,13 +4268,19 @@ async function readRoleMap(opts: {
     if (seen.has(deployment.address.toLowerCase())) continue;
     seen.add(deployment.address.toLowerCase());
     const contract = labelled(label, deployment.address);
+    // A registry with many grants takes thousands of reads; one the provider
+    // refuses for a passing reason is asked again rather than ending the audit.
     const read = (functionName: string, args: readonly unknown[] = []) =>
-      client.readContract({
-        address: deployment.address,
-        abi: deployment.abi,
-        functionName,
-        args,
-      } as never) as Promise<unknown>;
+      readUntilComplete(
+        () =>
+          client.readContract({
+            address: deployment.address,
+            abi: deployment.abi,
+            functionName,
+            args,
+          } as never) as Promise<unknown>,
+        () => undefined,
+      );
 
     if (hasFunction(deployment.abi, "roles")) {
       const isNamespace = NAMESPACE_REGISTRIES.has(deployment.name);
