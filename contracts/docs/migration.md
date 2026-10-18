@@ -453,7 +453,8 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   [phase 4](#phase-4-keep-unmigrated-names-renewable), so this phase touches only the v2 registry and
   needs only one signer.
 - **Env / args:** registry root-role admin key (`OWNER_KEY`, falls back to `DEPLOYER_KEY`), and
-  `--calldata-only` for a multisig.
+  `--calldata-only` for a multisig. On a fork, `--impersonate-account` signs as that account and
+  ignores the keys in the environment.
 - **Expected outcome:** `BatchRegistrar` roles revoked (pre-migration seeding ends); `ETHRegistrar`
   granted `REGISTRAR | RENEW` on the v2 `ETHRegistry` — live v2 registrations open; both migration
   controllers granted `ROLE_REGISTER_RESERVED` — v1 owners can migrate their names. Migration opens
@@ -501,7 +502,8 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   everything else is live.
 - **Env / args:** intermediate URP admin key (`UR_MANAGER_KEY`, falls back to `DEPLOYER_KEY`) for
   `upgrade-managed-urp`; top URP owner key (`SEPOLIA_TOP_URP_OWNER_KEY` / `TOP_URP_OWNER_KEY`) for the
-  bootstrap `switch-urp-to-managed`. `--calldata-only` for a multisig/DAO.
+  bootstrap `switch-urp-to-managed`. `--calldata-only` for a multisig/DAO. On a fork,
+  `--impersonate-account` signs as that account and ignores the keys in the environment.
 - **Expected outcome:** the resolution cutover — the intermediate URP is upgraded to
   `UniversalResolverV2` and public resolution serves v2. `verify-urp` confirms both proxy
   implementations: by default it expects the top URP to front the deployment's

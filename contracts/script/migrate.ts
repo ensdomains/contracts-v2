@@ -10197,6 +10197,19 @@ type AdminSignerCliOptions = {
   impersonateAccount?: Address;
 };
 
+/// The key a signing command sends with: `--private-key` when given, none when it
+/// impersonates an account on a fork or only writes calldata, else the first of the
+/// named environment keys that is set. An impersonated account never falls back to an
+/// environment key, which would sign as whichever account that key controls.
+function signerPrivateKey(
+  opts: AdminSignerCliOptions & { calldataOnly?: boolean },
+  ...envKeys: string[]
+): `0x${string}` | undefined {
+  if (opts.privateKey) return opts.privateKey;
+  if (opts.impersonateAccount || opts.calldataOnly) return undefined;
+  return envPrivateKey(...envKeys);
+}
+
 type PremigrationRunCliOptions = NetworkCliOptions &
   DeploymentCliOptions &
   V1DeploymentOptions & {
@@ -11101,11 +11114,7 @@ export async function main(argv = process.argv): Promise<void> {
       ) => {
         await setEthParent({
           ...withNetworkRpc(opts),
-          privateKey:
-            opts.privateKey ??
-            (opts.impersonateAccount
-              ? undefined
-              : envPrivateKey("DEPLOYER_KEY")),
+          privateKey: signerPrivateKey(opts, "DEPLOYER_KEY"),
         });
       },
     ),
@@ -11170,11 +11179,7 @@ export async function main(argv = process.argv): Promise<void> {
         }
         await rereserveDnsTlds({
           ...withNetworkRpc(opts),
-          privateKey:
-            opts.privateKey ??
-            (opts.impersonateAccount
-              ? undefined
-              : envPrivateKey("DEPLOYER_KEY")),
+          privateKey: signerPrivateKey(opts, "DEPLOYER_KEY"),
           impersonateAccount: opts.impersonateAccount
             ? getAddress(opts.impersonateAccount)
             : undefined,
@@ -11422,11 +11427,7 @@ export async function main(argv = process.argv): Promise<void> {
       ) => {
         await registerDirectNames({
           ...withNetworkRpc(opts),
-          privateKey:
-            opts.privateKey ??
-            (opts.impersonateAccount || opts.calldataOnly
-              ? undefined
-              : envPrivateKey("DEPLOYER_KEY")),
+          privateKey: signerPrivateKey(opts, "DEPLOYER_KEY"),
         });
       },
     ),
@@ -11497,11 +11498,7 @@ export async function main(argv = process.argv): Promise<void> {
       ) => {
         await handOverRegistryAdmin({
           ...withNetworkRpc(opts),
-          privateKey:
-            opts.privateKey ??
-            (opts.impersonateAccount || opts.calldataOnly
-              ? undefined
-              : envPrivateKey("DEPLOYER_KEY")),
+          privateKey: signerPrivateKey(opts, "DEPLOYER_KEY"),
         });
       },
     ),
@@ -11953,8 +11950,7 @@ export async function main(argv = process.argv): Promise<void> {
         await reclaimV1RegistrarOwnership({
           ...networkOpts,
           v1Owner: opts.v1Owner ?? NETWORKS[networkOpts.network].defaultV1Owner,
-          privateKey:
-            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+          privateKey: signerPrivateKey(opts, "OWNER_KEY", "DEPLOYER_KEY"),
         });
       },
     ),
@@ -11987,9 +11983,11 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await switchTopUrpToManaged({
           ...networkOpts,
-          privateKey:
-            opts.privateKey ??
-            envPrivateKey("SEPOLIA_TOP_URP_OWNER_KEY", "TOP_URP_OWNER_KEY"),
+          privateKey: signerPrivateKey(
+            opts,
+            "SEPOLIA_TOP_URP_OWNER_KEY",
+            "TOP_URP_OWNER_KEY",
+          ),
         });
       },
     ),
@@ -12023,8 +12021,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await upgradeManagedUrp({
           ...networkOpts,
-          privateKey:
-            opts.privateKey ?? envPrivateKey("UR_MANAGER_KEY", "DEPLOYER_KEY"),
+          privateKey: signerPrivateKey(opts, "UR_MANAGER_KEY", "DEPLOYER_KEY"),
         });
       },
     ),
@@ -12054,8 +12051,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await disableBatchRegistrar({
           ...networkOpts,
-          privateKey:
-            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+          privateKey: signerPrivateKey(opts, "OWNER_KEY", "DEPLOYER_KEY"),
         });
       },
     ),
@@ -12136,8 +12132,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await enableV2Registrar({
           ...networkOpts,
-          privateKey:
-            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+          privateKey: signerPrivateKey(opts, "OWNER_KEY", "DEPLOYER_KEY"),
         });
       },
     ),
@@ -12221,8 +12216,7 @@ export async function main(argv = process.argv): Promise<void> {
         const networkOpts = withNetworkRpc(opts);
         await enableMigration({
           ...networkOpts,
-          privateKey:
-            opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+          privateKey: signerPrivateKey(opts, "OWNER_KEY", "DEPLOYER_KEY"),
         });
       },
     ),
