@@ -2,68 +2,31 @@ import { describe, expect, it } from "bun:test";
 import { zeroAddress } from "viem";
 
 import { STATUS } from "../../script/deploy-constants.js";
-import {
-  firstReservations,
-  nextTldStep,
-  type TldState,
-} from "../../script/migrations/dnsTlds.js";
+import { firstReservations, planTld } from "../../script/migrations/dnsTlds.js";
 
-const sender = "0x00000000000000000000000000000000000000aa" as const;
 const resolver = "0x00000000000000000000000000000000000000bb" as const;
 const oldResolver = "0x00000000000000000000000000000000000000cc" as const;
 
-const state = (overrides: Partial<TldState>): TldState => ({
-  status: STATUS.RESERVED,
-  owner: zeroAddress,
-  resolver: oldResolver,
-  senderCanUnregister: false,
-  ...overrides,
-});
-
-describe("nextTldStep", () => {
+describe("planTld", () => {
   it("leaves a name reserved with the resolver alone", () => {
-    expect(nextTldStep(state({ resolver }), resolver, sender)).toEqual({
+    expect(planTld({ status: STATUS.RESERVED, resolver }, resolver)).toEqual({
       kind: "done",
     });
   });
 
-  it("walks a name through register, unregister and reserve", () => {
-    expect(nextTldStep(state({}), resolver, sender).kind).toBe("register");
+  it("moves a name reserved with another resolver", () => {
     expect(
-      nextTldStep(
-        state({
-          status: STATUS.REGISTERED,
-          owner: sender,
-          senderCanUnregister: true,
-        }),
-        resolver,
-        sender,
-      ).kind,
-    ).toBe("unregister");
-    expect(
-      nextTldStep(
-        state({ status: STATUS.AVAILABLE, resolver: zeroAddress }),
-        resolver,
-        sender,
-      ).kind,
-    ).toBe("reserve");
+      planTld({ status: STATUS.RESERVED, resolver: oldResolver }, resolver),
+    ).toEqual({ kind: "move" });
   });
 
-  it("refuses a name registered to someone else or that the sender may not unregister", () => {
+  it("refuses a name that is registered or available", () => {
     expect(
-      nextTldStep(
-        state({ status: STATUS.REGISTERED, owner: resolver }),
-        resolver,
-        sender,
-      ).kind,
-    ).toBe("blocked");
+      planTld({ status: STATUS.REGISTERED, resolver: oldResolver }, resolver),
+    ).toEqual({ kind: "blocked", reason: "registered, not reserved" });
     expect(
-      nextTldStep(
-        state({ status: STATUS.REGISTERED, owner: sender }),
-        resolver,
-        sender,
-      ).kind,
-    ).toBe("blocked");
+      planTld({ status: STATUS.AVAILABLE, resolver: zeroAddress }, resolver),
+    ).toEqual({ kind: "blocked", reason: "available, not reserved" });
   });
 });
 

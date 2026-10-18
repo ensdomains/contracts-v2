@@ -1,13 +1,13 @@
 /// Repointing the root registry's reserved DNS top-level names at a new resolver.
 ///
 /// A reservation has no owner and so no roles, and no account may set resolvers
-/// registry-wide, so a reserved name's resolver cannot be changed in place. An account
-/// allowed to register reserved names and to register available ones can still move
-/// it: register the reservation to itself with only the role to unregister and the
-/// reservation's expiry, unregister it, and reserve it again with the new resolver and
-/// the original expiry. Unregistering bumps the name's resource, so the role taken in
-/// the first step stops reaching the name. The step each name needs next follows from
-/// its state alone, so a stopped run resumes where it left off.
+/// registry-wide, so a reserved name's resolver cannot be changed in place. The
+/// `ReservedNameResolverUpdater` contract moves each name in one call instead: it
+/// registers the reservation to itself with only the role to unregister it,
+/// unregisters it, and reserves it again with the new resolver and the same expiry.
+/// A name is never left unreserved between transactions, so each one is either still
+/// on its old resolver or already on the new one, and a stopped run resumes with the
+/// names still on the old one.
 
 import type { Address } from "viem";
 
@@ -17,50 +17,31 @@ import { sameAddress } from "./plumbing.js";
 /// What the root registry reports for one top-level name.
 export type TldState = {
   status: number;
-  // The current owner when registered.
-  owner: Address;
   resolver: Address;
-  // Whether the sender may unregister the name, read only when it is registered.
-  senderCanUnregister: boolean;
 };
 
-export type TldStep =
+export type TldPlan =
   | { kind: "done" }
-  | { kind: "register" }
-  | { kind: "unregister" }
-  | { kind: "reserve" }
+  | { kind: "move" }
   | { kind: "blocked"; reason: string };
 
-/// The next transaction a top-level name needs before it is reserved with `resolver`
-/// by `sender`, or why it cannot be moved.
-export function nextTldStep(
-  state: TldState,
-  resolver: Address,
-  sender: Address,
-): TldStep {
-  switch (state.status) {
-    case STATUS.RESERVED:
-      return sameAddress(state.resolver, resolver)
-        ? { kind: "done" }
-        : { kind: "register" };
-    case STATUS.AVAILABLE:
-      return { kind: "reserve" };
-    case STATUS.REGISTERED:
-      if (!sameAddress(state.owner, sender)) {
-        return {
-          kind: "blocked",
-          reason: `registered to ${state.owner}, not the sender`,
-        };
-      }
-      return state.senderCanUnregister
-        ? { kind: "unregister" }
-        : {
-            kind: "blocked",
-            reason: "registered to the sender, who may not unregister it",
-          };
-    default:
-      return { kind: "blocked", reason: `unknown status ${state.status}` };
+/// Whether a top-level name is already reserved with `resolver`, still needs moving,
+/// or cannot be moved, since only a reserved name can be.
+export function planTld(state: TldState, resolver: Address): TldPlan {
+  if (state.status !== STATUS.RESERVED) {
+    return {
+      kind: "blocked",
+      reason:
+        state.status === STATUS.REGISTERED
+          ? "registered, not reserved"
+          : state.status === STATUS.AVAILABLE
+            ? "available, not reserved"
+            : `unknown status ${state.status}`,
+    };
   }
+  return sameAddress(state.resolver, resolver)
+    ? { kind: "done" }
+    : { kind: "move" };
 }
 
 /// Each label's expiry from its first reservation, in the order the labels were first

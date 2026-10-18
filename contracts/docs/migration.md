@@ -644,7 +644,7 @@ rest. The root registry stays: a build that changes it needs `phase redeploy-roo
 
 ```bash
 bun run migration -- phase redeploy-contracts --network mainnet \
-  --keep ENSV1Resolver,VerifiableFactory \
+  --keep ENSV1Resolver \
   --replace DNSAliasResolver,DNSTLDResolver,ENSV2Resolver,LockedMigrationController,MigrationHelper,PublicResolverV2,UniversalHelper,UniversalResolverV1,UniversalResolverV2,WrapperRegistryImpl \
   --defer-v1-owner-transactions --deferred-v1-owner-transactions-file <dao-dir>/phase1-deferred.jsonl
 bun run migration -- phase verify-deployment --network mainnet
@@ -658,10 +658,12 @@ bun ./script/generateAddressDocs.ts --network mainnet
   whose constructor arguments name a replaced address joins, until no more do. It sends nothing unless
   `--replace` names exactly that set, so a build that changes more than expected stops the run.
 - `--keep` names contracts whose build differs but which must stay, and whose deploy scripts reuse the
-  record. Two do:
+  record. It must name exactly those that differ, as the build being compared sees them:
   - `ENSV1Resolver`: every pre-migration reservation names it, and nobody can repoint a reservation.
-  - `VerifiableFactory`: many contracts hold its address. Its creation code embeds the proxy's, whose
-    metadata changes whenever the compiler settings of the build do.
+  - `VerifiableFactory`, only when the build differs from it: many contracts hold its address. Its
+    creation code embeds the proxy's, whose metadata changes whenever the compiler settings of the
+    build do, so a build made elsewhere than the original deploy's can differ from it. The mainnet
+    build on the deploy server matches it.
 - A record that differs only inside an embedded metadata trailer is not a code change, but the deploy
   tool would still replace it. The command refuses unless `--keep` names it.
 - It refuses once the DAO proposal has executed or go-live has begun. It moves the replaced records to a
@@ -686,21 +688,28 @@ reservation has no owner and so no roles, and nobody may set resolvers registry-
 bun run migration -- phase rereserve-dns-tlds --network mainnet --max-gas-price <gwei>
 ```
 
-- Each name not yet reserved with the namespace's `DNSTLDResolver` takes three transactions from the
-  deployer:
-  1. register it to the deployer with only the role to unregister and its expiry;
-  2. unregister it;
-  3. reserve it again with the resolver and its original expiry.
-- Unregistering bumps the name's resource, so the deployer's role from step 1 stops reaching the name.
-  Between steps 2 and 3 the name has no resolver, so run this before phase 7, while nothing resolves
-  through v2.
-- Names move `--batch-size` at a time, one transaction each per step, under the gas price limit. The
-  step a name needs next follows from its state, so a stopped run resumes where it left off.
-  `--labels` limits the run to some names, and `--dry-run` reports each name's next step without sending.
-- It refuses unless the deployer may register both available and reserved names on the root. It also
-  refuses unless the resolver's source is verified on Etherscan (`--skip-source-verification` on a
-  fork). It ends by checking every name: reserved, with the resolver, its original expiry, and no role
-  left to the deployer.
+- The `ReservedNameResolverUpdater` contract moves each name not yet reserved with the namespace's
+  `DNSTLDResolver` in one call. In that call it:
+  1. registers the name to itself with only the role to unregister it, keeping the reservation's expiry;
+  2. unregisters it;
+  3. reserves it again with the resolver, the same subregistry and the same expiry.
+
+  No name is ever left unreserved between transactions, and unregistering bumps the name's resource,
+  so the role from step 1 does not outlive the call. A batch with any name that is not reserved
+  reverts whole. Only its owner, the deployer, can call it.
+- The command deploys the updater when the namespace has none (deploy tag
+  `ReservedNameResolverUpdater`, outside phase 1, since a fresh deploy reserves the names with the
+  current resolver from the start). It grants it the root `REGISTRAR` and `REGISTER_RESERVED` roles,
+  sends `--batch-size` names per transaction under the gas price limit, and revokes both roles again,
+  also on a run that finds nothing left to move. A stopped run resumes with the names still on the old
+  resolver. `--labels` limits the run to some names, and `--dry-run` counts the names still to move
+  without sending.
+- It reads the names in combined calls, a few hundred per request, so the move stays within a
+  provider's rate limit.
+- It refuses unless every name is reserved and the deployer may grant both roles. It also refuses
+  unless the resolver's source is verified on Etherscan (`--skip-source-verification` on a fork). It
+  ends by checking every name: reserved, with the resolver, its original expiry, and no role left to the
+  deployer or the updater, which keeps no root role either.
 - The deployer loses these root roles at phase 8, so the move must happen before it.
 
 ## Re-deploying onto an already-migrated network
@@ -1480,7 +1489,7 @@ and idempotency rules.
 | `phase hand-over-registry-admin` | Phase 8: the `eth` token, with every role on it, goes to the name owner; the owner takes the root registry's and the `.eth` registry's root roles; the deployer drops every role it holds on them and on every archived root registry, and renounces every batch registrar |
 | `phase redeploy-root` | Replace the v2 root registry under a live namespace, with every contract built over it, before the DAO proposal executes and before go-live; the `.eth` registry and its reservations are reused, and its parent is left for `set-eth-parent` |
 | `phase redeploy-contracts` | Replace the deployed contracts whose build has changed, with every contract built over one of them, before the DAO proposal executes and before go-live; the set must be named with `--replace` |
-| `phase rereserve-dns-tlds` | Point the root registry's reserved DNS top-level names at the namespace's `DNSTLDResolver` by registering, unregistering and reserving each again; before phase 8 |
+| `phase rereserve-dns-tlds` | Point the root registry's reserved DNS top-level names at the namespace's `DNSTLDResolver`, each moved in one call by the `ReservedNameResolverUpdater` contract, which holds its root roles only while it works; before phase 8 |
 | `phase set-eth-parent` | Point the `.eth` registry at the new root registry, once every contract built over the root reports it, `verify-deployment` passes, and every replaced contract's source is verified on Etherscan |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, the registrar's and the v1 renewer's beneficiary (`--expected-beneficiary`), accepted tokens |

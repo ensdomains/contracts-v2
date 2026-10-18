@@ -38,6 +38,7 @@ import {
   stringToHex,
   zeroAddress,
   zeroHash,
+  type Abi,
   type AbiParameter,
   type AbiEvent,
   type Address,
@@ -56,6 +57,7 @@ import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
+import { Artifact_ReservedNameResolverUpdater } from "generated/artifacts/ReservedNameResolverUpdater.js";
 import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
@@ -137,7 +139,7 @@ import {
   type RedeploySet,
   withDependents,
 } from "./migrations/redeploy.js";
-import { firstReservations, nextTldStep } from "./migrations/dnsTlds.js";
+import { firstReservations, planTld } from "./migrations/dnsTlds.js";
 import {
   assertRejected,
   assertV1Owner,
@@ -6048,15 +6050,25 @@ const LABEL_RESERVED_EVENT = parseAbiItem(
   "event LabelReserved(uint256 indexed tokenId, bytes32 indexed labelHash, string label, uint64 expiry, address indexed sender)",
 );
 
+/// The deployment that moves the root registry's reserved names to a new resolver.
+const RESERVED_NAME_RESOLVER_UPDATER = "ReservedNameResolverUpdater";
+/// The root roles the updater needs while it moves names.
+const RESERVED_NAME_UPDATER_ROLES =
+  ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.REGISTER_RESERVED;
+/// Names read in one combined call.
+const TLD_READ_BATCH = 200;
+
 /// Points every reserved top-level name of the root registry at the namespace's
-/// DNSTLDResolver. Each name not yet reserved with it is registered to the sender
-/// with only the role to unregister and its expiry, unregistered, and reserved again
-/// with the resolver and its original expiry (see `migrations/dnsTlds.ts`). Names
-/// move `batchSize` at a time, one transaction per name per step, under the gas price
-/// limit. Sends nothing unless the sender may register both available and reserved
-/// names and, unless skipped, the resolver's source is verified on Etherscan. Ends by
-/// checking every name: reserved, with the resolver, its original expiry, and no
-/// role left to the sender.
+/// DNSTLDResolver. The `ReservedNameResolverUpdater` contract moves each name not yet
+/// reserved with it in one call (see `migrations/dnsTlds.ts`), keeping its expiry, so
+/// no name is ever left unreserved. The sender deploys the updater when the namespace
+/// has none, grants it the root roles to register available and reserved names, sends
+/// the names `batchSize` per transaction under the gas price limit, and revokes the
+/// roles again, also on a run that finds nothing left to move. Sends nothing unless
+/// every name is reserved, the sender may grant both roles and, unless skipped, the
+/// resolver's source is verified on Etherscan. Ends by checking every name: reserved,
+/// with the resolver, its original expiry, and no role left to the sender or the
+/// updater, which keeps no root role either.
 export async function rereserveDnsTlds(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -6105,27 +6117,47 @@ export async function rereserveDnsTlds(opts: {
   const registry = {
     address: root.address,
     abi: Artifact_PermissionedRegistry.abi,
-  };
-  // A run reads every name several times; a failed read is asked again rather
-  // than ending the run.
-  const read = <T>(functionName: string, args: readonly unknown[]) =>
-    readUntilComplete(
+  } as const;
+  // A failed read is asked again rather than ending the run.
+  const retried = <T>(read: () => Promise<T>) =>
+    readUntilComplete(read, () => undefined);
+  const readRegistry = <T>(functionName: string, args: readonly unknown[]) =>
+    retried(
       () =>
         client.readContract({
           ...registry,
           functionName,
           args,
         } as never) as Promise<T>,
-      () => undefined,
     );
+  // One combined call per batch of names, each result required.
+  const readEach = async <T>(
+    labels: readonly string[],
+    call: (label: string) => { functionName: string; args: readonly unknown[] },
+  ): Promise<T[]> => {
+    const results: T[] = [];
+    for (let i = 0; i < labels.length; i += TLD_READ_BATCH) {
+      const batch = labels.slice(i, i + TLD_READ_BATCH);
+      results.push(
+        ...((await retried(() =>
+          client.multicall({
+            ...ONE_CALL_PER_BATCH,
+            allowFailure: false,
+            contracts: batch.map((label) => ({ ...registry, ...call(label) })),
+          } as never),
+        )) as T[]),
+      );
+    }
+    return results;
+  };
 
-  const allowed = await read<boolean>("hasRootRoles", [
-    ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.REGISTER_RESERVED,
+  const grantable = await readRegistry<boolean>("hasRootRoles", [
+    ROLES.ADMIN.REGISTRY.REGISTRAR | ROLES.ADMIN.REGISTRY.REGISTER_RESERVED,
     sender,
   ]);
-  if (!allowed) {
+  if (!grantable) {
     throw new Error(
-      `${sender} may not register both available and reserved names on the root registry ${root.address}`,
+      `${sender} may not grant the roles to register available and reserved names on the root registry ${root.address}`,
     );
   }
   if (opts.skipSourceVerification) {
@@ -6171,49 +6203,47 @@ export async function rereserveDnsTlds(opts: {
     `${labels.length} reserved top-level name(s) to point at DNSTLDResolver ${resolver}, sent by ${sender}`,
   );
 
-  // A name's registry state and resolver.
-  const readTld = async (label: string) => {
-    const [state, current] = await Promise.all([
-      read<{
-        status: number;
-        expiry: bigint;
-        latestOwner: Address;
-        resource: bigint;
-      }>("getState", [labelId(label)]),
-      read<Address>("getResolver", [label]),
+  // Every name's registry state and resolver.
+  const readTlds = async (names: readonly string[]) => {
+    const [states, resolvers] = await Promise.all([
+      readEach<{ status: number; expiry: bigint; resource: bigint }>(
+        names,
+        (label) => ({ functionName: "getState", args: [labelId(label)] }),
+      ),
+      readEach<Address>(names, (label) => ({
+        functionName: "getResolver",
+        args: [label],
+      })),
     ]);
-    return { ...state, resolver: current };
+    return names.map((label, i) => ({
+      label,
+      ...states[i],
+      resolver: resolvers[i],
+    }));
   };
-  // Each name's next step.
-  const readSteps = (batch: readonly string[]) =>
-    Promise.all(
-      batch.map(async (label) => {
-        const tld = await readTld(label);
-        const senderCanUnregister =
-          tld.status === STATUS.REGISTERED &&
-          (await read<boolean>("hasRoles", [
-            tld.resource,
-            ROLES.REGISTRY.UNREGISTER,
-            sender,
-          ]));
-        return {
-          label,
-          step: nextTldStep(
-            {
-              status: tld.status,
-              owner: tld.latestOwner,
-              resolver: tld.resolver,
-              senderCanUnregister,
-            },
-            resolver,
-            sender,
-          ),
-        };
-      }),
-    );
-  const batches = labels.flatMap((_, i) =>
-    i % opts.batchSize === 0 ? [labels.slice(i, i + opts.batchSize)] : [],
+  const plans = (await readTlds(labels)).map((tld) => ({
+    label: tld.label,
+    plan: planTld(tld, resolver),
+  }));
+  const blocked = plans.flatMap(({ label, plan }) =>
+    plan.kind === "blocked" ? [`${label}: ${plan.reason}`] : [],
   );
+  if (blocked.length > 0) {
+    throw new Error(`cannot move ${blocked.join("; ")}`);
+  }
+  const pending = plans
+    .filter(({ plan }) => plan.kind === "move")
+    .map(({ label }) => label);
+  const updaterRecord = readNamespaceRecords(
+    deploymentsDir,
+    deploymentNetwork,
+  ).get(RESERVED_NAME_RESOLVER_UPDATER) as JsonDeployment | undefined;
+  if (opts.dryRun) {
+    console.log(
+      `dry run, nothing sent: ${pending.length} to move, ${labels.length - pending.length} done; ${updaterRecord ? `updater ${updaterRecord.address}` : "the updater is deployed first"}`,
+    );
+    return;
+  }
 
   const wallet = walletClient({
     rpcUrl: opts.rpcUrl,
@@ -6225,116 +6255,170 @@ export async function rereserveDnsTlds(opts: {
   if (opts.impersonateAccount)
     await impersonate(client, opts.impersonateAccount);
   const maxGasPrice = resolveMaxGasPrice(opts.maxGasPrice, chain.id);
-  const tally = new Map<string, number>();
-  let checked = 0;
-  for (const batch of batches) {
-    // At most one round per step, and one more to see every name done.
-    for (let round = 0; ; round++) {
-      const steps = await readSteps(batch);
-      const blocked = steps.flatMap(({ label, step }) =>
-        step.kind === "blocked" ? [`${label}: ${step.reason}`] : [],
-      );
-      if (blocked.length > 0) {
-        throw new Error(`cannot move ${blocked.join("; ")}`);
+  // Sends one registry or updater write from the sender under the gas price limit.
+  const send = async (
+    target: { address: Address; abi: Abi },
+    functionName: string,
+    args: readonly unknown[],
+    label: string,
+  ) => {
+    const fees = await waitForGasPriceAtOrBelow(client, maxGasPrice);
+    const hash = await wallet.writeContract({
+      ...target,
+      functionName,
+      args,
+      ...fees,
+    } as never);
+    await waitForSuccessfulReceipt(client, hash, label);
+  };
+
+  let updaterAddress = updaterRecord?.address as Address | undefined;
+  if (!updaterAddress && pending.length > 0) {
+    await deployV2({
+      network: opts.network,
+      rpcUrl: opts.rpcUrl,
+      chainId: opts.chainId,
+      provider: opts.provider,
+      deploymentsDir,
+      deploymentNetwork,
+      saveDeployments: true,
+      fresh: false,
+      tags: [RESERVED_NAME_RESOLVER_UPDATER],
+      deployer: sender,
+      deployerPrivateKey: opts.privateKey,
+    });
+    updaterAddress = loadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      RESERVED_NAME_RESOLVER_UPDATER,
+    ).address;
+    console.log(`deployed ${RESERVED_NAME_RESOLVER_UPDATER} ${updaterAddress}`);
+  }
+  const updater = updaterAddress
+    ? {
+        address: updaterAddress,
+        abi: Artifact_ReservedNameResolverUpdater.abi,
       }
-      const pending = steps.filter(({ step }) => step.kind !== "done");
-      if (opts.dryRun) {
-        for (const { step } of steps) {
-          tally.set(step.kind, (tally.get(step.kind) ?? 0) + 1);
-        }
-        break;
-      }
-      if (pending.length === 0) break;
-      if (round >= 3) {
-        throw new Error(
-          `names still not moved after every step: ${pending.map(({ label }) => label).join(", ")}`,
-        );
-      }
-      const fees = await waitForGasPriceAtOrBelow(client, maxGasPrice);
-      let nonce = await client.getTransactionCount({
-        address: sender,
-        blockTag: "pending",
-      });
-      const sent: Array<{ label: string; hash: Hex; kind: string }> = [];
-      for (const { label, step } of pending) {
-        const id = labelId(label);
-        const call =
-          step.kind === "register"
-            ? {
-                functionName: "register",
-                args: [
-                  label,
-                  sender,
-                  zeroAddress,
-                  zeroAddress,
-                  ROLES.REGISTRY.UNREGISTER,
-                  0n,
-                ],
-              }
-            : step.kind === "unregister"
-              ? { functionName: "unregister", args: [id] }
-              : {
-                  functionName: "register",
-                  args: [
-                    label,
-                    zeroAddress,
-                    zeroAddress,
-                    resolver,
-                    0n,
-                    expiries.get(label)!,
-                  ],
-                };
-        const hash = await wallet.writeContract({
-          ...registry,
-          ...call,
-          nonce: nonce++,
-          ...fees,
-        } as never);
-        sent.push({ label, hash, kind: step.kind });
-      }
-      for (const { label, hash, kind } of sent) {
-        await waitForSuccessfulReceipt(client, hash, `${kind} ${label}`);
-      }
-      console.log(
-        `  names ${checked + 1}-${checked + batch.length}: sent ${sent.length} ${sent[0]?.kind ?? ""} transaction(s)`,
+    : undefined;
+  if (updater) {
+    const [updaterRegistry, updaterResolver, updaterOwner] = await Promise.all(
+      (["REGISTRY", "RESOLVER", "owner"] as const).map((functionName) =>
+        retried(
+          () =>
+            client.readContract({
+              ...updater,
+              functionName,
+            }) as Promise<Address>,
+        ),
+      ),
+    );
+    if (
+      !sameAddress(updaterRegistry, root.address) ||
+      !sameAddress(updaterResolver, resolver)
+    ) {
+      throw new Error(
+        `${RESERVED_NAME_RESOLVER_UPDATER} ${updater.address} moves names of ${updaterRegistry} to ${updaterResolver}, not of the root registry ${root.address} to DNSTLDResolver ${resolver}`,
       );
     }
-    checked += batch.length;
-    if (!opts.dryRun) {
-      console.log(`${checked}/${labels.length} name(s) checked`);
+    if (pending.length > 0 && !sameAddress(updaterOwner, sender)) {
+      throw new Error(
+        `${RESERVED_NAME_RESOLVER_UPDATER} ${updater.address} is owned by ${updaterOwner}, not the sender ${sender}`,
+      );
     }
   }
-  if (opts.dryRun) {
-    console.log(
-      `dry run, nothing sent: ${[...tally].map(([kind, count]) => `${count} ${kind}`).join(", ")}`,
-    );
-    return;
+
+  if (updater && pending.length > 0) {
+    if (
+      !(await readRegistry<boolean>("hasRootRoles", [
+        RESERVED_NAME_UPDATER_ROLES,
+        updater.address,
+      ]))
+    ) {
+      await send(
+        registry,
+        "grantRootRoles",
+        [RESERVED_NAME_UPDATER_ROLES, updater.address],
+        `grant ${RESERVED_NAME_RESOLVER_UPDATER} its root roles`,
+      );
+      console.log(
+        `granted ${RESERVED_NAME_RESOLVER_UPDATER} ${describeRoleBitmap(RESERVED_NAME_UPDATER_ROLES)} on the root registry`,
+      );
+    }
+    for (let i = 0; i < pending.length; i += opts.batchSize) {
+      const batch = pending.slice(i, i + opts.batchSize);
+      await send(
+        updater,
+        "updateResolvers",
+        [batch],
+        `move names ${i + 1}-${i + batch.length}`,
+      );
+      console.log(
+        `  moved ${i + batch.length}/${pending.length} name(s): ${batch[0]}…${batch.at(-1)}`,
+      );
+    }
+  }
+  if (updater) {
+    const held = await readRegistry<bigint>("roles", [
+      ROOT_RESOURCE,
+      updater.address,
+    ]);
+    if (held !== 0n) {
+      await send(
+        registry,
+        "revokeRootRoles",
+        [held, updater.address],
+        `revoke ${RESERVED_NAME_RESOLVER_UPDATER}'s root roles`,
+      );
+      console.log(
+        `revoked ${RESERVED_NAME_RESOLVER_UPDATER}'s ${describeRoleBitmap(held)} on the root registry`,
+      );
+    }
   }
 
   const failures: string[] = [];
-  for (const batch of batches) {
-    await Promise.all(
-      batch.map(async (label) => {
-        const tld = await readTld(label);
-        const held = await read<bigint>("roles", [tld.resource, sender]);
-        if (tld.status !== STATUS.RESERVED) {
-          failures.push(`${label}: not reserved`);
-        }
-        if (!sameAddress(tld.resolver, resolver)) {
-          failures.push(`${label}: resolver ${tld.resolver}`);
-        }
-        if (tld.expiry !== expiries.get(label)) {
-          failures.push(
-            `${label}: expiry ${tld.expiry}, not ${expiries.get(label)}`,
-          );
-        }
-        if (held !== 0n) {
-          failures.push(
-            `${label}: the sender holds ${describeRoleBitmap(held)}`,
-          );
-        }
-      }),
-    );
+  const tlds = await readTlds(labels);
+  const holders = [sender, ...(updater ? [updater.address] : [])];
+  const held = await Promise.all(
+    holders.map((holder) =>
+      readEach<bigint>(
+        tlds.map(({ label }) => label),
+        (label) => {
+          const tld = tlds.find((t) => t.label === label)!;
+          return { functionName: "roles", args: [tld.resource, holder] };
+        },
+      ),
+    ),
+  );
+  tlds.forEach((tld, i) => {
+    if (tld.status !== STATUS.RESERVED) {
+      failures.push(`${tld.label}: not reserved`);
+    }
+    if (!sameAddress(tld.resolver, resolver)) {
+      failures.push(`${tld.label}: resolver ${tld.resolver}`);
+    }
+    if (tld.expiry !== expiries.get(tld.label)) {
+      failures.push(
+        `${tld.label}: expiry ${tld.expiry}, not ${expiries.get(tld.label)}`,
+      );
+    }
+    holders.forEach((holder, h) => {
+      if (held[h][i] !== 0n) {
+        failures.push(
+          `${tld.label}: ${holder} holds ${describeRoleBitmap(held[h][i])}`,
+        );
+      }
+    });
+  });
+  if (updater) {
+    const rootHeld = await readRegistry<bigint>("roles", [
+      ROOT_RESOURCE,
+      updater.address,
+    ]);
+    if (rootHeld !== 0n) {
+      failures.push(
+        `${RESERVED_NAME_RESOLVER_UPDATER} still holds ${describeRoleBitmap(rootHeld)} on the root registry`,
+      );
+    }
   }
   if (failures.length > 0) {
     for (const line of failures) console.error(`  ${line}`);
@@ -6343,7 +6427,7 @@ export async function rereserveDnsTlds(opts: {
     );
   }
   console.log(
-    `every one of ${labels.length} top-level name(s) is reserved with DNSTLDResolver ${resolver}, its original expiry, and no role left to the sender`,
+    `every one of ${labels.length} top-level name(s) is reserved with DNSTLDResolver ${resolver}, its original expiry, and no role left to the sender${updater ? ` or ${RESERVED_NAME_RESOLVER_UPDATER} ${updater.address}, which holds no root role` : ""}`,
   );
 }
 
@@ -11124,7 +11208,7 @@ export async function main(argv = process.argv): Promise<void> {
       addNetworkOptions(
         new Command("rereserve-dns-tlds")
           .description(
-            "Point every reserved top-level name of the root registry at the namespace's DNSTLDResolver: each is registered to the deployer, unregistered and reserved again with the resolver and its original expiry. Resumes from each name's state; refuses unless the deployer may register available and reserved names and the resolver's source is verified on Etherscan",
+            "Point every reserved top-level name of the root registry at the namespace's DNSTLDResolver: the ReservedNameResolverUpdater contract, deployed when missing and holding the root roles to register available and reserved names only while it works, reserves each name again with the resolver and its original expiry in one call. Resumes with the names not yet moved; refuses unless every name is reserved, the deployer may grant those roles and the resolver's source is verified on Etherscan",
           )
           .option(
             "--private-key <key>",
@@ -11140,7 +11224,7 @@ export async function main(argv = process.argv): Promise<void> {
           )
           .option(
             "--batch-size <count>",
-            "Names moved together, one transaction each per step",
+            "Names moved in one transaction",
             "25",
           )
           .option(
@@ -11149,7 +11233,7 @@ export async function main(argv = process.argv): Promise<void> {
           )
           .option(
             "--dry-run",
-            "Report each name's next step and send nothing",
+            "Count the names still to move and send nothing",
             false,
           )
           .option(
