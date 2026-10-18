@@ -8,8 +8,8 @@ itself.
 
 - **Network:** mainnet
 - **Chain ID:** 1
-- **Read at block:** 26184032
-- **Read at:** 2026-10-13T14:01:04.282Z
+- **Read at block:** 26216732
+- **Read at:** 2026-10-18T03:23:02.982Z
 - **Not listed:** the roles each name's owner holds on its own name in ETHRegistry
 
 ## Audit
@@ -90,7 +90,7 @@ The root and .eth registries match what the migration intends at the `pre-handof
 
 ### WrapperRegistryImpl
 
-[0xB0c8e6F3BdC0E225B7Cad0D507D191884Ee9AcFC](https://etherscan.io/address/0xB0c8e6F3BdC0E225B7Cad0D507D191884Ee9AcFC)
+[0xCF3Edb3f5501DE63B57254D910b6782eE370039B](https://etherscan.io/address/0xCF3Edb3f5501DE63B57254D910b6782eE370039B)
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
@@ -111,6 +111,7 @@ The root and .eth registries match what the migration intends at the `pre-handof
 | **ETHRegistrar**<br>[0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81](https://etherscan.io/address/0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **ETHRenewerV1**<br>[0x56c447F308F463A01121C41E72b0E7e7557fCb68](https://etherscan.io/address/0x56c447F308F463A01121C41E72b0E7e7557fCb68) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **ManagedUniversalResolverProxy**<br>[0xcFFd2Ae680CD110D28739a70922636B5937b022B](https://etherscan.io/address/0xcFFd2Ae680CD110D28739a70922636B5937b022B) | — | **security council / ENS Security Council Safe**<br>[0x7101B78638e34444F0a5AdE9e1149fbEeC029931](https://etherscan.io/address/0x7101B78638e34444F0a5AdE9e1149fbEeC029931) |
+| **ReservedNameResolverUpdater**<br>[0xCcc9C6ef74B8837d998A6e1E659992a178Dbe53b](https://etherscan.io/address/0xCcc9C6ef74B8837d998A6e1E659992a178Dbe53b) | **deployer**<br>[0x85a73f63309128d53928EE891E6e11E2B4695C20](https://etherscan.io/address/0x85a73f63309128d53928EE891E6e11E2B4695C20) | — |
 | **RootBatchRegistrar**<br>[0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164](https://etherscan.io/address/0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164) | **deployer**<br>[0x85a73f63309128d53928EE891E6e11E2B4695C20](https://etherscan.io/address/0x85a73f63309128d53928EE891E6e11E2B4695C20) | — |
 | **StandaloneHCAFactory**<br>[0x742bf21897a78e2C98cC5f5C5473A370a081e561](https://etherscan.io/address/0x742bf21897a78e2C98cC5f5C5473A370a081e561) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **StandaloneHCAImplementation**<br>[0x116F462FA078ec0009e9b25DCd60309E70aaC4F4](https://etherscan.io/address/0x116F462FA078ec0009e9b25DCd60309E70aaC4F4) | **nobody**<br>[0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000) | — |
@@ -125,4 +126,4 @@ A registry is emancipated when nobody holds a registry-wide role that reaches it
 | **ETHRegistry**<br>[0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2](https://etherscan.io/address/0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2) | yes |
 | **RootRegistry**<br>[0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e](https://etherscan.io/address/0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e) | yes |
 | **UserRegistryImpl**<br>[0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb](https://etherscan.io/address/0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb) | yes |
-| **WrapperRegistryImpl**<br>[0xB0c8e6F3BdC0E225B7Cad0D507D191884Ee9AcFC](https://etherscan.io/address/0xB0c8e6F3BdC0E225B7Cad0D507D191884Ee9AcFC) | yes |
+| **WrapperRegistryImpl**<br>[0xCF3Edb3f5501DE63B57254D910b6782eE370039B](https://etherscan.io/address/0xCF3Edb3f5501DE63B57254D910b6782eE370039B) | yes |
