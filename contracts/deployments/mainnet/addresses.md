@@ -34,7 +34,6 @@
 | PublicResolverSet | [0xffceda021cbdf20f1a66ebbef32e49d208cabf62](https://etherscan.io/address/0xffceda021cbdf20f1a66ebbef32e49d208cabf62) |
 | PublicResolverV2 | [0x66f9f566ff2f26309c1bd9134388478a801da3e1](https://etherscan.io/address/0x66f9f566ff2f26309c1bd9134388478a801da3e1) |
 | RegistryUpgradeSet | [0x573a73c0b3c0c90bb8bd728519434af19fb88935](https://etherscan.io/address/0x573a73c0b3c0c90bb8bd728519434af19fb88935) |
-| ReservedNameResolverUpdater | [0xccc9c6ef74b8837d998a6e1e659992a178dbe53b](https://etherscan.io/address/0xccc9c6ef74b8837d998a6e1e659992a178dbe53b) |
 | ReverseRegistrarAdapter | [0x349151735790269a9c14668b58d7c83b5ecb9607](https://etherscan.io/address/0x349151735790269a9c14668b58d7c83b5ecb9607) |
 | RootBatchRegistrar | [0xe467ae049ddd65a21fb85b5f1de5f7997a8eb164](https://etherscan.io/address/0xe467ae049ddd65a21fb85b5f1de5f7997a8eb164) |
 | RootRegistry | [0x2553c09be6447beffdb86fa622ad41fb8f77a91e](https://etherscan.io/address/0x2553c09be6447beffdb86fa622ad41fb8f77a91e) |

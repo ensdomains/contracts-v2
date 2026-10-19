@@ -8,8 +8,8 @@ itself.
 
 - **Network:** mainnet
 - **Chain ID:** 1
-- **Read at block:** 26216732
-- **Read at:** 2026-10-18T03:23:02.982Z
+- **Read at block:** 26223274
+- **Read at:** 2026-10-19T01:16:10.033Z
 - **Not listed:** the roles each name's owner holds on its own name in ETHRegistry
 
 ## Audit
@@ -111,7 +111,6 @@ The root and .eth registries match what the migration intends at the `pre-handof
 | **ETHRegistrar**<br>[0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81](https://etherscan.io/address/0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **ETHRenewerV1**<br>[0x56c447F308F463A01121C41E72b0E7e7557fCb68](https://etherscan.io/address/0x56c447F308F463A01121C41E72b0E7e7557fCb68) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **ManagedUniversalResolverProxy**<br>[0xcFFd2Ae680CD110D28739a70922636B5937b022B](https://etherscan.io/address/0xcFFd2Ae680CD110D28739a70922636B5937b022B) | — | **security council / ENS Security Council Safe**<br>[0x7101B78638e34444F0a5AdE9e1149fbEeC029931](https://etherscan.io/address/0x7101B78638e34444F0a5AdE9e1149fbEeC029931) |
-| **ReservedNameResolverUpdater**<br>[0xCcc9C6ef74B8837d998A6e1E659992a178Dbe53b](https://etherscan.io/address/0xCcc9C6ef74B8837d998A6e1E659992a178Dbe53b) | **deployer**<br>[0x85a73f63309128d53928EE891E6e11E2B4695C20](https://etherscan.io/address/0x85a73f63309128d53928EE891E6e11E2B4695C20) | — |
 | **RootBatchRegistrar**<br>[0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164](https://etherscan.io/address/0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164) | **deployer**<br>[0x85a73f63309128d53928EE891E6e11E2B4695C20](https://etherscan.io/address/0x85a73f63309128d53928EE891E6e11E2B4695C20) | — |
 | **StandaloneHCAFactory**<br>[0x742bf21897a78e2C98cC5f5C5473A370a081e561](https://etherscan.io/address/0x742bf21897a78e2C98cC5f5C5473A370a081e561) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **StandaloneHCAImplementation**<br>[0x116F462FA078ec0009e9b25DCd60309E70aaC4F4](https://etherscan.io/address/0x116F462FA078ec0009e9b25DCd60309E70aaC4F4) | **nobody**<br>[0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000) | — |

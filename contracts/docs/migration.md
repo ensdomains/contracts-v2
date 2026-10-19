@@ -678,39 +678,16 @@ bun ./script/generateAddressDocs.ts --network mainnet
   transaction again.
 - The replaced contracts stay on chain, unused.
 
-### Pointing the DNS top-level names at a new DNSTLDResolver
+### DNS top-level names and a new DNSTLDResolver
 
 Phase 1 reserves each DNS top-level name on the root registry with the `DNSTLDResolver` of the time. A
-reservation has no owner and so no roles, and nobody may set resolvers registry-wide. So a new
-`DNSTLDResolver` does not reach these names by itself. `phase rereserve-dns-tlds` moves them:
-
-```bash
-bun run migration -- phase rereserve-dns-tlds --network mainnet --max-gas-price <gwei>
-```
-
-- The `ReservedNameResolverUpdater` contract moves each name not yet reserved with the namespace's
-  `DNSTLDResolver` in one call. In that call it:
-  1. registers the name to itself with only the role to unregister it, keeping the reservation's expiry;
-  2. unregisters it;
-  3. reserves it again with the resolver, the same subregistry and the same expiry.
-
-  No name is ever left unreserved between transactions, and unregistering bumps the name's resource,
-  so the role from step 1 does not outlive the call. A batch with any name that is not reserved
-  reverts whole. Only its owner, the deployer, can call it.
-- The command deploys the updater when the namespace has none (deploy tag
-  `ReservedNameResolverUpdater`, outside phase 1, since a fresh deploy reserves the names with the
-  current resolver from the start). It grants it the root `REGISTRAR` and `REGISTER_RESERVED` roles,
-  sends `--batch-size` names per transaction under the gas price limit, and revokes both roles again,
-  also on a run that finds nothing left to move. A stopped run resumes with the names still on the old
-  resolver. `--labels` limits the run to some names, and `--dry-run` counts the names still to move
-  without sending.
-- It reads the names in combined calls, a few hundred per request, so the move stays within a
-  provider's rate limit.
-- It refuses unless every name is reserved and the deployer may grant both roles. It also refuses
-  unless the resolver's source is verified on Etherscan (`--skip-source-verification` on a fork). It
-  ends by checking every name: reserved, with the resolver, its original expiry, and no role left to the
-  deployer or the updater, which keeps no root role either.
-- The deployer loses these root roles at phase 8, so the move must happen before it.
+reservation has no owner and so no roles, and nobody may set resolvers registry-wide, so a replaced
+`DNSTLDResolver` does not reach these names by itself. Each name has to be registered, unregistered and
+reserved again with the new resolver and its original expiry, by an account holding the root
+`REGISTRAR` and `REGISTER_RESERVED` roles, and atomically, so no name is left unreserved between
+transactions. On mainnet this was done once, on 2026-10-18, before phase 7 and while the deployer still
+held those roles; the tooling for it has since been removed. A later replacement of `DNSTLDResolver`
+needs the same move.
 
 ## Re-deploying onto an already-migrated network
 
@@ -1489,7 +1466,6 @@ and idempotency rules.
 | `phase hand-over-registry-admin` | Phase 8: the `eth` token, with every role on it, goes to the name owner; the owner takes the root registry's and the `.eth` registry's root roles; the deployer drops every role it holds on them and on every archived root registry, and renounces every batch registrar |
 | `phase redeploy-root` | Replace the v2 root registry under a live namespace, with every contract built over it, before the DAO proposal executes and before go-live; the `.eth` registry and its reservations are reused, and its parent is left for `set-eth-parent` |
 | `phase redeploy-contracts` | Replace the deployed contracts whose build has changed, with every contract built over one of them, before the DAO proposal executes and before go-live; the set must be named with `--replace` |
-| `phase rereserve-dns-tlds` | Point the root registry's reserved DNS top-level names at the namespace's `DNSTLDResolver`, each moved in one call by the `ReservedNameResolverUpdater` contract, which holds its root roles only while it works; before phase 8 |
 | `phase set-eth-parent` | Point the `.eth` registry at the new root registry, once every contract built over the root reports it, `verify-deployment` passes, and every replaced contract's source is verified on Etherscan |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, the registrar's and the v1 renewer's beneficiary (`--expected-beneficiary`), accepted tokens |
