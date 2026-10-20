@@ -131,6 +131,10 @@ contract WrapperRegistry is
         public
         initializer
     {
+        roleBitmap &=
+            ~RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN; // constrain roles
         _node = node;
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
