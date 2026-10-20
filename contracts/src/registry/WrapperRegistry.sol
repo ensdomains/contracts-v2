@@ -219,7 +219,7 @@ contract WrapperRegistry is
         override(PermissionedRegistry, IPermissionedRegistry)
         returns (bool)
     {
-        return true; // see: LibMigration.subregistryRoleBitmapFromFuses()
+        return true; // see: LockedWrapperReceiver._subregistryRoleBitmapFromFuses()
     }
 
     ////////////////////////////////////////////////////////////////////////
