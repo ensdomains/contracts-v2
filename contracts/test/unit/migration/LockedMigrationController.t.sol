@@ -978,11 +978,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         uint256 tokenId = registry2.getTokenId(LibLabel.id(data3.label));
-        assertTrue(registry2.hasRoles(tokenId, RegistryRolesLib.ROLE_RENEW, friend), "ROLE_RENEW");
-
-        uint64 expiry = registry2.getExpiry(tokenId);
-        vm.prank(friend);
-        registry2.renew(tokenId, expiry + 1);
+        assertFalse(registry2.hasRoles(tokenId, RegistryRolesLib.ROLE_RENEW, friend), "ROLE_RENEW");
+        assertEq(registry2.getExpiry(tokenId), type(uint64).max, "max");
     }
 
     function test_migrate_emancipated_canExtendExpiry() external {
@@ -1018,7 +1015,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         uint256 tokenId = registry2.getTokenId(LibLabel.id(data3.label));
-        assertTrue(
+        assertFalse(
             registry2.hasRoles(
                 tokenId,
                 RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN,
@@ -1026,10 +1023,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "ROLE_RENEW + ROLE_RENEW_ADMIN"
         );
-
-        uint64 expiry = registry2.getExpiry(tokenId);
-        vm.prank(friend);
-        registry2.renew(tokenId, expiry + 1);
+        assertEq(registry2.getExpiry(tokenId), type(uint64).max, "max");
 
         // migrate emancipated 3LD without CAN_EXTEND_EXPIRY
         LibMigration.Data memory data3plain = _lockedData(name3plain);
