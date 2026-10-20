@@ -42,6 +42,7 @@
 | StandaloneHCAImplementation | [0xc940e5c5bf263c0e097054aecf73826769a72cee](https://sepolia.etherscan.io/address/0xc940e5c5bf263c0e097054aecf73826769a72cee) |
 | StandardRentPriceOracle | [0x8196665d4ca7488b6474a9ec8e7d2719fb42263a](https://sepolia.etherscan.io/address/0x8196665d4ca7488b6474a9ec8e7d2719fb42263a) |
 | UniversalHelper | [0xd453e5bdb62cc3bea84341b1e306319c8ffd7dfe](https://sepolia.etherscan.io/address/0xd453e5bdb62cc3bea84341b1e306319c8ffd7dfe) |
+| UniversalResolverV1 | [0x0e60a5afd6ee6b902cdc0bdaf7b47f67212b289b](https://sepolia.etherscan.io/address/0x0e60a5afd6ee6b902cdc0bdaf7b47f67212b289b) |
 | UniversalResolverV2 | [0x24e1d8e068620b647ca097f961a61055f4f42d72](https://sepolia.etherscan.io/address/0x24e1d8e068620b647ca097f961a61055f4f42d72) |
 | UnlockedMigrationController | [0x2a35b94df22cc7354570be2284655e2cdc0e64a2](https://sepolia.etherscan.io/address/0x2a35b94df22cc7354570be2284655e2cdc0e64a2) |
 | UpgradableUniversalResolverProxy | [0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://sepolia.etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe) |
