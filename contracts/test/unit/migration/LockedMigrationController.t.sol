@@ -1377,7 +1377,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 salt,
                 abi.encodeCall(
                     IWrapperRegistryInitializable.initialize,
-                    (node, ethRegistry, testLabel, RegistryRolesLib.ROLE_UPGRADE)
+                    (node, ethRegistry, testLabel, 0)
                 )
             );
         ethRegistry.register(testLabel, testOwner, IRegistry(proxyAddress), address(0), 0, _soon());

@@ -2,13 +2,18 @@
 pragma solidity >=0.8.13;
 
 import {
+    CAN_EXTEND_EXPIRY,
     CANNOT_BURN_FUSES,
+    CANNOT_CREATE_SUBDOMAIN,
+    CANNOT_SET_RESOLVER,
+    CANNOT_TRANSFER,
     CANNOT_UNWRAP,
     IS_DOT_ETH,
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
+import {RegistryRolesLib} from "../../registry/libraries/RegistryRolesLib.sol";
 
 /// @dev Primitives for migration.
 library LibMigration {
@@ -86,5 +91,39 @@ library LibMigration {
         // PARENT_CANNOT_CONTROL must be set for the entire ancestory.
         // see: V1Fixture.t.sol: `test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent()`
         return (fuses & (IS_DOT_ETH | PARENT_CANNOT_CONTROL)) == PARENT_CANNOT_CONTROL;
+    }
+
+    /// @dev Convert fuses to equivalent subregistry root roles.
+    function subregistryRoleBitmapFromFuses(uint32 fuses)
+        internal
+        pure
+        returns (uint256 roleBitmap)
+    {
+        if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
+        }
+        roleBitmap |=
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_CAN_NAME;
+        if (notFrozen(fuses)) {
+            roleBitmap |= roleBitmap << 128; // give admin
+        }
+    }
+
+    /// @dev Convert fuses to equivalent token roles.
+    function tokenRoleBitmapFromFuses(uint32 fuses) internal pure returns (uint256 roleBitmap) {
+        if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_RENEW;
+        }
+        if ((fuses & CANNOT_SET_RESOLVER) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
+        }
+        if (notFrozen(fuses)) {
+            roleBitmap |= roleBitmap << 128; // give admin
+        }
+        if ((fuses & CANNOT_TRANSFER) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN; // no user
+        }
     }
 }

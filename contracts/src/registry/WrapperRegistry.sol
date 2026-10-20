@@ -126,7 +126,7 @@ contract WrapperRegistry is
         bytes32 node,
         IRegistry parentRegistry,
         string calldata childLabel,
-        uint256 roleBitmap
+        uint32 fuses
     )
         public
         initializer
@@ -135,6 +135,7 @@ contract WrapperRegistry is
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
+        uint256 roleBitmap = LibMigration.subregistryRoleBitmapFromFuses(fuses);
         _initialRoleBitmap = roleBitmap;
         emit RegistryCreated();
         address virtualOwner = address(_parentRegistry);
@@ -223,7 +224,7 @@ contract WrapperRegistry is
         override(PermissionedRegistry, IPermissionedRegistry)
         returns (bool)
     {
-        return true; // see: LockedWrapperReceiver._subregistryRoleBitmapFromFuses()
+        return true; // see: LibMigration.subregistryRoleBitmapFromFuses()
     }
 
     ////////////////////////////////////////////////////////////////////////
