@@ -6,7 +6,9 @@ import {
     INameWrapper,
     CAN_EXTEND_EXPIRY,
     CANNOT_APPROVE,
-    CANNOT_SET_RESOLVER
+    CANNOT_CREATE_SUBDOMAIN,
+    CANNOT_SET_RESOLVER,
+    CANNOT_TRANSFER
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
@@ -151,7 +153,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                             uint256(node),
                             abi.encodeCall(
                                 IWrapperRegistryInitializable.initialize,
-                                (node, parentRegistry, md.label, fuses)
+                                (node, parentRegistry)
                             )
                         )
                     );
@@ -165,7 +167,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                     md.owner,
                     subregistry,
                     resolver,
-                    LibMigration.tokenRoleBitmapFromFuses(fuses),
+                    _tokenRoleBitmapFromFuses(fuses),
                     expiry
                 );
             } else if (LibMigration.isEmancipatedChild(fuses)) {
@@ -200,4 +202,38 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
 
     /// @dev The ENSv2 registry being migrated to.
     function _getRegistry() internal view virtual returns (IRegistry);
+
+    /// @dev Convert fuses to equivalent subregistry root roles.
+    function _subregistryRoleBitmapFromFuses(uint32 fuses)
+        internal
+        pure
+        returns (uint256 roleBitmap)
+    {
+        if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
+        }
+        roleBitmap |=
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_CAN_NAME;
+        if (LibMigration.notFrozen(fuses)) {
+            roleBitmap |= roleBitmap << 128; // give admin
+        }
+    }
+
+    /// @dev Convert fuses to equivalent token roles.
+    function _tokenRoleBitmapFromFuses(uint32 fuses) internal pure returns (uint256 roleBitmap) {
+        if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_RENEW;
+        }
+        if ((fuses & CANNOT_SET_RESOLVER) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
+        }
+        if (LibMigration.notFrozen(fuses)) {
+            roleBitmap |= roleBitmap << 128; // give admin
+        }
+        if ((fuses & CANNOT_TRANSFER) == 0) {
+            roleBitmap |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN; // no user
+        }
+    }
 }

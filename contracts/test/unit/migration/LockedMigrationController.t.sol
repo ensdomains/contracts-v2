@@ -1368,20 +1368,17 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function _deployWrapperRegistryProxy() internal returns (WrapperRegistry) {
-        bytes memory name = NameCoder.ethName(testLabel);
-        bytes32 node = NameCoder.namehash(name, 0);
-        uint256 salt = uint256(node);
-        address proxyAddress =
-            verifiableFactory.deployProxy(
-                address(wrapperRegistryImpl),
-                salt,
-                abi.encodeCall(
-                    IWrapperRegistryInitializable.initialize,
-                    (node, ethRegistry, testLabel, 0)
-                )
-            );
-        ethRegistry.register(testLabel, testOwner, IRegistry(proxyAddress), address(0), 0, _soon());
-        return WrapperRegistry(proxyAddress);
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        LibMigration.Data memory md = _lockedData(name);
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+        return WrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
     }
 
     function _newWrapperRegistryV2Mock() internal returns (WrapperRegistryV2Mock) {

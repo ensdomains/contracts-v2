@@ -122,20 +122,15 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc IWrapperRegistryInitializable
-    function initialize(
-        bytes32 node,
-        IRegistry parentRegistry,
-        string calldata childLabel,
-        uint32 fuses
-    )
-        public
-        initializer
-    {
+    function initialize(bytes32 node, IRegistry parentRegistry) public initializer {
+        // derive from wrapper
+        (, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
+        string memory childLabel = NameCoder.firstLabel(NAME_WRAPPER.names(node));
+        uint256 roleBitmap = _subregistryRoleBitmapFromFuses(fuses);
         _node = node;
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
-        uint256 roleBitmap = LibMigration.subregistryRoleBitmapFromFuses(fuses);
         _initialRoleBitmap = roleBitmap;
         emit RegistryCreated();
         address virtualOwner = address(_parentRegistry);
