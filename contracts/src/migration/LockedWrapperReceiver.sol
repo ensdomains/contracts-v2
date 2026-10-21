@@ -160,12 +160,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                             uint256(node),
                             abi.encodeCall(
                                 IWrapperRegistryInitializable.initialize,
-                                (
-                                    node,
-                                    parentRegistry,
-                                    md.label,
-                                    _subregistryRoleBitmapFromFuses(fuses)
-                                )
+                                (node, parentRegistry)
                             )
                         )
                     );

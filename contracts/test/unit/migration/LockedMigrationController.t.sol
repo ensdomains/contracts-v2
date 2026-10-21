@@ -164,6 +164,36 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
+    function test_adhocInitialize_root() external {
+        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
+        verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            0,
+            abi.encodeCall(IWrapperRegistryInitializable.initialize, (bytes32(0), ethRegistry))
+        );
+    }
+
+    function test_adhocInitialize_notWrapped() external {
+        bytes32 node = bytes32(uint256(1));
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameNotLocked.selector, node));
+        verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            0,
+            abi.encodeCall(IWrapperRegistryInitializable.initialize, (node, ethRegistry))
+        );
+    }
+
+    function test_adhocInitialize_notLocked() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        bytes32 node = NameCoder.namehash(name, 0);
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameNotLocked.selector, node));
+        verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            0,
+            abi.encodeCall(IWrapperRegistryInitializable.initialize, (node, ethRegistry))
+        );
+    }
+
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
         WrapperRegistry registry = _deployWrapperRegistryProxy();
         WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
@@ -1362,20 +1392,17 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function _deployWrapperRegistryProxy() internal returns (WrapperRegistry) {
-        bytes memory name = NameCoder.ethName(testLabel);
-        bytes32 node = NameCoder.namehash(name, 0);
-        uint256 salt = uint256(node);
-        address proxyAddress =
-            verifiableFactory.deployProxy(
-                address(wrapperRegistryImpl),
-                salt,
-                abi.encodeCall(
-                    IWrapperRegistryInitializable.initialize,
-                    (node, ethRegistry, testLabel, RegistryRolesLib.ROLE_UPGRADE)
-                )
-            );
-        ethRegistry.register(testLabel, testOwner, IRegistry(proxyAddress), address(0), 0, _soon());
-        return WrapperRegistry(proxyAddress);
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        LibMigration.Data memory md = _lockedData(name);
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(NameCoder.namehash(name, 0)),
+            1,
+            abi.encode(md)
+        );
+        return WrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
     }
 
     function _newWrapperRegistryV2Mock() internal returns (WrapperRegistryV2Mock) {
