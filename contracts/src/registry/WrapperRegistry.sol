@@ -124,8 +124,11 @@ contract WrapperRegistry is
     /// @inheritdoc IWrapperRegistryInitializable
     function initialize(bytes32 node, IRegistry parentRegistry) public initializer {
         // derive from wrapper
-        (, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
-        string memory childLabel = NameCoder.firstLabel(NAME_WRAPPER.names(node));
+        uint32 fuses = _getFuses(node);
+        if (!LibMigration.isLocked(fuses)) {
+            revert LibMigration.NameNotLocked(uint256(node));
+        }
+        string memory childLabel = NameCoder.firstLabel(NAME_WRAPPER.names(node)); // exists if locked
         uint256 roleBitmap = _subregistryRoleBitmapFromFuses(fuses);
         _node = node;
         // setup canonical parent (ROLE_SET_PARENT is not granted)
@@ -313,12 +316,18 @@ contract WrapperRegistry is
             return false; // has been registered before, v2 is authority
         }
         bytes32 node = NameCoder.namehash(_node, bytes32(labelId));
-        (, uint32 fuses, ) = NAME_WRAPPER.getData(uint256(node));
         // NameWrapper preserves fuses across `_burn()`, so the PARENT_CANNOT_CONTROL
         // bit stays readable after unwrap and is the primary signal. Require an
         // active v1 registry owner.  A null owner means the subname was ABANDONED
         // and reserving the label would lock it forever; positive expiry on either
         // side marks a completed migration.
-        return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
+        return
+            LibMigration.isEmancipatedChild(_getFuses(node)) &&
+            _REGISTRY_V1.owner(node) != address(0);
+    }
+
+    /// @dev Convenience for `NameWrapper` fuses.
+    function _getFuses(bytes32 node) internal view returns (uint32 fuses) {
+        (, fuses, ) = NAME_WRAPPER.getData(uint256(node));
     }
 }

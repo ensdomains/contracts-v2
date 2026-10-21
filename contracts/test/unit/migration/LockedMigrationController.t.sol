@@ -164,6 +164,36 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
+    function test_adhocInitialize_root() external {
+        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
+        verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            0,
+            abi.encodeCall(IWrapperRegistryInitializable.initialize, (bytes32(0), ethRegistry))
+        );
+    }
+
+    function test_adhocInitialize_notWrapped() external {
+        bytes32 node = bytes32(uint256(1));
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameNotLocked.selector, node));
+        verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            0,
+            abi.encodeCall(IWrapperRegistryInitializable.initialize, (node, ethRegistry))
+        );
+    }
+
+    function test_adhocInitialize_notLocked() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CAN_DO_EVERYTHING);
+        bytes32 node = NameCoder.namehash(name, 0);
+        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameNotLocked.selector, node));
+        verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            0,
+            abi.encodeCall(IWrapperRegistryInitializable.initialize, (node, ethRegistry))
+        );
+    }
+
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
         WrapperRegistry registry = _deployWrapperRegistryProxy();
         WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
