@@ -70,6 +70,9 @@ Run everything from `contracts/`. Solc, the submodules and all packages are alre
 - Hardhat integration tests: `bun run test:hardhat` (vitest, `test/integration/**/*.test.ts`), covering the resolvers
   and universal resolvers against deployed v1 and v2 contracts.
 - TypeScript unit tests: `bun run test:unit`. End-to-end tests: `bun run test:e2e` (starts local anvil instances).
+  Both deploy v1 and v2 via scripts that fetch the public suffix list; in this image it is served from a saved copy,
+  which is why `contracts/bunfig.toml` shows as modified. That edit is part of the scanner build: leave it out of
+  patches.
 - Reproducers: a Forge test in the relevant `test/unit/<area>/` directory is preferred. Follow `AGENTS.md`: check
   events with `vm.expectEmit` or `vm.recordLogs`; put `vm.expectRevert` before `vm.prank`; use constants from the
   source libraries (eg, `RegistryRolesLib`) rather than literal values; never compile with `--via-ir`.
