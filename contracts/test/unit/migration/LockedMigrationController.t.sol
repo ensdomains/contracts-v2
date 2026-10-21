@@ -1015,12 +1015,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         uint256 tokenId = registry2.getTokenId(LibLabel.id(data3.label));
-        assertFalse(
-            registry2.hasRoles(
-                tokenId,
-                RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN,
-                friend
-            ),
+        assertEq(
+            registry2.roles(tokenId, friend) &
+            (RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN),
+            0,
             "ROLE_RENEW + ROLE_RENEW_ADMIN"
         );
         assertEq(registry2.getExpiry(tokenId), type(uint64).max, "max");
@@ -1037,8 +1035,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         uint256 tokenIdPlain = registry2.getTokenId(LibLabel.id(data3plain.label));
-        assertFalse(
-            registry2.hasRoles(tokenIdPlain, RegistryRolesLib.ROLE_RENEW, friend),
+        assertEq(
+            registry2.roles(tokenIdPlain, friend) &
+            (RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN),
+            0,
             "no ROLE_RENEW"
         );
     }

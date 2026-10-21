@@ -127,7 +127,8 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             address resolver = md.resolver;
             (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
 
-            // renewal rights when the name could extend its own expiry in v1)
+            // instead of granting token ROLE_RENEW for names in v1 that could extend their own expiry
+            // we grant the full expiry and skip token owner needing to invoke `renew(*, max)`
             if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
                 expiry = type(uint64).max;
             }
