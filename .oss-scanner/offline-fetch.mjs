@@ -4,12 +4,18 @@
 import { readFileSync } from "node:fs";
 
 const SAVED = {
-  "https://publicsuffix.org/list/public_suffix_list.dat": "/opt/oss-scanner/public_suffix_list.dat",
+  "https://publicsuffix.org/list/public_suffix_list.dat":
+    "/opt/oss-scanner/public_suffix_list.dat",
 };
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
-  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url;
   const path = SAVED[url];
   return path ? new Response(readFileSync(path)) : realFetch(input, init);
 };
