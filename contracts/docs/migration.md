@@ -523,8 +523,13 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 > record that stopped resolving or returns something different, listing every one. A record that
 > only *starts* resolving is reported by name but does not fail the check: a name reserved only in the
 > new registry is invisible to the old resolver path and answers once the cutover points at it, as
-> freshly seeded fixture names do. Include awkward cases in `--names`: a name with no resolver, a
-> wildcard/offchain name, and a DNS TLD mirror.
+> freshly seeded fixture names do. A `.eth` name whose v1 registration has outlived its v2 term —
+> its v1 expiry plus the bonus period (`--bonus-period-days`, default 62) — is also reported rather
+> than failed: v1's registry keeps an expired name's record, so the old path still answers for it,
+> while v2 answers only for a live registration, grace included. The term is read from the v1
+> `BaseRegistrar`, not from v2, so a live name missing from v2 still fails; a name never registered
+> on v1, or whose expiry cannot be read, counts as live. Include awkward cases in `--names`: a name
+> with no resolver, a wildcard/offchain name, and a DNS TLD mirror.
 >
 > `fork full` does this automatically around phase 7 and prints any differences. Its sample is the
 > run's own smoke names plus names drawn from `--csv-file` that are confirmed to carry records before
@@ -1491,7 +1496,7 @@ and idempotency rules.
 | `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` — the resolution cutover |
 | `phase verify-urp` | Verify top and managed URP implementations |
 | `phase snapshot-resolution` | Record how names resolve before the cutover (`addr`, coin types, text keys, contenthash) |
-| `phase verify-resolution` | Re-resolve a snapshot's names and fail on any record that stopped resolving or changed (records that start resolving are reported, not failed) |
+| `phase verify-resolution` | Re-resolve a snapshot's names and fail on any record that stopped resolving or changed (records that start resolving, and `.eth` names past their v1 expiry plus the bonus period, are reported, not failed) |
 | `fork full` | Run the full phased migration rehearsal against an Anvil fork (or a Tenderly fork with `--direct`) |
 | `clean-testnet` | Deploy fresh testnet v1 contracts and run the full phased migration (sepolia only) |
 

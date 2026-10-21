@@ -229,6 +229,7 @@ import {
   main as preMigrationMain,
   parseCSVLine,
   bonusAdjustedExpiry,
+  DEFAULT_BONUS_PERIOD_DAYS,
   graveyardSet,
   holdsReservation,
   isClaimableOnV1,
@@ -262,7 +263,9 @@ import {
 import {
   describeDifference,
   diffResolutionSnapshots,
+  ethSecondLevelLabel,
   isRegression,
+  partitionLapsed,
   queriesFromSnapshot,
   recordQueries,
   snapshotCarriesRecords,
@@ -3736,15 +3739,69 @@ export async function snapshotResolution(opts: {
   return snapshot;
 }
 
-export async function verifyResolution(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  provider?: RpcProvider;
-  snapshotFile: string;
-  universalResolver?: Address;
-  reportOnly?: boolean;
-}) {
+/// The labels, among the `.eth` names given, whose v1 registration has outlived its
+/// v2 term — the v1 expiry plus the bonus period — at the latest block. A label whose
+/// expiry cannot be read is left out, so its changes still count against the cutover.
+async function lapsedEthLabels(
+  client: ReturnType<typeof publicClient>,
+  names: readonly string[],
+  opts: V1DeploymentOptions & {
+    network: MigrationNetwork;
+    bonusPeriodDays?: string;
+    v1BaseRegistrar?: Address;
+  },
+): Promise<Set<string>> {
+  const lapsed = new Set<string>();
+  const labels = new Set(
+    names
+      .map(ethSecondLevelLabel)
+      .filter((label): label is string => label !== undefined),
+  );
+  if (labels.size === 0) return lapsed;
+  const registrar =
+    opts.v1BaseRegistrar ??
+    requireV1Deployment(opts.network, V1_BASE_REGISTRAR_NAME, opts).address;
+  const bonusPeriodSeconds =
+    BigInt(parseNumber(opts.bonusPeriodDays, DEFAULT_BONUS_PERIOD_DAYS)) *
+    SEC_PER_DAY;
+  const now = (await client.getBlock()).timestamp;
+  for (const label of labels) {
+    try {
+      const expiry = (await client.readContract({
+        address: registrar,
+        abi: BaseRegistrarFragments.nameExpires,
+        functionName: "nameExpires",
+        args: [labelId(label)],
+      })) as bigint;
+      // A name never registered on v1 has no v1 term to outlive.
+      if (
+        expiry > 0n &&
+        bonusAdjustedExpiry(expiry, bonusPeriodSeconds) <= now
+      ) {
+        lapsed.add(label);
+      }
+    } catch (error) {
+      console.log(
+        `could not read the v1 expiry of ${label}.eth (${errorMessageChain(error)[0]}); its changes count against the cutover`,
+      );
+    }
+  }
+  return lapsed;
+}
+
+export async function verifyResolution(
+  opts: V1DeploymentOptions & {
+    network: MigrationNetwork;
+    rpcUrl: string;
+    chainId?: string;
+    provider?: RpcProvider;
+    snapshotFile: string;
+    universalResolver?: Address;
+    reportOnly?: boolean;
+    bonusPeriodDays?: string;
+    v1BaseRegistrar?: Address;
+  },
+) {
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
   const before = JSON.parse(
@@ -3794,17 +3851,37 @@ export async function verifyResolution(opts: {
       `now resolving after the cutover: ${gained.length} record(s) on ${names.length} name(s): ${names.join(", ")}`,
     );
   }
+  // A `.eth` name whose v2 term has run out stops resolving at the cutover by design:
+  // v2 answers only for a live registration, while v1's registry keeps an expired
+  // name's record. The term comes from the v1 expiry rather than from v2, so a live
+  // name missing from v2 still counts against the cutover.
   const regressions = differences.filter(isRegression);
-  for (const difference of regressions) {
-    console.error(describeDifference(difference));
-  }
-  if (regressions.length > 0 && !opts.reportOnly) {
-    throw new Error(
-      `resolution changed across the cutover for ${regressions.length} record(s)`,
+  const { lapsed, broken } = partitionLapsed(
+    regressions,
+    await lapsedEthLabels(
+      client,
+      regressions.map((difference) => difference.name),
+      opts,
+    ),
+  );
+  if (lapsed.length > 0) {
+    const names = [...new Set(lapsed.map((difference) => difference.name))];
+    console.log(
+      `stopped resolving with a lapsed .eth registration: ${lapsed.length} record(s) on ${names.length} name(s): ${names.join(", ")}`,
     );
   }
-  if (regressions.length === 0) {
-    console.log("no record stopped resolving or changed across the cutover");
+  for (const difference of broken) {
+    console.error(describeDifference(difference));
+  }
+  if (broken.length > 0 && !opts.reportOnly) {
+    throw new Error(
+      `resolution changed across the cutover for ${broken.length} record(s)`,
+    );
+  }
+  if (broken.length === 0) {
+    console.log(
+      "no record of a live name stopped resolving or changed across the cutover",
+    );
   }
   return differences;
 }
@@ -10973,13 +11050,18 @@ export async function main(argv = process.argv): Promise<void> {
           "--universal-resolver <address>",
           "Universal Resolver to resolve through; defaults to the snapshot's",
         )
-        .option("--report-only", "Print differences without failing", false),
+        .option("--report-only", "Print differences without failing", false)
+        .option(
+          "--bonus-period-days <days>",
+          "Days a v2 reservation adds to its v1 expiry; a .eth name past both is expected to stop resolving",
+        ),
     ).action(
       async (
         opts: NetworkCliOptions & {
           snapshotFile: string;
           universalResolver?: Address;
           reportOnly?: boolean;
+          bonusPeriodDays?: string;
         },
       ) => {
         await verifyResolution({ ...withNetworkRpc(opts) });
