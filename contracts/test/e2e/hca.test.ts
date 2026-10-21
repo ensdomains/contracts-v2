@@ -434,7 +434,13 @@ describe("Standalone HCA", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
-    const userSignature = await account.experimental_signEnableSession(details);
+    const userSignature = await account.experimental_signEnableSession({
+      ...details,
+      data: {
+        ...details.data,
+        domain: { name: "ENS HCA Authorization", version: "1" },
+      },
+    });
     if (
       size(userSignature) !== 85 ||
       slice(userSignature, 0, 20).toLowerCase() !== zeroAddress.toLowerCase()
@@ -442,6 +448,19 @@ describe("Standalone HCA", () => {
       throw new Error("unexpected HCA owner session authorization");
     }
     const parsed = parseSignature(slice(userSignature, 20));
+    const ensSigner = await recoverTypedDataAddress({
+      ...details.data,
+      domain: { name: "ENS HCA Authorization", version: "1" },
+      signature: slice(userSignature, 20),
+    });
+    expectVar({ ensSigner }).toEqualAddress(owner.address);
+    const emissarySigner = await recoverTypedDataAddress({
+      ...details.data,
+      signature: slice(userSignature, 20),
+    });
+    expectVar({ emissarySigner: emissarySigner.toLowerCase() }).not.toStrictEqual(
+      owner.address.toLowerCase(),
+    );
     const ownerV = parsed.v ?? BigInt(27 + (parsed.yParity ?? 0));
     const packedSessions = details.hashesAndChainIds.map(
       ({ chainId, sessionDigest }) =>
