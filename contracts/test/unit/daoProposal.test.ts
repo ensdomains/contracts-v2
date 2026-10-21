@@ -262,4 +262,18 @@ describe("executePreparedOwnerTransactions", () => {
       }),
     ).rejects.toThrow(/needs a local fork/);
   });
+
+  it("impersonates on a Tenderly virtual testnet", async () => {
+    const file = join(dir, "calls.jsonl");
+    writeFileSync(file, `${JSON.stringify(tx(PROXY, upgradeTo))}\n`);
+    await expect(
+      executePreparedOwnerTransactions({
+        network: "mainnet",
+        rpcUrl: "https://virtual.mainnet.rpc.tenderly.co/test-vnet",
+        file,
+        impersonateAccount: UNKNOWN,
+        dryRun: true,
+      }),
+    ).resolves.toBeUndefined();
+  });
 });

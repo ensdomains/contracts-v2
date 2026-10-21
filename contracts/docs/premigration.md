@@ -37,8 +37,11 @@ bun run script/preMigration.ts --continue \
 
 In the phased migration this script is driven through the operator CLI
 (`bun run migration -- premigration run` / `resume`, then `verify`) — see
-[migration.md](./migration.md). The CLI fills in `--graveyards` from the deployment artifacts. The
-reference below documents the underlying script directly.
+[migration.md](./migration.md). The CLI fills in `--graveyards` from the deployment artifacts. On a
+local fork or a Tenderly virtual testnet, its `--impersonate-account <address>` sends as that
+`BatchRegistrar` owner without a key: it impersonates and funds the account, passes it as
+`--account`, and ignores the keys in the environment. The reference below documents the underlying
+script directly.
 
 ## Prerequisites
 

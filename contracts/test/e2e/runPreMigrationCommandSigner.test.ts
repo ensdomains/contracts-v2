@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -56,7 +56,16 @@ function flagValue(args: string[], flag: string): string | undefined {
 
 const GRAVEYARD = "0x0000000000000000000000000000000000000005" as const;
 
+// Runs record their counts in an empty scratch folder unless a test names its own,
+// so a checkpoint left in the working directory never reaches the repository's
+// deployment records.
+const SCRATCH_DEPLOYMENTS = mkdtempSync(
+  join(tmpdir(), "premigration-signer-deploy-"),
+);
+afterAll(() => rmSync(SCRATCH_DEPLOYMENTS, { recursive: true, force: true }));
+
 const baseOpts = {
+  deploymentsDir: SCRATCH_DEPLOYMENTS,
   rpcUrl: "http://127.0.0.1:8545",
   network: "mainnet" as const,
   registry: "0x0000000000000000000000000000000000000001" as const,
@@ -123,6 +132,52 @@ describe("runPreMigrationCommand signer resolution", () => {
     );
     expect(flagValue(capturedArgs!, "--private-key")).toBe(OWNER_KEY);
     expect(flagValue(capturedArgs!, "--account")).toBe(ownerAccount.address);
+  });
+
+  it("never signs with the env key when impersonating the account it controls", async () => {
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        impersonateAccount: deployerAccount.address,
+        dryRun: true,
+      },
+      false,
+      captureArgs,
+    );
+    expect(flagValue(capturedArgs!, "--account")).toBe(
+      deployerAccount.address,
+    );
+    expect(capturedArgs).not.toContain("--private-key");
+  });
+
+  it("an explicit private key still wins over impersonation", async () => {
+    await runPreMigrationCommand(
+      {
+        ...baseOpts,
+        privateKey: OWNER_KEY,
+        impersonateAccount: ownerAccount.address,
+        dryRun: true,
+      },
+      false,
+      captureArgs,
+    );
+    expect(flagValue(capturedArgs!, "--private-key")).toBe(OWNER_KEY);
+  });
+
+  it("refuses to impersonate on an RPC without state controls", async () => {
+    await expect(
+      runPreMigrationCommand(
+        {
+          ...baseOpts,
+          rpcUrl: "https://example.invalid",
+          impersonateAccount: ownerAccount.address,
+          dryRun: true,
+        },
+        false,
+        captureArgs,
+      ),
+    ).rejects.toThrow(/needs a local fork or a Tenderly virtual testnet/);
+    expect(capturedArgs).toBeNull();
   });
 });
 

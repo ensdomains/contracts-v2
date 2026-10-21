@@ -661,6 +661,21 @@ export function isTenderlyVirtualRpc(rpcUrl: string): boolean {
   }
 }
 
+/// Whether the RPC can send as any account without its key: a local node or a
+/// Tenderly virtual testnet.
+export function hasRpcStateControls(rpcUrl: string): boolean {
+  return isLocalRpcUrl(rpcUrl) || isTenderlyVirtualRpc(rpcUrl);
+}
+
+/// Refuses to impersonate on an RPC that cannot send as an account without its key.
+export function requireRpcStateControls(rpcUrl: string): void {
+  if (!hasRpcStateControls(rpcUrl)) {
+    throw new Error(
+      `--impersonate-account needs a local fork or a Tenderly virtual testnet; refusing ${rpcUrl}`,
+    );
+  }
+}
+
 export function walletClient({
   rpcUrl,
   chain,

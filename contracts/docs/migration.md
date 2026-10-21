@@ -139,7 +139,8 @@ leaves the rest of the namespace untouched.
   BigQuery for mainnet). See [premigration.md](./premigration.md) for the CSV format, expiry rule,
   checkpointing, and verification.
 - **Env / args:** BatchRegistrar owner key (`PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`,
-  or `DEPLOYER_KEY`); `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62),
+  or `DEPLOYER_KEY`); on a fork, `--impersonate-account <address>` sends as that owner and ignores
+  the keys in the environment; `--csv-file`, `--work-dir`, `--bonus-period-days` (default 62),
   `--max-gas-price <gwei>` (on mainnet, sends wait while the gas price is above the median mainnet
   price by default, and never pay more than it; see
   [Gas price limit](./premigration.md#gas-price-limit)).
@@ -876,7 +877,8 @@ The phases run in this order:
      --file <dir>/proposal/calls.jsonl --impersonate-account 0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7
    ```
 
-   `--impersonate-account` refuses any RPC that is not local. Then run, against the fork,
+   `--impersonate-account` refuses any RPC that is neither local nor a Tenderly virtual testnet.
+   Then run, against the fork,
    `verify-v1-registrars-disabled --require-active-grants`, `verify-v1-renewer`,
    `verify-reverse-adapters`, `verify-urp` (expecting the top URP to front the managed URP and the
    managed URP to serve the top URP's previous implementation) and `verify-resolution`.
@@ -1471,7 +1473,7 @@ and idempotency rules.
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, the registrar's and the v1 renewer's beneficiary (`--expected-beneficiary`), accepted tokens |
 | `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller |
 | `phase verify-v1-renewer` | Verify `ETHRenewerV1` is a v1 controller **and** owns the v1 `BaseRegistrar`, which is what a renewal needs |
-| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it. `--impersonate-account` sends as that account on a local fork, to play a DAO proposal |
+| `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it. `--impersonate-account` sends as that account on a local fork or Tenderly virtual testnet, to play a DAO proposal |
 | `phase build-dao-proposal` | Merge prepared owner transactions into one ordered, de-duplicated DAO proposal, decoded against the deployment artifacts (`calls.jsonl`, `proposal.json`, `proposal.md`) |
 | `phase verify-owner-tx` | Check a transaction about to be signed in a Safe against the prepared owner transactions |
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |

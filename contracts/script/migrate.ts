@@ -157,7 +157,9 @@ import {
   walletClient,
   withGasBuffer,
   impersonate,
+  hasRpcStateControls,
   impersonatedAccountProvider,
+  requireRpcStateControls,
   installRpcCompatibility,
   isLocalRpcUrl,
   isTenderlyVirtualRpc,
@@ -639,6 +641,9 @@ export async function runPreMigrationCommand(
     batchRegistrar?: Address;
     privateKey?: `0x${string}`;
     account?: Address;
+    /// Sends as this account on a local fork or a Tenderly virtual testnet, without
+    /// its key and never with an environment key.
+    impersonateAccount?: Address;
     csvFile: string;
     batchSize?: string;
     limit?: string;
@@ -692,22 +697,34 @@ export async function runPreMigrationCommand(
       deploymentsDir,
       deploymentNetwork,
     });
-  const envFallbackKey = envPrivateKey(
-    "PREMIGRATION_PRIVATE_KEY",
-    "BATCH_REGISTRAR_OWNER_KEY",
-    "DEPLOYER_KEY",
-  );
-  // When the caller supplies an impersonated account, only consult the env
-  // fallback key if it actually controls that account; otherwise the batch run
-  // would sign as the wrong address and BatchRegistrar.onlyOwner would revert.
+  if (opts.impersonateAccount) requireRpcStateControls(opts.rpcUrl);
+  const account = opts.impersonateAccount ?? opts.account;
+  // An impersonated account never falls back to an environment key, which would
+  // sign as whichever account that key controls.
+  const envFallbackKey = opts.impersonateAccount
+    ? undefined
+    : envPrivateKey(
+        "PREMIGRATION_PRIVATE_KEY",
+        "BATCH_REGISTRAR_OWNER_KEY",
+        "DEPLOYER_KEY",
+      );
+  // When the caller supplies an unlocked account, only consult the env fallback
+  // key if it actually controls that account; otherwise the batch run would sign
+  // as the wrong address and BatchRegistrar.onlyOwner would revert.
   const fallbackKey =
-    opts.account && envFallbackKey
+    account && envFallbackKey
       ? getAddress(privateKeyToAccount(envFallbackKey).address) ===
-        getAddress(opts.account)
+        getAddress(account)
         ? envFallbackKey
         : undefined
       : envFallbackKey;
   const privateKey = opts.privateKey ?? fallbackKey;
+  if (opts.impersonateAccount && !privateKey && !opts.dryRun) {
+    await impersonate(
+      httpRpcProvider(opts.rpcUrl),
+      getAddress(opts.impersonateAccount),
+    );
+  }
   const previousCwd = process.cwd();
 
   if (opts.workDir) {
@@ -739,7 +756,7 @@ export async function runPreMigrationCommand(
       String(parseNumber(opts.batchSize, 50)),
     ];
     if (privateKey) args.push("--private-key", privateKey);
-    if (opts.account) args.push("--account", opts.account);
+    if (account) args.push("--account", account);
     if (opts.limit) args.push("--limit", opts.limit);
     if (opts.dryRun) args.push("--dry-run");
     if (opts.bonusPeriodDays)
@@ -9378,9 +9395,7 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
   const network = NETWORKS[opts.network];
   const forkRpcUrl = requireRpcUrl(opts, opts.network);
   const useRpcStateControls =
-    opts.tenderly ||
-    isLocalRpcUrl(forkRpcUrl) ||
-    isTenderlyVirtualRpc(forkRpcUrl);
+    opts.tenderly || hasRpcStateControls(forkRpcUrl);
   if (!useRpcStateControls && !opts.deployerPrivateKey) {
     throw new Error(
       "clean testnet full deploy requires a configured deployer private key",
@@ -9916,6 +9931,7 @@ type PremigrationRunCliOptions = NetworkCliOptions &
   DeploymentCliOptions &
   V1DeploymentOptions & {
     privateKey?: `0x${string}`;
+    impersonateAccount?: Address;
     csvFile: string;
     mainnetRpcUrl?: string;
     registry?: Address;
@@ -10123,6 +10139,10 @@ export async function main(argv = process.argv): Promise<void> {
       addDeploymentOptions(
         addGraveyardOptions(addNetworkOptions(command))
           .option("--private-key <key>", "BatchRegistrar owner private key")
+          .option(
+            "--impersonate-account <address>",
+            "Send as this BatchRegistrar owner on a local fork or Tenderly virtual testnet, ignoring the keys in the environment",
+          )
           .requiredOption("--csv-file <path>", "Pre-migration CSV")
           .option("--mainnet-rpc-url <url>", "RPC URL for v1 expiry reads")
           .option("--registry <address>", "v2 ETHRegistry address")
@@ -12043,9 +12063,7 @@ export async function main(argv = process.argv): Promise<void> {
       // Hydrate signer keys only when the RPC lacks state controls; a local node
       // or Tenderly virtual testnet impersonates the configured accounts instead.
       const needsKeys = !(
-        Boolean(networkOpts.tenderly) ||
-        isLocalRpcUrl(forkRpcUrl) ||
-        isTenderlyVirtualRpc(forkRpcUrl)
+        Boolean(networkOpts.tenderly) || hasRpcStateControls(forkRpcUrl)
       );
       await runCleanTestnetFull({
         ...networkOpts,

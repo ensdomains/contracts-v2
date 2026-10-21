@@ -30,7 +30,7 @@ import {
   waitForSuccessfulReceipt,
   type MigrationNetwork,
 } from "./plumbing.js";
-import { impersonate, isLocalRpcUrl, walletClient } from "./rpc.js";
+import { impersonate, requireRpcStateControls, walletClient } from "./rpc.js";
 
 type WalletAccount =
   | ReturnType<typeof privateKeyToAccount>
@@ -307,8 +307,9 @@ export async function executePreparedOwnerTransactions(opts: {
   file: string;
   role?: string;
   privateKey?: `0x${string}`;
-  // Send as this address on a local fork instead of signing: how a rehearsal plays
-  // a DAO proposal, whose timelock executes each call as itself.
+  // Send as this address on a local fork or a Tenderly virtual testnet instead of
+  // signing: how a rehearsal plays a DAO proposal, whose timelock executes each call
+  // as itself.
   impersonateAccount?: Address;
   dryRun?: boolean;
   journalFile?: string;
@@ -319,11 +320,7 @@ export async function executePreparedOwnerTransactions(opts: {
   if (transactions.length === 0) {
     throw new Error(`No prepared owner transactions found in ${opts.file}`);
   }
-  if (opts.impersonateAccount && !isLocalRpcUrl(opts.rpcUrl)) {
-    throw new Error(
-      `--impersonate-account needs a local fork; refusing ${opts.rpcUrl}`,
-    );
-  }
+  if (opts.impersonateAccount) requireRpcStateControls(opts.rpcUrl);
 
   const account = opts.impersonateAccount
     ? getAddress(opts.impersonateAccount)
