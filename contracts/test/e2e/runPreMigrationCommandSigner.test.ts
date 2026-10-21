@@ -1,4 +1,11 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -144,9 +151,7 @@ describe("runPreMigrationCommand signer resolution", () => {
       false,
       captureArgs,
     );
-    expect(flagValue(capturedArgs!, "--account")).toBe(
-      deployerAccount.address,
-    );
+    expect(flagValue(capturedArgs!, "--account")).toBe(deployerAccount.address);
     expect(capturedArgs).not.toContain("--private-key");
   });
 

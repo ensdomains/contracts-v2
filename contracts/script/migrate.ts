@@ -9394,8 +9394,7 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
 
   const network = NETWORKS[opts.network];
   const forkRpcUrl = requireRpcUrl(opts, opts.network);
-  const useRpcStateControls =
-    opts.tenderly || hasRpcStateControls(forkRpcUrl);
+  const useRpcStateControls = opts.tenderly || hasRpcStateControls(forkRpcUrl);
   if (!useRpcStateControls && !opts.deployerPrivateKey) {
     throw new Error(
       "clean testnet full deploy requires a configured deployer private key",
