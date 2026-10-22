@@ -6,6 +6,7 @@ import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
+import {NATIVE_ETH} from "../utils/ERC7528.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IETHRenewer, RenewData} from "./interfaces/IETHRenewer.sol";
@@ -90,23 +91,45 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
     }
 
     /// @inheritdoc IETHRenewer
-    function renew(RenewData calldata rd, IERC20 paymentToken) public virtual {
-        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, _renew(rd, paymentToken)); // reverts if payment failed
+    function renew(RenewData calldata rd, address paymentToken) public {
+        _beforeRenewing();
+        uint256 amount = _renew(rd, paymentToken);
+        _afterRenewing();
+        _transferERC20(paymentToken, amount);
     }
 
     /// @inheritdoc IETHRenewer
-    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken) public virtual {
+    function renewWithETH(RenewData calldata rd, address refundTo) public payable {
+        _beforeRenewing();
+        uint256 amount = _renew(rd, NATIVE_ETH);
+        _afterRenewing();
+        _transferETH(amount, refundTo);
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renewBatch(RenewData[] calldata rds, address paymentToken) public {
+        _beforeRenewing();
         uint256 total;
         for (uint256 i; i < rds.length; ++i) {
             total += _renew(rds[i], paymentToken);
         }
-        if (rds.length > 0) {
-            SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, total); // reverts if payment failed
-        }
+        _afterRenewing();
+        _transferERC20(paymentToken, total);
     }
 
     /// @inheritdoc IETHRenewer
-    function getRenewPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+    function renewBatchWithETH(RenewData[] calldata rds, address refundTo) public payable {
+        _beforeRenewing();
+        uint256 total;
+        for (uint256 i; i < rds.length; ++i) {
+            total += _renew(rds[i], NATIVE_ETH);
+        }
+        _afterRenewing();
+        _transferETH(total, refundTo);
+    }
+
+    /// @inheritdoc IETHRenewer
+    function getRenewPrice(string calldata label, uint64 duration, address paymentToken)
         public
         view
         returns (uint256)
@@ -125,7 +148,7 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Renew a name and return the amount of `paymentToken`.
-    function _renew(RenewData calldata rd, IERC20 paymentToken) internal returns (uint256 amount) {
+    function _renew(RenewData calldata rd, address paymentToken) internal returns (uint256 amount) {
         IPermissionedRegistry.State memory state = _requireRenewable(rd.label, rd.duration); // reverts if not
         uint64 newExpiry = state.expiry + rd.duration; // reverts if overflow
         amount = rentPriceOracle.getRenewPrice(rd.label, state.expiry, rd.duration, paymentToken); // reverts if invalid
@@ -141,6 +164,38 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
             amount
         );
     }
+
+    /// @dev Pay beneficiary using ERC-20.
+    function _transferERC20(address paymentToken, uint256 amount) internal {
+        if (amount > 0) {
+            SafeERC20.safeTransferFrom(IERC20(paymentToken), msg.sender, BENEFICIARY, amount);
+        }
+    }
+
+    /// @dev Pay beneficiary using ether and refund overpayment.
+    function _transferETH(uint256 amount, address refundTo) internal {
+        if (msg.value < amount) {
+            revert InsufficientETH(msg.value, amount);
+        }
+        if (amount > 0) {
+            (bool ok, ) = payable(BENEFICIARY).call{value: amount}("");
+            if (!ok) {
+                revert UnableToReceiveETH(BENEFICIARY);
+            }
+        }
+        if (msg.value > amount) {
+            (bool ok, ) = payable(refundTo).call{value: msg.value - amount}("");
+            if (!ok) {
+                revert UnableToReceiveETH(refundTo);
+            }
+        }
+    }
+
+    /// @dev Callback before names are renewed.
+    function _beforeRenewing() internal virtual {}
+
+    /// @dev Callback after names are renewed.
+    function _afterRenewing() internal virtual {}
 
     /// @dev Callback for when a name is renewed.
     function _onRenew(string calldata label, uint64 duration) internal virtual {}

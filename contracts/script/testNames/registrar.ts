@@ -34,8 +34,7 @@ export async function registerTestNames(
   const durationInDays = options.durationInDays ?? 28;
   const duration = BigInt(durationInDays * ONE_DAY_SECONDS);
   const paymentToken = env.erc20.MockUSDC.address;
-  const referrer =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
+  const referrer = namehash("referrer");
 
   // use account's resolver (already deployed by devnet)
   const { resolver } = account;
