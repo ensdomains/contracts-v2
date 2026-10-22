@@ -659,10 +659,17 @@ bun run migration -- phase verify-roles --network mainnet --stage pre-handoff
 bun ./script/generateAddressDocs.ts --network mainnet
 ```
 
-- The command works out the set from the records and the build. A record whose creation code (less its
-  last metadata trailer) differs from the build is replaced, unless `--keep` names it. Then every record
-  whose constructor arguments name a replaced address joins, until no more do. It sends nothing unless
-  `--replace` names exactly that set, so a build that changes more than expected stops the run.
+- The command works out the set from the records and the build. A record whose creation code differs
+  from the build, with every metadata trailer removed, is replaced, unless `--keep` names it. Then every
+  record whose constructor arguments name a replaced address joins, until no more do. It sends nothing
+  unless `--replace` names exactly that set, so a build that changes more than expected stops the run.
+- It finds each metadata trailer by its pattern, not by the length in the last two bytes. A constructor
+  that reads a constant leaves that constant after the trailer, as in the registries, the address sets,
+  `WrapperRegistry`, `PermissionedResolver` and `StandardRentPriceOracle`. The deploy tool reads that
+  length, so it never sees a code change in such a contract and keeps its record. Only this command's
+  check, which moves the record out of the namespace, gets such a contract replaced.
+- It compares each record with the build of the record's own source file. The `ContractNamer` proxy was
+  built from the deploy tool's bundled `ERC1967Proxy`, not from ours, so it is compared with that.
 - `--keep` names contracts whose build differs but which must stay, and whose deploy scripts reuse the
   record. It must name exactly those that differ, as the build being compared sees them:
   - `ENSV1Resolver`: every pre-migration reservation names it, and nobody can repoint a reservation.
@@ -670,8 +677,8 @@ bun ./script/generateAddressDocs.ts --network mainnet
     creation code embeds the proxy's, whose metadata changes whenever the compiler settings of the
     build do, so a build made elsewhere than the original deploy's can differ from it. The mainnet
     build on the deploy server matches it.
-- A record that differs only inside an embedded metadata trailer is not a code change, but the deploy
-  tool would still replace it. The command refuses unless `--keep` names it.
+- A record whose code matches the build, but whose embedded metadata trailer differs, has no code
+  change. The deploy tool would still replace it, so the command refuses unless `--keep` names it.
 - It refuses once the DAO proposal has executed or go-live has begun. It moves the replaced records to a
   `<namespace>-redeploy-<date>` archive beside the namespace, and forgets the once-only scripts of the
   Universal Resolvers it replaces, so they run again. Then it reruns phase 1 into the same namespace and

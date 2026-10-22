@@ -125,6 +125,7 @@ import {
 } from "./migrations/directRegistrations.js";
 import {
   archiveReplacedRecords,
+  buildBytecodes,
   CONTRACT_REDEPLOY_KIND,
   driftedRecords,
   driftedReusedRecords,
@@ -5597,35 +5598,6 @@ const abiHasFunction = (abi: readonly unknown[], name: string) =>
       (item as { type?: string; name?: string }).type === "function" &&
       (item as { name?: string }).name === name,
   );
-
-// The current build's creation bytecode for each contract the records name, read
-// from the generated artifacts; undefined for a contract the build lacks. A contract
-// whose name another source also uses is generated under its source path, which is
-// tried first.
-async function buildBytecodes(
-  records: ReturnType<typeof readNamespaceRecords>,
-): Promise<(contractName: string) => string | undefined> {
-  const generated = resolve(import.meta.dirname, "../generated/artifacts");
-  const builds = new Map<string, string | undefined>();
-  for (const record of records.values()) {
-    const name = record?.contractName;
-    if (!name || builds.has(name)) continue;
-    const sourceName = (record as { sourceName?: string }).sourceName;
-    const file = [
-      ...(sourceName ? [join(generated, sourceName, `${name}.ts`)] : []),
-      join(generated, `${name}.ts`),
-    ].find((path) => existsSync(path));
-    builds.set(
-      name,
-      file
-        ? ((await import(file))[`Artifact_${name}`]?.bytecode as
-            | string
-            | undefined)
-        : undefined,
-    );
-  }
-  return (name) => builds.get(name);
-}
 
 // Takes away every authority a contract the redeploy replaced still holds: each
 // access-control role it holds on any contract of the namespace or of the archive,

@@ -2,10 +2,12 @@
 ///
 /// The deploy tool reuses a record when its creation bytecode (less the metadata
 /// hash) and constructor arguments match the current build, and redeploys it
-/// otherwise. Moving the replaced records out of the namespace therefore makes a
-/// resumed deploy rebuild exactly those, provided nothing else has drifted from the
-/// build; this module works out and checks that set, moves the records, and
-/// compares the namespace before and after.
+/// otherwise. It cannot see a code change in a contract whose constructor leaves
+/// data after the metadata, and keeps such a record whatever its code. Moving the
+/// replaced records out of the namespace therefore makes a resumed deploy rebuild
+/// exactly those, provided nothing else has drifted from the build; this module
+/// works out and checks that set, moves the records, and compares the namespace
+/// before and after.
 ///
 /// Two kinds of redeploy share it. A root registry redeploy replaces the root and
 /// every contract built over it, a fixed set. A contract redeploy replaces whatever
@@ -20,7 +22,8 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { Address } from "viem";
 
@@ -88,6 +91,7 @@ export const CONTRACT_REDEPLOY_KIND = "redeploy";
 type DeploymentRecord = {
   address?: Address;
   contractName?: string;
+  sourceName?: string;
   bytecode?: `0x${string}`;
   argsData?: `0x${string}`;
   transaction?: unknown;
@@ -95,7 +99,10 @@ type DeploymentRecord = {
 };
 
 /// Creation bytecode less its trailing metadata, the part the deploy tool compares.
-/// The last two bytes give the metadata's length.
+/// The last two bytes give the metadata's length. A constructor that reads a
+/// constant leaves that constant after the trailer, so for such a contract the
+/// length is meaningless: the slice leaves nothing on either side, and the deploy
+/// tool keeps the record whatever its code.
 export function bytecodeWithoutMetadata(
   bytecode: string,
   metadataLength = Number.parseInt(bytecode.slice(-4), 16),
@@ -135,16 +142,85 @@ export function bytecodeWithoutAnyMetadata(bytecode: string): string {
 const isAdopted = (record: DeploymentRecord) =>
   !record.transaction && !record.receipt;
 
-/// The deployed records the deploy tool would redeploy rather than reuse, since
-/// their creation bytecode less its last metadata trailer differs from the current
-/// build: `drifted` where the code itself differs, and `metadataOnly` where only an
-/// embedded trailer does, such as that of a contract the code creates, which a build
-/// changes whenever its compiler settings do. Also the records the build cannot
-/// compare, each with the reason. `currentBytecode` returns the build's creation bytecode for
-/// a contract name, or undefined when the build has no such contract.
+/// Looks up the build's creation bytecode for a contract, by its name and the
+/// source file that defines it.
+export type BuildBytecodes = (
+  contractName: string,
+  sourceName?: string,
+) => string | undefined;
+
+/// Where the build's creation bytecode is read from: the generated artifacts, and
+/// the proxy code the deploy tool bundles and deploys for `deployViaProxy`.
+export type ArtifactDirs = { generated: string; proxyArtifacts: string };
+
+/// The artifact directories of this checkout.
+export function defaultArtifactDirs(): ArtifactDirs {
+  return {
+    generated: resolve(import.meta.dirname, "../../generated/artifacts"),
+    proxyArtifacts: join(
+      dirname(fileURLToPath(import.meta.resolve("@rocketh/proxy"))),
+      "hardhat-deploy-v1-artifacts",
+    ),
+  };
+}
+
+/// The build's creation bytecode for every contract the records name. An artifact
+/// counts only when it comes from the record's source file, since two sources can
+/// define contracts of the same name: the deploy tool's own proxy and the one in
+/// our build are both `ERC1967Proxy`. A contract neither directory has from that
+/// source has no bytecode.
+export async function buildBytecodes(
+  records: Map<string, DeploymentRecord>,
+  dirs: ArtifactDirs = defaultArtifactDirs(),
+): Promise<BuildBytecodes> {
+  const key = (contractName: string, sourceName?: string) =>
+    `${sourceName ?? ""}:${contractName}`;
+  const builds = new Map<string, string | undefined>();
+  for (const { contractName, sourceName } of records.values()) {
+    if (!contractName || builds.has(key(contractName, sourceName))) continue;
+    const generated = (...path: string[]) => ({
+      file: join(dirs.generated, ...path, `${contractName}.ts`),
+      exportName: `Artifact_${contractName}`,
+    });
+    const candidates = [
+      ...(sourceName ? [generated(sourceName)] : []),
+      generated(),
+      {
+        file: join(dirs.proxyArtifacts, `${contractName}.js`),
+        exportName: "default",
+      },
+    ];
+    let bytecode: string | undefined;
+    for (const { file, exportName } of candidates) {
+      if (!existsSync(file)) continue;
+      const artifact = (await import(file))[exportName] as
+        | { sourceName?: string; bytecode?: string }
+        | undefined;
+      if (
+        artifact?.bytecode &&
+        (!sourceName || artifact.sourceName === sourceName)
+      ) {
+        bytecode = artifact.bytecode;
+        break;
+      }
+    }
+    builds.set(key(contractName, sourceName), bytecode);
+  }
+  return (contractName, sourceName) =>
+    builds.get(key(contractName, sourceName));
+}
+
+/// The deployed records whose code differs from the current build, and those the
+/// deploy tool would redeploy although their code is the same. A record has
+/// `drifted` when its creation bytecode differs from the build with every metadata
+/// trailer removed, wherever each sits. It is `metadataOnly` when the code is the
+/// same but the deploy tool's own comparison, which measures the last trailer from
+/// the end, still finds a difference: an embedded trailer differs, such as that of
+/// a contract the code creates, which a build changes whenever its compiler
+/// settings do. Also the records the build cannot compare, each with the reason.
 export function driftedRecords(
   records: Map<string, DeploymentRecord>,
-  currentBytecode: (contractName: string) => string | undefined,
+  currentBytecode: BuildBytecodes,
 ): {
   drifted: string[];
   metadataOnly: string[];
@@ -162,7 +238,7 @@ export function driftedRecords(
       });
       continue;
     }
-    const built = currentBytecode(record.contractName);
+    const built = currentBytecode(record.contractName, record.sourceName);
     if (built === undefined) {
       uncomparable.push({
         name,
@@ -170,30 +246,32 @@ export function driftedRecords(
       });
       continue;
     }
-    const length = Number.parseInt(record.bytecode.slice(-4), 16);
     if (
-      bytecodeWithoutMetadata(record.bytecode, length) ===
-      bytecodeWithoutMetadata(built, length)
-    ) {
-      continue;
-    }
-    if (
-      bytecodeWithoutAnyMetadata(record.bytecode) ===
+      bytecodeWithoutAnyMetadata(record.bytecode) !==
       bytecodeWithoutAnyMetadata(built)
     ) {
-      metadataOnly.push(name);
-    } else {
       drifted.push(name);
+      continue;
+    }
+    // The deploy tool slices the build by the record's trailer length.
+    const length = Number.parseInt(record.bytecode.slice(-4), 16);
+    if (
+      bytecodeWithoutMetadata(record.bytecode, length) !==
+      bytecodeWithoutMetadata(built, length)
+    ) {
+      metadataOnly.push(name);
     }
   }
   return { drifted, metadataOnly, uncomparable };
 }
 
-/// Records outside `replaced` whose creation bytecode differs from the current
-/// build, and would therefore be redeployed rather than reused.
+/// Records outside `replaced` that a deploy would not leave matching the current
+/// build: those whose code differs, which it may replace or, when it cannot see the
+/// change, keep as they are, and those it would replace although only a metadata
+/// trailer differs.
 export function driftedReusedRecords(
   records: Map<string, DeploymentRecord>,
-  currentBytecode: (contractName: string) => string | undefined,
+  currentBytecode: BuildBytecodes,
   replaced: readonly string[],
 ): string[] {
   const replacedSet = new Set(replaced);
@@ -205,11 +283,17 @@ export function driftedReusedRecords(
     ...uncomparable
       .filter(({ name }) => !replacedSet.has(name))
       .map(({ name, reason }) => `${name}: ${reason}`),
-    ...[...drifted, ...metadataOnly]
+    ...drifted
       .filter((name) => !replacedSet.has(name))
       .map(
         (name) =>
-          `${name}: its ${records.get(name)?.contractName} bytecode differs from the current build, so a deploy would replace it`,
+          `${name}: its ${records.get(name)?.contractName} code differs from the current build`,
+      ),
+    ...metadataOnly
+      .filter((name) => !replacedSet.has(name))
+      .map(
+        (name) =>
+          `${name}: its ${records.get(name)?.contractName} bytecode differs from the current build only in a metadata trailer, yet a deploy would replace it`,
       ),
   ];
 }

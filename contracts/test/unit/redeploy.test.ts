@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import {
   archiveReplacedRecords,
+  buildBytecodes,
   bytecodeWithoutMetadata,
   CONTRACT_REDEPLOY_KIND,
   driftedRecords,
@@ -30,10 +31,17 @@ const REPLACED_DEPLOYMENTS = ROOT_REDEPLOY.replaced;
 const address = (n: number) =>
   `0x${n.toString(16).padStart(40, "0")}` as `0x${string}`;
 
-// Creation bytecode with a metadata trailer whose last two bytes give the length
-// the deploy tool strips: the metadata and those two bytes.
-const withMetadata = (code: string, metadata: string): `0x${string}` =>
-  `0x${code}${metadata}${(metadata.length / 2 + 2).toString(16).padStart(4, "0")}`;
+// A solc metadata trailer, its IPFS hash filled with one repeated hex digit.
+const metadataTrailer = (fill: string) =>
+  `a264697066735822${fill.repeat(68)}64736f6c6343000819` + "0033";
+
+// Creation bytecode ending in a metadata trailer, then any data the constructor
+// reads, which solc places after it.
+const withMetadata = (
+  code: string,
+  fill: string,
+  dataAfter = "",
+): `0x${string}` => `0x${code}${metadataTrailer(fill)}${dataAfter}`;
 
 function namespace(records: Record<string, object>) {
   const root = mkdtempSync(join(tmpdir(), "redeploy-"));
@@ -60,7 +68,7 @@ const deployed = (
 ) => ({
   address: address(n),
   contractName,
-  bytecode: withMetadata("6080", "aa"),
+  bytecode: withMetadata("6080", "a"),
   argsData,
   transaction: { hash: "0x01" },
 });
@@ -71,9 +79,7 @@ const argsHolding = (...addresses: `0x${string}`[]): `0x${string}` =>
 
 describe("bytecodeWithoutMetadata", () => {
   it("drops the metadata trailer the last two bytes measure", () => {
-    expect(bytecodeWithoutMetadata(withMetadata("6080", "aabb"))).toBe(
-      "0x6080",
-    );
+    expect(bytecodeWithoutMetadata("0x6080aabb0004")).toBe("0x6080");
   });
 });
 
@@ -90,7 +96,7 @@ describe("driftedReusedRecords", () => {
     expect(
       driftedReusedRecords(
         records,
-        () => withMetadata("6080", "bb"),
+        () => withMetadata("6080", "b"),
         REPLACED_DEPLOYMENTS,
       ),
     ).toEqual([]);
@@ -99,7 +105,7 @@ describe("driftedReusedRecords", () => {
   it("flags a reused record whose code differs, but not a root-bound one", () => {
     const problems = driftedReusedRecords(
       records,
-      () => withMetadata("6081", "aa"),
+      () => withMetadata("6081", "a"),
       REPLACED_DEPLOYMENTS,
     );
     expect(problems).toHaveLength(1);
@@ -233,15 +239,10 @@ describe("namespaceBeforeRedeploy", () => {
   });
 });
 
-// A solc metadata trailer as code that creates another contract embeds it, with
-// `fill` standing in for the IPFS hash.
-const embeddedTrailer = (fill: string) =>
-  `a264697066735822${fill.repeat(68)}64736f6c6343000819` + "0033";
-
 describe("driftedRecords", () => {
   it("tells a change only inside an embedded metadata trailer from a code change", () => {
     const factoryCode = (fill: string) =>
-      withMetadata(`6080${embeddedTrailer(fill)}6001`, "aa");
+      withMetadata(`6080${metadataTrailer(fill)}6001`, "a");
     const records = new Map(
       Object.entries({
         Factory: { ...deployed(1, "Factory"), bytecode: factoryCode("1") },
@@ -267,8 +268,8 @@ describe("driftedRecords", () => {
       }),
     );
     const builds: Record<string, `0x${string}`> = {
-      Same: withMetadata("6080", "bb"),
-      Changed: withMetadata("6081", "aa"),
+      Same: withMetadata("6080", "b"),
+      Changed: withMetadata("6081", "a"),
     };
     const { drifted, metadataOnly, uncomparable } = driftedRecords(
       records,
@@ -282,6 +283,125 @@ describe("driftedRecords", () => {
         reason: "the build has no Missing to compare against",
       },
     ]);
+  });
+
+  // A constructor that reads a constant leaves it after the trailer, so the last
+  // two bytes are not the trailer's length and the deploy tool's slice is empty.
+  const constructorData = "88".repeat(64);
+
+  it("sees a code change when constructor data follows the trailer", () => {
+    const records = new Map(
+      Object.entries({
+        Registry: {
+          ...deployed(1, "Registry"),
+          bytecode: withMetadata("6080", "a", constructorData),
+        },
+      }),
+    );
+    const built = withMetadata("6081", "a", constructorData);
+    expect(bytecodeWithoutMetadata(records.get("Registry")!.bytecode)).toBe(
+      bytecodeWithoutMetadata(built),
+    );
+    expect(driftedRecords(records, () => built).drifted).toEqual(["Registry"]);
+    expect(driftedReusedRecords(records, () => built, [])[0]).toContain(
+      "Registry",
+    );
+  });
+
+  it("passes such a contract when only its trailer differs", () => {
+    const records = new Map(
+      Object.entries({
+        Registry: {
+          ...deployed(1, "Registry"),
+          bytecode: withMetadata("6080", "a", constructorData),
+        },
+      }),
+    );
+    expect(
+      driftedRecords(records, () => withMetadata("6080", "b", constructorData)),
+    ).toEqual({ drifted: [], metadataOnly: [], uncomparable: [] });
+  });
+
+  it("compares a record with the build of the same source only", () => {
+    const records = new Map(
+      Object.entries({
+        Proxy: {
+          ...deployed(1, "ERC1967Proxy"),
+          sourceName: "solc_0.8/proxy/ERC1967Proxy.sol",
+        },
+      }),
+    );
+    const builds: Record<string, `0x${string}`> = {
+      "solc_0.8/proxy/ERC1967Proxy.sol": withMetadata("6080", "b"),
+      "lib/proxy/ERC1967Proxy.sol": withMetadata("6081", "b"),
+    };
+    expect(
+      driftedRecords(records, (_, sourceName) => builds[sourceName!]),
+    ).toEqual({ drifted: [], metadataOnly: [], uncomparable: [] });
+  });
+});
+
+describe("buildBytecodes", () => {
+  // Generated artifacts export `Artifact_<name>`; the deploy tool's bundled proxy
+  // artifacts export the artifact as default.
+  function artifactDirs() {
+    const root = mkdtempSync(join(tmpdir(), "artifacts-"));
+    const generated = join(root, "generated");
+    const proxyArtifacts = join(root, "proxy");
+    mkdirSync(join(generated, "src/Thing.sol"), { recursive: true });
+    mkdirSync(proxyArtifacts);
+    const artifact = (sourceName: string, bytecode: string) =>
+      JSON.stringify({ sourceName, bytecode });
+    writeFileSync(
+      join(generated, "ERC1967Proxy.ts"),
+      `export const Artifact_ERC1967Proxy = ${artifact("lib/proxy/ERC1967Proxy.sol", "0x01")};`,
+    );
+    writeFileSync(
+      join(generated, "Thing.ts"),
+      `export const Artifact_Thing = ${artifact("src/Other.sol", "0x02")};`,
+    );
+    writeFileSync(
+      join(generated, "src/Thing.sol/Thing.ts"),
+      `export const Artifact_Thing = ${artifact("src/Thing.sol", "0x03")};`,
+    );
+    writeFileSync(
+      join(proxyArtifacts, "ERC1967Proxy.js"),
+      `export default ${artifact("solc_0.8/proxy/ERC1967Proxy.sol", "0x04")};`,
+    );
+    return { generated, proxyArtifacts };
+  }
+
+  const record = (contractName: string, sourceName: string) => ({
+    ...deployed(1, contractName),
+    sourceName,
+  });
+
+  it("reads each record's contract from the artifact of its own source", async () => {
+    const bytecodes = await buildBytecodes(
+      new Map(
+        Object.entries({
+          OurProxy: record("ERC1967Proxy", "lib/proxy/ERC1967Proxy.sol"),
+          ToolProxy: record("ERC1967Proxy", "solc_0.8/proxy/ERC1967Proxy.sol"),
+          Thing: record("Thing", "src/Thing.sol"),
+        }),
+      ),
+      artifactDirs(),
+    );
+    expect(bytecodes("ERC1967Proxy", "lib/proxy/ERC1967Proxy.sol")).toBe(
+      "0x01",
+    );
+    expect(bytecodes("ERC1967Proxy", "solc_0.8/proxy/ERC1967Proxy.sol")).toBe(
+      "0x04",
+    );
+    expect(bytecodes("Thing", "src/Thing.sol")).toBe("0x03");
+  });
+
+  it("has nothing for a source the build does not hold", async () => {
+    const bytecodes = await buildBytecodes(
+      new Map(Object.entries({ Thing: record("Thing", "src/Gone.sol") })),
+      artifactDirs(),
+    );
+    expect(bytecodes("Thing", "src/Gone.sol")).toBeUndefined();
   });
 });
 
