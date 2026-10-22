@@ -151,7 +151,8 @@ contract WrapperRegistry is
     /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
     ///      upgrade call, including the wrapper upgrade target allowlist.
     /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `true` for implementations in this wrapper registry family.
+    /// @return allowed Always `false` as this is the first implementation of WrapperRegistry with no
+    ///         valid predecessors.
     function canUpgradeFrom(
         address /* previousImplementation */
     )
@@ -161,7 +162,7 @@ contract WrapperRegistry is
         override
         returns (bool allowed)
     {
-        return true;
+        return false;
     }
 
     /// @inheritdoc PermissionedRegistry
