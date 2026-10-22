@@ -162,7 +162,7 @@ contract WrapperRegistry is
         override
         returns (bool allowed)
     {
-        return false;
+        // `allowed` defaults to `false`.
     }
 
     /// @inheritdoc PermissionedRegistry
