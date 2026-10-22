@@ -50,7 +50,7 @@ describe("wrapped name migration", () => {
       mkdirSync(dir, { recursive: true });
       for (const [name, contract] of [
         ["ENSRegistry", env.v1.ENSRegistry],
-        ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
+        ["BaseRegistrarImplementation", env.v1.BaseRegistrarImplementation],
         ["NameWrapper", env.v1.NameWrapper],
       ] as const) {
         writeFileSync(

@@ -58,12 +58,14 @@ export async function registerV1Name(
   durationSeconds: number,
 ) {
   const tokenId = idFromLabel(label);
-  await env.v1.BaseRegistrar.write.register([
+  await env.v1.BaseRegistrarImplementation.write.register([
     tokenId,
     ownerAddress,
     BigInt(durationSeconds),
   ]);
-  const expiry = await env.v1.BaseRegistrar.read.nameExpires([tokenId]);
+  const expiry = await env.v1.BaseRegistrarImplementation.read.nameExpires([
+    tokenId,
+  ]);
   return expiry;
 }
 
@@ -73,8 +75,13 @@ export async function renewV1Name(
   additionalDuration: number,
 ) {
   const tokenId = idFromLabel(label);
-  await env.v1.BaseRegistrar.write.renew([tokenId, BigInt(additionalDuration)]);
-  const expiry = await env.v1.BaseRegistrar.read.nameExpires([tokenId]);
+  await env.v1.BaseRegistrarImplementation.write.renew([
+    tokenId,
+    BigInt(additionalDuration),
+  ]);
+  const expiry = await env.v1.BaseRegistrarImplementation.read.nameExpires([
+    tokenId,
+  ]);
   return expiry;
 }
 
@@ -97,7 +104,9 @@ export async function clearThroughGraveyard(
     { account: env.namedAccounts.owner },
   );
   await env.v2.Graveyard.write.clear([[dnsEncodeName(`${label}.eth`)]]);
-  return env.v1.BaseRegistrar.read.nameExpires([idFromLabel(label)]);
+  return env.v1.BaseRegistrarImplementation.read.nameExpires([
+    idFromLabel(label),
+  ]);
 }
 
 /// Registers `label` briefly, moves the chain past its v1 grace period, and has the
@@ -120,10 +129,13 @@ export async function handToGraveyard(
   owner: Account,
 ) {
   const id = idFromLabel(label);
-  await env.v1.BaseRegistrar.write.reclaim([id, env.v2.Graveyard.address], {
-    account: owner,
-  });
-  await env.v1.BaseRegistrar.write.transferFrom(
+  await env.v1.BaseRegistrarImplementation.write.reclaim(
+    [id, env.v2.Graveyard.address],
+    {
+      account: owner,
+    },
+  );
+  await env.v1.BaseRegistrarImplementation.write.transferFrom(
     [owner.address, env.v2.Graveyard.address, id],
     { account: owner },
   );
@@ -136,7 +148,7 @@ export async function wrapV1Name(
   owner: Account,
   fuses = 0,
 ) {
-  await env.v1.BaseRegistrar.write.safeTransferFrom(
+  await env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
     [
       owner.address,
       env.v1.NameWrapper.address,
@@ -168,7 +180,7 @@ export async function migrateUnwrapped(
   label: string,
   owner: Account,
 ) {
-  await env.v1.BaseRegistrar.write.safeTransferFrom(
+  await env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
     [
       owner.address,
       env.v2.UnlockedMigrationController.address,
