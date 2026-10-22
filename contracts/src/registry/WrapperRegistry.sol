@@ -152,7 +152,7 @@ contract WrapperRegistry is
     ///      upgrade call, including the wrapper upgrade target allowlist.
     /// @param {previousImplementation} Ignored.
     /// @return allowed Always `false` as this is the first implementation of WrapperRegistry with no
-    ///         valid predecessors.
+    ///                 valid predecessors.
     function canUpgradeFrom(
         address /* previousImplementation */
     )

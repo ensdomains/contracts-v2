@@ -1450,6 +1450,10 @@ contract WrapperRegistryV2Mock is WrapperRegistry {
         )
     {}
 
+    function canUpgradeFrom(address) external pure override returns (bool) {
+        return true;
+    }
+
     function version() public pure returns (uint256) {
         return 2;
     }
