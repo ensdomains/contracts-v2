@@ -2,10 +2,9 @@ import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/
 import hre from "hardhat";
 import {
   type Address,
-  concat,
+  encodeAbiParameters,
   encodeErrorResult,
   getAddress,
-  namehash,
   stringToHex,
   zeroAddress,
 } from "viem";
@@ -22,6 +21,7 @@ import {
   dnsEncodeName,
   COIN_TYPE_DEFAULT,
   COIN_TYPE_ETH,
+  namehash,
 } from "../../utils/utils.js";
 import { deployV1Fixture } from "../fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
@@ -30,7 +30,7 @@ import { FEATURES } from "../../../lib/ens-contracts/test/utils/features.js";
 
 const network = await hre.network.connect();
 
-const dnsTXTResolverName = "dnstxt.ens.eth";
+const dnsTXTResolverName = "dnsname.ens.eth";
 const dummyBytes4 = "0x12345678";
 const testAddress = "0x8000000000000000000000000000000000000001";
 const testData = "0xabcdef";
@@ -40,9 +40,19 @@ const basicProfile: KnownProfile = {
   addresses: [{ coinType: COIN_TYPE_ETH, value: testAddress }],
 };
 
-// sufficient to satisfy: `abi.decode(DNSSEC.RRSetWithSignature[])`
-const dnsOracleGateway =
-  'data:application/json,{"data":"0x0000000000000000000000000000000000000000000000000000000000000000"}';
+const dnsOracleGatewayDataURL = `data:application/json,{"data":"${encodeAbiParameters(
+  [
+    {
+      internalType: "struct DNSSEC.RRSetWithSignature[]",
+      type: "tuple[]",
+      components: [
+        { type: "bytes", name: "rrset" },
+        { type: "bytes", name: "sig" },
+      ],
+    },
+  ],
+  [[{ rrset: "0x", sig: "0x" }]],
+)}"}`;
 
 async function fixture() {
   const v1 = await deployV1Fixture(network);
@@ -53,30 +63,28 @@ async function fixture() {
   const mockDNSSEC = await network.viem.deployContract("MockDNSSEC");
   const dnsTLDResolverV1 = await network.viem.deployContract(
     "OffchainDNSResolver",
-    [v1.ensRegistry.address, mockDNSSEC.address, dnsOracleGateway],
+    [v1.ensRegistry.address, mockDNSSEC.address, dnsOracleGatewayDataURL],
   );
   const oracleGatewayProvider = await network.viem.deployContract(
     "GatewayProvider",
-    [v2.walletClient.account.address, [dnsOracleGateway]],
+    [v2.walletClient.account.address, [dnsOracleGatewayDataURL]],
   );
   const myResolver = await v2.deployPermissionedResolver();
   const dnsTLDResolver = await network.viem.deployContract("DNSTLDResolver", [
     v1.ensRegistry.address,
-    dnsTLDResolverV1.address,
     v2.rootRegistry.address,
     mockDNSSEC.address,
     oracleGatewayProvider.address,
     v2.batchGatewayProvider.address,
     v2.contractNamer.address,
   ]);
-  await v1.setupName({
-    name: "com",
-    resolverAddress: dnsTLDResolverV1.address,
-  });
-  await v2.setupName({
-    name: "com",
-    resolverAddress: dnsTLDResolver.address,
-  });
+  const fakeDNSRegistrarV1 = await v1.root.read.owner();
+  const suffixes = ["com"];
+  for (const name of suffixes) {
+    await v2.setupName({ name, resolverAddress: dnsTLDResolver.address });
+    await v1.setupName({ name, resolverAddress: dnsTLDResolverV1.address });
+    await v1.ensRegistry.write.setOwner([namehash(name), fakeDNSRegistrarV1]); // must be owned
+  }
   const dnsTXTResolver = await network.viem.deployContract("DNSTXTResolver", [
     v2.contractNamer.address,
   ]);
@@ -221,7 +229,7 @@ describe("DNSTLDResolver", () => {
       dnsEncodeName(basicProfile.name),
     ]);
     expectVar({ verifier }).toEqualAddress(F.mockDNSSEC.address);
-    expectVar({ gateways }).toStrictEqual([dnsOracleGateway]);
+    expectVar({ gateways }).toStrictEqual([dnsOracleGatewayDataURL]);
   });
 
   function testProfiles(

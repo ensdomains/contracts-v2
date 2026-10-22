@@ -519,6 +519,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     {
         if (
             sourceChainId == 0 ||
+            sourceChainId == block.chainid ||
             claimData.length != HCAPermit2Lib.CLAIM_DATA_LENGTH ||
             address(bytes20(claimData[0:20])) == address(0) ||
             uint8(claimData[84]) != 1 ||

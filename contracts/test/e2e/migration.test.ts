@@ -806,12 +806,10 @@ describe("Migration", () => {
       await lockedChild.migrate({
         target: lockedRegistry.address,
       });
-      const state = await lockedRegistry.read.getState([
+      const expiry = await lockedRegistry.read.getExpiry([
         idFromLabel(lockedChild.label),
       ]);
-      await lockedRegistry.write.renew([state.tokenId, state.expiry + 1n], {
-        account: lockedChild.account,
-      });
+      expectVar({ expiry }).toStrictEqual(MAX_EXPIRY);
     });
 
     it("invalid owner", async () => {

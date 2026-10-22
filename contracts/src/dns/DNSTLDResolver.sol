@@ -12,6 +12,7 @@ import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeRe
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {IVerifiableResolver} from "@ens/contracts/resolvers/profiles/IVerifiableResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
+import {Controllable} from "@ens/contracts/root/Controllable.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
@@ -24,20 +25,13 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
-/// @dev DNS resource-record class for the Internet (`IN`), as defined in RFC 1035 section 3.2.4.
-uint16 constant CLASS_INET = 1;
-
-/// @dev DNS resource-record type for TXT records, as defined in RFC 1035 section 3.3.14.
-uint16 constant QTYPE_TXT = 16;
-
 /// @dev The prefix string that identifies an ENS-aware DNS TXT record (`"ENS1 "`).
 ///      Only TXT records beginning with this prefix are considered during resolution.
 bytes constant TXT_PREFIX = "ENS1 ";
 
 /// @notice Multi-step resolver for DNS TLD names. Resolution follows this priority:
 ///
-/// 1. Check for an existing resolver in the ENSv1 registry. If found (and it's not the v1
-///    DNS TLD resolver or this contract), delegate to it directly.
+/// 1. Check for an imported name in the ENSv1 registry. If found, delegate to it directly.
 /// 2. Otherwise, query the DNSSEC oracle via CCIP-Read (EIP-3668) for TXT records.
 /// 3. Verify the DNSSEC proof, find the first `ENS1`-prefixed TXT record, parse it into a
 ///    resolver address and context.
@@ -60,10 +54,6 @@ contract DNSTLDResolver is
     /// @notice The ENSv1 registry, used to check for existing resolvers on mainnet before falling
     ///         back to DNSSEC resolution.
     ENS public immutable ENS_REGISTRY_V1;
-
-    /// @notice The v1 DNS TLD resolver address. If the v1 registry points to this resolver (or to
-    ///         this contract), the name is considered unresolved in v1 and DNSSEC fallback is used.
-    address public immutable DNS_TLD_RESOLVER_V1;
 
     /// @notice The ENSv2 root registry, used to resolve names parsed from `ENS1` TXT records.
     IPermissionedRegistry public immutable ROOT_REGISTRY;
@@ -91,7 +81,6 @@ contract DNSTLDResolver is
     ////////////////////////////////////////////////////////////////////////
 
     /// @param ensRegistryV1 The ENSv1 registry.
-    /// @param dnsTLDResolverV1 The v1 DNS TLD resolver address.
     /// @param rootRegistry The ENSv2 root registry.
     /// @param dnssecOracle The DNSSEC oracle contract.
     /// @param oracleGatewayProvider The gateway provider for the DNSSEC oracle CCIP-Read queries.
@@ -99,7 +88,6 @@ contract DNSTLDResolver is
     /// @param contractNamer Delegated contract namer.
     constructor(
         ENS ensRegistryV1,
-        address dnsTLDResolverV1,
         IPermissionedRegistry rootRegistry,
         DNSSEC dnssecOracle,
         IGatewayProvider oracleGatewayProvider,
@@ -110,7 +98,6 @@ contract DNSTLDResolver is
         DelegatedContractNamer(contractNamer)
     {
         ENS_REGISTRY_V1 = ensRegistryV1;
-        DNS_TLD_RESOLVER_V1 = dnsTLDResolverV1;
         ROOT_REGISTRY = rootRegistry;
         DNSSEC_ORACLE = dnssecOracle;
         ORACLE_GATEWAY_PROVIDER = oracleGatewayProvider;
@@ -142,14 +129,10 @@ contract DNSTLDResolver is
     /// @param name The DNS-encoded name.
     /// @return The verified DNSSEC TXT records.
     function getDNSSECRecords(bytes calldata name) external view returns (bytes[] memory) {
-        address resolver = _getResolverV1(name);
-        if (resolver != address(0)) {
-            return new bytes[](0);
-        }
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.getDNSSECRecordsCallback.selector, // ==> step 2
             name
         );
@@ -212,7 +195,7 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.getResolverCallback.selector, // ==> step 2
             name
         );
@@ -246,14 +229,14 @@ contract DNSTLDResolver is
         revert OffchainLookup(
             address(this),
             ORACLE_GATEWAY_PROVIDER.gateways(),
-            abi.encodeCall(IDNSGateway.resolve, (name, QTYPE_TXT)),
+            abi.encodeCall(IDNSGateway.resolve, (name, RRUtils.DNSTYPE_TXT)),
             this.resolveOracleCallback.selector, // ==> step 2
             abi.encode(name, data)
         );
     }
 
     /// @notice CCIP-Read callback for `resolve()` from calling the DNSSEC oracle.
-    ///         Reverts `UnreachableName` if no "ENS1" TXT record is found.
+    ///         Reverts `UnreachableName` if gasless resolver is not found.
     /// @param response The response data.
     /// @param extraData The contextual data passed from `resolve()`.
     /// @return The abi-encoded result from the resolver.
@@ -264,9 +247,6 @@ contract DNSTLDResolver is
     {
         (bytes memory name, bytes memory call) = abi.decode(extraData, (bytes, bytes));
         (address resolver, bytes memory context) = _verifyDNSSEC(name, response);
-        if (resolver == address(0)) {
-            revert UnreachableName(name);
-        }
         return callResolver(resolver, name, call, true, context, BATCH_GATEWAY_PROVIDER.gateways()); // ==> step 3
     }
 
@@ -297,16 +277,23 @@ contract DNSTLDResolver is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Looks up the resolver for `name` in the ENSv1 registry. Returns `address(0)` if
-    ///      no resolver is set, or if the resolver is the v1 DNS TLD resolver or this contract
-    ///      (indicating the name has not been explicitly configured in v1).
+    /// @dev Lookup the resolver for `name` in the ENSv1 registry. Returns `address(0)` if
+    ///      no resolver is set, the resolver is this contract, or if the resolved node owner 
+    ///      is a Root controller (eg. DNSRegistrar).
     /// @param name The DNS-encoded name to look up.
     /// @return resolver The v1 resolver address, or `address(0)` if none is applicable.
     function _getResolverV1(bytes memory name) internal view returns (address resolver) {
         uint256 offset;
         (resolver, , offset) = RegistryUtils.findResolver(ENS_REGISTRY_V1, name, 0);
         resolver = LibResolution.validateResolver(resolver, offset == 0);
-        if (resolver == DNS_TLD_RESOLVER_V1 || resolver == address(this)) {
+        if (
+            resolver == address(this) ||
+            // nodes owned by DNSRegistrar use OffchainDNSResolver as the resolver
+            // DNSRegistrar is a Root controller and the node owner of unimported nodes
+            Controllable(ENS_REGISTRY_V1.owner(bytes32(0))).controllers(
+                ENS_REGISTRY_V1.owner(NameCoder.namehash(name, offset)) // node owner
+            )
+        ) {
             resolver = address(0); // prevent trivial loops
         }
     }
@@ -386,8 +373,8 @@ contract DNSTLDResolver is
         returns (bool)
     {
         return
-            iter.class == CLASS_INET &&
-            iter.dnstype == QTYPE_TXT &&
+            iter.class == RRUtils.CLASS_INET &&
+            iter.dnstype == RRUtils.DNSTYPE_TXT &&
             BytesUtils.equals(iter.data, iter.offset, name, 0, name.length);
     }
 
