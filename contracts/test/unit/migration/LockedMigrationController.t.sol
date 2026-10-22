@@ -164,6 +164,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
+    function test_canUpgradeFrom_rejectsAll() external view {
+        assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(0)), "zero");
+        assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(wrapperRegistryImpl)), "self");
+    }
+
     function test_adhocInitialize_root() external {
         vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
         verifiableFactory.deployProxy(
