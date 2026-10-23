@@ -62,7 +62,7 @@ import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/U
 import { isHCAOnlyDeployment } from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
-import { generateAddressMarkdown } from "./addressDocs.js";
+import { generateAddressMarkdown, isProxyArtifact } from "./addressDocs.js";
 import {
   addressLabels,
   type ContractControl,
@@ -4326,6 +4326,14 @@ async function readRoleMap(opts: {
     .filter(
       (d): d is typeof d & { address: Address } => d.address !== undefined,
     );
+  // Each address is read once, through the first record naming it, so a proxy's own
+  // record, with the implementation's functions, goes before its proxy artifact.
+  const names = new Set(deployments.map((d) => d.name));
+  deployments.sort(
+    (a, b) =>
+      Number(isProxyArtifact(a.name, names)) -
+        Number(isProxyArtifact(b.name, names)) || a.name.localeCompare(b.name),
+  );
   const hasFunction = (abi: readonly unknown[], name: string) =>
     abi.some(
       (item) =>
