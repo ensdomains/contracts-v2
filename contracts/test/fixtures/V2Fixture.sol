@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
-import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -95,16 +94,5 @@ abstract contract V2Fixture is Test, ERC1155Holder {
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {
         (resolver, , ) = universalResolver.findResolver(name);
-    }
-
-    function _computeVerifiableFactoryAddress(address deployer, uint256 salt)
-        internal
-        view
-        returns (address)
-    {
-        bytes32 outerSalt = keccak256(abi.encode(deployer, salt));
-        bytes memory bytecode =
-            CloneProxyBytecode.creationCode(verifiableFactory.proxyLogic(), outerSalt);
-        return vm.computeCreate2Address(outerSalt, keccak256(bytecode), address(verifiableFactory));
     }
 }

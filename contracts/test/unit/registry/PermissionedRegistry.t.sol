@@ -96,6 +96,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
 
     function test_register() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 labelId = LibLabel.id(testLabel);
         uint256 tokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
@@ -113,6 +114,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         emit IERC1155.TransferSingle(address(this), address(0), testOwner, tokenId, 1);
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, 0, testRoles);
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
         vm.expectEmit();
@@ -1906,6 +1909,34 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
     }
 
+    function test_forwardingReceiver_register(bool unsafe) external {
+        _makeEmancipated();
+        ForwardingReceiver r = new ForwardingReceiver(unsafe, user2);
+        testOwner = address(r);
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        // requires: _grantRoles() before _mint()
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPermissionedRegistry.TransferDisallowed.selector,
+                LibLabel.withVersion(LibLabel.id(testLabel), 0),
+                testOwner
+            )
+        );
+        this._register();
+        // uint256 tokenId = this._register();
+        // assertEq(registry.getOwner(tokenId), address(user2));
+    }
+
+    function test_forwardingReceiver_transfer(bool unsafe) external {
+        _makeEmancipated();
+        ForwardingReceiver r = new ForwardingReceiver(unsafe, user2);
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register();
+        vm.prank(testOwner);
+        registry.unsafeTransfer(address(r), tokenId, "");
+        assertEq(registry.getOwner(tokenId), address(user2));
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internals
     ////////////////////////////////////////////////////////////////////////
@@ -2064,6 +2095,34 @@ contract MockPermissionedRegistry is PermissionedRegistry {
     }
     function __burn(address from, uint256 id, uint256 value) external {
         _burn(from, id, value);
+    }
+}
+
+
+contract ForwardingReceiver is ERC1155Holder {
+    bool immutable UNSAFE;
+    address immutable TARGET;
+    constructor(bool unsafe, address target) {
+        UNSAFE = unsafe;
+        TARGET = target;
+    }
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 value,
+        bytes memory data
+    )
+        public
+        override
+        returns (bytes4)
+    {
+        if (UNSAFE) {
+            IUnsafeTransferable(msg.sender).unsafeTransfer(TARGET, id, ""); // assume: value = 1
+        } else {
+            PermissionedRegistry(msg.sender).safeTransferFrom(address(this), TARGET, id, value, "");
+        }
+        return super.onERC1155Received(operator, from, id, value, data);
     }
 }
 
