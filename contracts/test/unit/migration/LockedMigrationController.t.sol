@@ -22,6 +22,7 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 
 import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
@@ -43,9 +44,11 @@ import {
     IWrapperRegistryInitializable
 } from "~src/registry/interfaces/IWrapperRegistryInitializable.sol";
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
+import {WrapperRegistryLib} from "~src/registry/libraries/WrapperRegistryLib.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
+import {MockUpgradeable} from "~test/mocks/MockUpgradeable.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
@@ -164,17 +167,24 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
-    function test_canUpgradeFrom_rejectsAll() external view {
-        assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(0)), "zero");
-        assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(wrapperRegistryImpl)), "self");
-    }
-
     function test_adhocInitialize_root() external {
         vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
         verifiableFactory.deployProxy(
             address(wrapperRegistryImpl),
             0,
             abi.encodeCall(IWrapperRegistryInitializable.initialize, (bytes32(0), ethRegistry))
+        );
+    }
+
+    function test_adhocInitialize_eth() external {
+        bytes32 node = NameCoder.ETH_NODE;
+        verifiableFactory.deployProxy(
+            address(wrapperRegistryImpl),
+            uint256(node),
+            abi.encodeCall(
+                IWrapperRegistryInitializable.initialize,
+                (NameCoder.ETH_NODE, ethRegistry)
+            )
         );
     }
 
@@ -196,6 +206,33 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             0,
             abi.encodeCall(IWrapperRegistryInitializable.initialize, (node, ethRegistry))
+        );
+    }
+
+    function test_canUpgradeFrom_rejectsAll() external view {
+        assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(0)), "zero");
+        assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(wrapperRegistryImpl)), "self");
+    }
+
+    function test_wrapperRegistryUpgrade_rejectsAll() external {
+        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        MockUpgradeable impl = new MockUpgradeable();
+        MockUpgradeable c = MockUpgradeable(verifiableFactory.deployProxy(address(impl), 0, ""));
+        c.setUpgradeFrom(address(impl), true);
+        c.setUpgradeTo(address(wrapperRegistryImpl), true);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IUUPSProxy.InvalidUpgradeTarget.selector,
+                address(impl),
+                address(wrapperRegistryImpl)
+            )
+        );
+        c.upgradeToAndCall(
+            address(wrapperRegistryImpl),
+            abi.encodeCall(
+                IWrapperRegistryInitializable.initialize,
+                (NameCoder.namehash(name, 0), ethRegistry)
+            )
         );
     }
 
@@ -443,6 +480,21 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
     }
 
+    function test_computeAddress_root() external {
+        vm.expectRevert(abi.encodeWithSelector(WrapperRegistryLib.NotETHDescendant.selector));
+        this._computeAddress(NameCoder.encode(""));
+    }
+
+    function test_computeAddress_eth() external {
+        vm.expectRevert(abi.encodeWithSelector(WrapperRegistryLib.NotETHDescendant.selector));
+        this._computeAddress(NameCoder.encode("eth"));
+    }
+
+    function test_computeAddress_notEth() external {
+        vm.expectRevert(abi.encodeWithSelector(WrapperRegistryLib.NotETHDescendant.selector));
+        this._computeAddress(NameCoder.encode("com"));
+    }
+
     function test_migrate() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         checkResolution(name, address(ensV2Resolver), address(ensV1Resolver));
@@ -452,7 +504,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         uint256 tokenIdV1 = LibLabel.id(md.label);
         uint256 tokenId = LibLabel.withVersion(tokenIdV1, 0);
         address expectedRegistry =
-            _computeVerifiableFactoryAddress(address(migrationController), salt);
+            verifiableFactory.predictProxyAddress(address(migrationController), salt);
         uint64 expectedExpiry =
             uint64(baseRegistrar.nameExpires(tokenIdV1)) + premigrationBonusPeriod;
         address virtualOwner = address(ethRegistry);
@@ -546,6 +598,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ERC165Checker.supportsInterface(address(subregistry), type(IWrapperRegistry).interfaceId),
             "IWrapperRegistry"
         );
+        assertEq(address(subregistry), _computeAddress(name), "computeAddress");
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(ethRegistry)),
             "ROLE_REGISTRAR"
@@ -1131,6 +1184,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ERC165Checker.supportsInterface(address(registry3), type(IWrapperRegistry).interfaceId),
             "registry3"
         );
+        assertEq(address(registry3), _computeAddress(name3), "computeAddress3");
 
         // check migrated 3LD child
         vm.expectRevert(
@@ -1394,6 +1448,15 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             1,
             abi.encode(data)
         );
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////
+
+    function _computeAddress(bytes memory name) public view returns (address) {
+        return
+            WrapperRegistryLib.computeAddress(verifiableFactory, address(migrationController), name);
     }
 
     function _deployWrapperRegistryProxy() internal returns (WrapperRegistry) {
