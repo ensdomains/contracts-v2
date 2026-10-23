@@ -131,6 +131,7 @@ import {
   driftedReusedRecords,
   findRedeployArchive,
   findRedeployArchives,
+  isInterruptedRedeploy,
   namespaceBeforeRedeploy,
   readNamespaceRecords,
   redeployDiff,
@@ -5967,8 +5968,10 @@ const sameNames = (a: readonly string[], b: readonly string[]) => {
 /// `replace`, so a build that changes more than expected stops the run before
 /// anything is sent. Refuses once v1 has been handed over or go-live has begun, and
 /// for the root registry, which `redeployRootRegistry` replaces. Re-running after an
-/// interruption resumes the archived set, and after completion finds nothing to
-/// replace.
+/// interruption resumes the archived set. Any other run first takes away whatever
+/// authority the contracts of the newest completed redeploy still hold, since the
+/// run that replaced them may have stopped before doing so, and after completion
+/// finds nothing to replace.
 export async function redeployContracts(
   opts: DeployV2Options & {
     rpcUrl: string;
@@ -5991,12 +5994,28 @@ export async function redeployContracts(
   const archived = archive
     ? readNamespaceRecords(deploymentsDir, archive)
     : (new Map() as typeof active);
-  // An archived record without a replacement at a new address means a run stopped
-  // part way, and resumes with the set it archived.
-  const resuming = [...archived].some(([name, record]) => {
-    const now = active.get(name)?.address;
-    return !now || (record.address && sameAddress(now, record.address));
-  });
+  // A run that stopped part way resumes with the set it archived.
+  const resuming = isInterruptedRedeploy(active, archived);
+  const revokeAuthority = (
+    args: Pick<
+      Parameters<typeof revokeReplacedContractAuthority>[0],
+      "archive" | "before" | "after" | "replacedNames"
+    >,
+  ) =>
+    revokeReplacedContractAuthority({
+      ...args,
+      client,
+      chain,
+      rpcUrl: opts.rpcUrl,
+      provider: opts.provider,
+      network: opts.network,
+      deploymentsDir,
+      deploymentNetwork,
+      deployerAddress: opts.deployerAddress,
+      deployerPrivateKey: opts.deployerPrivateKey,
+      v1DeploymentsDir: opts.v1DeploymentsDir,
+      v1DeploymentNetwork: opts.v1DeploymentNetwork,
+    });
 
   let replaced: string[];
   if (resuming) {
@@ -6005,6 +6024,18 @@ export async function redeployContracts(
       `resuming the redeploy archived in ${archive}: ${replaced.join(", ")}`,
     );
   } else {
+    if (archive) {
+      const archivedNames = [...archived.keys()];
+      console.log(
+        `checking that the contracts replaced by the redeploy archived in ${archive} hold no authority`,
+      );
+      await revokeAuthority({
+        archive,
+        before: namespaceBeforeRedeploy(active, archived, archivedNames),
+        after: active,
+        replacedNames: archivedNames,
+      });
+    }
     const { drifted, metadataOnly, uncomparable } = driftedRecords(
       active,
       await buildBytecodes(active),
@@ -6066,7 +6097,11 @@ export async function redeployContracts(
     requireSetParent: false,
   });
 
-  const before = namespaceBeforeRedeploy(active, archived, replaced);
+  // A completed earlier redeploy's archive holds what that run replaced, so only a
+  // resumed run takes its originals from the archive.
+  const before = resuming
+    ? namespaceBeforeRedeploy(active, archived, replaced)
+    : active;
   if (!resuming) {
     const moved = archiveReplacedRecords(
       deploymentsDir,
@@ -6095,21 +6130,10 @@ export async function redeployContracts(
       `the redeploy changed the namespace unexpectedly: ${diff.problems.length} problem(s)`,
     );
   }
-  await revokeReplacedContractAuthority({
-    client,
-    chain,
-    rpcUrl: opts.rpcUrl,
-    provider: opts.provider,
-    network: opts.network,
-    deploymentsDir,
-    deploymentNetwork,
+  await revokeAuthority({
     archive: findRedeployArchive(deploymentsDir, deploymentNetwork, kind),
     before,
     after,
-    deployerAddress: opts.deployerAddress,
-    deployerPrivateKey: opts.deployerPrivateKey,
-    v1DeploymentsDir: opts.v1DeploymentsDir,
-    v1DeploymentNetwork: opts.v1DeploymentNetwork,
     replacedNames: replaced,
   });
   console.log(`redeployed ${replaced.length} contract(s)`);

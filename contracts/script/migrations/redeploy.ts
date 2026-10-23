@@ -408,6 +408,19 @@ export function archiveReplacedRecords(
   return archive;
 }
 
+/// Whether an archive holds a redeploy that stopped part way: one of its records
+/// has no replacement at a new address in the namespace. A completed archive holds
+/// what an earlier run replaced.
+export function isInterruptedRedeploy(
+  active: Map<string, DeploymentRecord>,
+  archived: Map<string, DeploymentRecord>,
+): boolean {
+  return [...archived].some(([name, record]) => {
+    const now = active.get(name)?.address;
+    return !now || (!!record.address && sameAddress(now, record.address));
+  });
+}
+
 /// The namespace as it stood before a redeploy: the archived originals of the
 /// replaced deployments, which an interrupted run may already have replaced in the
 /// namespace, and the namespace's own records for everything else.

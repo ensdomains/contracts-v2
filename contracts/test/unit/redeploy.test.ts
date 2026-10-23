@@ -17,6 +17,7 @@ import {
   driftedRecords,
   driftedReusedRecords,
   findRedeployArchive,
+  isInterruptedRedeploy,
   namespaceBeforeRedeploy,
   readNamespaceRecords,
   redeployDiff,
@@ -215,6 +216,34 @@ describe("redeployDiff", () => {
     );
     expect(problems).toEqual([]);
     expect(moved).toHaveLength(REPLACED_DEPLOYMENTS.length - 2);
+  });
+});
+
+describe("isInterruptedRedeploy", () => {
+  const archived = new Map([
+    ["LockedMigrationController", { address: address(2) }],
+    ["MigrationHelper", { address: address(3) }],
+  ]);
+
+  it("finds a completed archive finished, so a new run starts from the namespace", () => {
+    const active = new Map([
+      ["LockedMigrationController", { address: address(12) }],
+      ["MigrationHelper", { address: address(13) }],
+    ]);
+    expect(isInterruptedRedeploy(active, archived)).toBe(false);
+    expect(isInterruptedRedeploy(active, new Map())).toBe(false);
+  });
+
+  it("finds an archive interrupted where a record has no replacement or kept its address", () => {
+    const missing = new Map([
+      ["LockedMigrationController", { address: address(12) }],
+    ]);
+    const unchanged = new Map([
+      ["LockedMigrationController", { address: address(12) }],
+      ["MigrationHelper", { address: address(3) }],
+    ]);
+    expect(isInterruptedRedeploy(missing, archived)).toBe(true);
+    expect(isInterruptedRedeploy(unchanged, archived)).toBe(true);
   });
 });
 

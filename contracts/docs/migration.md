@@ -682,8 +682,13 @@ bun ./script/generateAddressDocs.ts --network mainnet
 - It refuses once the DAO proposal has executed or go-live has begun. It moves the replaced records to a
   `<namespace>-redeploy-<date>` archive beside the namespace, and forgets the once-only scripts of the
   Universal Resolvers it replaces, so they run again. Then it reruns phase 1 into the same namespace and
-  fails unless exactly the set moved. A re-run resumes an interrupted redeploy. After a completed one it
-  finds nothing to replace.
+  fails unless exactly the set moved.
+- It then revokes every role, address-set approval and HCA implementation approval a replaced contract
+  still holds on the namespace, as the deployer. A v1 controller grant, or anything else the deployer
+  cannot revoke, stops the run with what is left, for the v1 owner to revoke.
+- A re-run resumes an interrupted redeploy. Any other run first repeats that revocation for the newest
+  completed redeploy, since the run that replaced its contracts may have stopped before it finished.
+  After a completed redeploy a re-run then finds nothing to replace.
 - The phase 1 DAO calls are rebuilt with the new contracts: `setRegistrarResolver` names the new
   `ENSV2Resolver`. Build the proposal from that fresh file, never alongside an older one. The builder
   drops only identical calls, so an older file would leave two `setRegistrarResolver` calls.
