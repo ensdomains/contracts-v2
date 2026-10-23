@@ -8,8 +8,8 @@ itself.
 
 - **Network:** mainnet
 - **Chain ID:** 1
-- **Read at block:** 26223274
-- **Read at:** 2026-10-19T01:16:10.033Z
+- **Read at block:** 26252570
+- **Read at:** 2026-10-23T03:15:10.578Z
 - **Not listed:** the roles each name's owner holds on its own name in ETHRegistry
 
 ## Audit
@@ -90,7 +90,7 @@ The root and .eth registries match what the migration intends at the `pre-handof
 
 ### WrapperRegistryImpl
 
-[0xCF3Edb3f5501DE63B57254D910b6782eE370039B](https://etherscan.io/address/0xCF3Edb3f5501DE63B57254D910b6782eE370039B)
+[0x18580394dD1aDeED3E9A933FFA7881DF403b981d](https://etherscan.io/address/0x18580394dD1aDeED3E9A933FFA7881DF403b981d)
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
@@ -125,4 +125,4 @@ A registry is emancipated when nobody holds a registry-wide role that reaches it
 | **ETHRegistry**<br>[0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2](https://etherscan.io/address/0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2) | yes |
 | **RootRegistry**<br>[0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e](https://etherscan.io/address/0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e) | yes |
 | **UserRegistryImpl**<br>[0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb](https://etherscan.io/address/0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb) | yes |
-| **WrapperRegistryImpl**<br>[0xCF3Edb3f5501DE63B57254D910b6782eE370039B](https://etherscan.io/address/0xCF3Edb3f5501DE63B57254D910b6782eE370039B) | yes |
+| **WrapperRegistryImpl**<br>[0x18580394dD1aDeED3E9A933FFA7881DF403b981d](https://etherscan.io/address/0x18580394dD1aDeED3E9A933FFA7881DF403b981d) | yes |
