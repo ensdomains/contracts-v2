@@ -24,9 +24,8 @@ library WrapperRegistryLib {
         view
         returns (address addr)
     {
-        bytes32 node;
-        (node, addr) = _computeAddress(verifiableFactory, lockedMigrationController, name, 0);
-        if (addr == lockedMigrationController) {
+        (, addr) = _computeAddress(verifiableFactory, lockedMigrationController, name, 0);
+        if (addr == address(0)) {
             revert NotETHDescendant();
         }
     }
@@ -43,23 +42,15 @@ library WrapperRegistryLib {
         returns (bytes32 node, address addr)
     {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
-        if (labelHash == bytes32(0)) {
-            return (labelHash, lockedMigrationController);
-        }
-        bytes32 parentNode;
-        (parentNode, addr) = _computeAddress(
-            verifiableFactory,
-            lockedMigrationController,
-            name,
-            next
-        );
-        node = NameCoder.namehash(parentNode, labelHash);
-        if (parentNode == bytes32(0)) {
-            if (node != NameCoder.ETH_NODE) {
-                revert NotETHDescendant();
+        if (labelHash != bytes32(0)) {
+            (node, addr) = _computeAddress(verifiableFactory, lockedMigrationController, name, next);
+            if (node == NameCoder.ETH_NODE) {
+                addr = lockedMigrationController;
             }
-        } else {
-            addr = verifiableFactory.predictProxyAddress(addr, uint256(node));
+            node = NameCoder.namehash(node, labelHash);
+            if (addr != address(0)) {
+                addr = verifiableFactory.predictProxyAddress(addr, uint256(node));
+            }
         }
     }
 }
