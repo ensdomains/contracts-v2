@@ -1,9 +1,13 @@
-import { artifacts, execute } from "@rocketh";
-import { isAddressEqual, labelhash, zeroAddress } from "viem";
+import { execute } from "@rocketh";
+import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import type { Abi_IRegistryURIRenderer } from "generated/abis/IRegistryURIRenderer.js";
+import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
+import { isAddressEqual, zeroAddress } from "viem";
+import { idFromLabel } from "../test/utils/utils.js";
 import {
   MAX_EXPIRY,
   DEPLOYMENT_ROLES,
-  ROLES,
+  STATUS,
 } from "../script/deploy-constants.js";
 
 export default execute(
@@ -15,23 +19,23 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+      get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
+    const labelStore = get<Abi_ILabelStore>("LabelStore");
+    const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
 
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
-      artifact: artifacts.PermissionedRegistry,
+      artifact: Artifact_PermissionedRegistry,
       args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
     });
 
     const currentStatus = await read(rootRegistry, {
       functionName: "getStatus",
-      args: [BigInt(labelhash("eth"))],
+      args: [idFromLabel("eth")],
     });
 
-    if (currentStatus === 0) {
+    if (currentStatus === STATUS.AVAILABLE) {
       console.log("  - Registering in parent");
       await write(rootRegistry, {
         account: deployer,
@@ -47,9 +51,11 @@ export default execute(
       });
     }
 
-    const [currentParent, currentLabel] = await read(ethRegistry, {
-      functionName: "getParent",
-    });
+    const [[currentParent, currentLabel], [currentURI, currentRenderer]] =
+      await Promise.all([
+        read(ethRegistry, { functionName: "getParent" }),
+        read(ethRegistry, { functionName: "getURI" }),
+      ]);
 
     if (
       !isAddressEqual(currentParent, rootRegistry.address) ||
@@ -63,15 +69,24 @@ export default execute(
       });
     }
 
-    console.log("  - Granting CAN_NAME to owner");
+    if (!currentURI && currentRenderer === zeroAddress) {
+      console.log("  - Setting initial URI");
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "setURI",
+        args: ["", uriRenderer.address],
+      });
+    }
+
+    console.log("  - Granting manager roles");
     await write(ethRegistry, {
-      functionName: "grantRootRoles",
-      args: [ROLES.REGISTRY.CAN_NAME, owner],
       account: deployer,
+      functionName: "grantRootRoles",
+      args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
     });
   },
   {
     tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["RootRegistry", "LabelStore"],
+    dependencies: ["RootRegistry", "LabelStore", "ENSURIRenderer"],
   },
 );

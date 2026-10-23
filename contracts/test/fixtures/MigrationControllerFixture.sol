@@ -9,11 +9,14 @@ import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {BoxedURIRenderer} from "~src/registry/BoxedURIRenderer.sol";
 import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
+import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
 
 // forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
 // forge test test/unit/migration/LockedMigrationController.t.sol -vv
@@ -35,9 +38,12 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
+    BoxedURIRenderer boxedRenderer;
+    PermissionedAddressSet registryUpgradeSet;
+    PermissionedAddressSet publicResolverSet;
 
     string testLabel = "test";
-    address testResolver = makeAddr("resolver");
+    address testResolver;
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
     uint64 premigrationBonusPeriod = StandardRegistrar.BONUS_PERIOD;
@@ -64,11 +70,17 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
         graveyard = new Graveyard(nameWrapper, contractNamer);
 
+        boxedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));
+
+        registryUpgradeSet = new PermissionedAddressSet(address(this));
+        publicResolverSet = new PermissionedAddressSet(address(this));
+
         baseRegistrar.setResolver(address(ensV2Resolver));
         baseRegistrar.addController(address(graveyard));
 
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
+        testResolver = address(new MockResolver());
     }
 
     /// @dev Ensure premigration has occurred.
@@ -148,3 +160,6 @@ contract MockERC1155 is ERC1155 {
         return _id++;
     }
 }
+
+
+contract MockResolver {}

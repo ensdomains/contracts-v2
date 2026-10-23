@@ -15,7 +15,9 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 import {InvalidOwner} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {
+    IWrapperRegistryInitializable
+} from "../registry/interfaces/IWrapperRegistryInitializable.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
@@ -124,6 +126,13 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
 
             address resolver = md.resolver;
             (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
+
+            // instead of granting token ROLE_RENEW for names in v1 that could extend their own expiry
+            // we grant the full expiry and skip token owner needing to invoke `renew(*, max)`
+            if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
+                expiry = type(uint64).max;
+            }
+
             if (LibMigration.isLocked(fuses)) {
                 if (
                     (fuses & CANNOT_APPROVE) != 0 &&
@@ -150,13 +159,8 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                             WRAPPER_REGISTRY_IMPL,
                             uint256(node),
                             abi.encodeCall(
-                                IWrapperRegistry.initialize,
-                                (
-                                    node,
-                                    parentRegistry,
-                                    md.label,
-                                    _subregistryRoleBitmapFromFuses(fuses)
-                                )
+                                IWrapperRegistryInitializable.initialize,
+                                (node, parentRegistry)
                             )
                         )
                     );
@@ -177,13 +181,15 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
                 NAME_WRAPPER.unwrap(parentNode, labelHash, GRAVEYARD); // unwrap and transfer to graveyard
 
-                // add name to ENSv2 (same as UnlockedMigrationController, plus
-                // renewal rights when the name could extend its own expiry in v1)
-                uint256 roleBitmap = REGISTRATION_ROLE_BITMAP;
-                if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
-                    roleBitmap |= RegistryRolesLib.ROLE_RENEW | RegistryRolesLib.ROLE_RENEW_ADMIN;
-                }
-                _inject(md.label, md.owner, md.subregistry, resolver, roleBitmap, expiry);
+                // add name to ENSv2 (same as UnlockedMigrationController)
+                _inject(
+                    md.label,
+                    md.owner,
+                    md.subregistry,
+                    resolver,
+                    REGISTRATION_ROLE_BITMAP,
+                    expiry
+                );
             } else {
                 revert LibMigration.NameNotLocked(uint256(node));
             }
@@ -226,9 +232,6 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
 
     /// @dev Convert fuses to equivalent token roles.
     function _tokenRoleBitmapFromFuses(uint32 fuses) internal pure returns (uint256 roleBitmap) {
-        if ((fuses & CAN_EXTEND_EXPIRY) != 0) {
-            roleBitmap |= RegistryRolesLib.ROLE_RENEW;
-        }
         if ((fuses & CANNOT_SET_RESOLVER) == 0) {
             roleBitmap |= RegistryRolesLib.ROLE_SET_RESOLVER;
         }
