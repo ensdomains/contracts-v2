@@ -170,6 +170,35 @@ export type SnapshotDifference = {
 export const isRegression = (difference: SnapshotDifference): boolean =>
   difference.kind !== "gained";
 
+/// The label of the `.eth` second-level name a name sits under, such as `base` for
+/// `jesse.base.eth`; undefined for a name outside `.eth`.
+export function ethSecondLevelLabel(name: string): string | undefined {
+  const labels = name.toLowerCase().split(".");
+  return labels.length >= 2 && labels[labels.length - 1] === "eth"
+    ? labels[labels.length - 2]
+    : undefined;
+}
+
+/// Splits regressions into those on names under a lapsed `.eth` registration, which
+/// stop resolving at the cutover by design, and the rest. A whole name missing from
+/// the post-cutover snapshot is never put down to a lapse: it is a failed capture.
+export function partitionLapsed(
+  regressions: SnapshotDifference[],
+  lapsedLabels: ReadonlySet<string>,
+): { lapsed: SnapshotDifference[]; broken: SnapshotDifference[] } {
+  const lapsed: SnapshotDifference[] = [];
+  const broken: SnapshotDifference[] = [];
+  for (const difference of regressions) {
+    const label = ethSecondLevelLabel(difference.name);
+    const isLapsed =
+      difference.kind !== "missing" &&
+      label !== undefined &&
+      lapsedLabels.has(label);
+    (isLapsed ? lapsed : broken).push(difference);
+  }
+  return { lapsed, broken };
+}
+
 function render(value: Hex | null): string {
   return value === null ? "(reverted)" : value;
 }

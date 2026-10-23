@@ -10,9 +10,11 @@ import {
   createWalletClient,
   getAddress,
   http,
+  keccak256,
   namehash,
   parseGwei,
   publicActions,
+  toHex,
   zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -982,6 +984,47 @@ describe("PreMigration", () => {
       "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
       `,,,,,,validfirst,,`,
       ",,,,,,,,",
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await expectMainToExitWithCsvError(args, [
+      `${csvFilePath}:3`,
+      `empty "labelName"`,
+    ]);
+  });
+
+  it("skips a Dune row whose label is unknown but whose labelhash names it", async () => {
+    const label = "dunelabelled";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    const unknown = keccak256(toHex("nobodyknowsme"));
+    const csvContent = [
+      "name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status",
+      `${label},${label}.eth,${keccak256(toHex(label))},,,,,active`,
+      `,,${unknown},,,,,active`,
+      `<nil>,<nil>,${unknown},,,,,active`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+    expect((await verifyV2State(env, "<nil>")).status).toBe(STATUS.AVAILABLE);
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.invalidLabelCount).toBe(2);
+    expect(checkpoint!.failedLines).toEqual([]);
+  });
+
+  it("fails fast on an empty label whose labelhash cell is empty too", async () => {
+    const csvContent = [
+      "name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status",
+      `validfirst,validfirst.eth,,,,,,active`,
+      `,,,,,,,active`,
     ].join("\n");
     writeFileSync(csvFilePath, csvContent);
 

@@ -20,7 +20,12 @@ import {
   zeroHash,
 } from "viem";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
-import { FUSES, ROLES, STATUS } from "../../script/deploy-constants.js";
+import {
+  DEPLOYMENT_ROLES,
+  FUSES,
+  ROLES,
+  STATUS,
+} from "../../script/deploy-constants.js";
 import { migrationDataComponents } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
@@ -58,6 +63,13 @@ describe("Phased migration rehearsal", () => {
         await env.v2.ETHRegistry.write.revokeRootRoles([
           REGISTRAR_ROLES,
           env.v2.ETHRegistrar.address,
+        ]);
+      }
+      // The phased deploy leaves migration closed until go-live.
+      for (const controller of migrationControllers()) {
+        await env.v2.ETHRegistry.write.revokeRootRoles([
+          DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+          controller,
         ]);
       }
     },
@@ -136,23 +148,11 @@ describe("Phased migration rehearsal", () => {
     expect(firstState.status).toBe(STATUS.RESERVED);
     expect(remainingState.status).toBe(STATUS.RESERVED);
 
-    await migrateUnwrappedV1Name(firstMigrationLabel, user);
-
-    const migratedState = await verifyV2State(env, firstMigrationLabel);
-    expect(migratedState.status).toBe(STATUS.REGISTERED);
-    expect(migratedState.latestOwner.toLowerCase()).toBe(
-      user.address.toLowerCase(),
-    );
-
-    // The locked route reaches v2 through a different controller and receiver
-    // than the unwrapped one, so the phases have to wire both.
-    await migrateLockedV1Name(lockedMigrationLabel, user);
-
-    const lockedState = await verifyV2State(env, lockedMigrationLabel);
-    expect(lockedState.status).toBe(STATUS.REGISTERED);
-    expect(lockedState.latestOwner.toLowerCase()).toBe(
-      user.address.toLowerCase(),
-    );
+    // Migration stays closed until go-live: the controller lacks the role the
+    // registry needs to promote a reserved name.
+    await expect(
+      migrateUnwrappedV1Name(firstMigrationLabel, user),
+    ).rejects.toThrow(/EACUnauthorizedAccountRoles|0x4b27a133/);
 
     const registrarEnabledBefore = await env.v2.ETHRegistry.read.hasRootRoles([
       REGISTRAR_ROLES,
@@ -172,12 +172,36 @@ describe("Phased migration rehearsal", () => {
       REGISTRAR_ROLES,
       env.v2.ETHRegistrar.address,
     ]);
+    for (const controller of migrationControllers()) {
+      await env.v2.ETHRegistry.write.grantRootRoles([
+        DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+        controller,
+      ]);
+    }
 
     const registrarEnabledAfter = await env.v2.ETHRegistry.read.hasRootRoles([
       REGISTRAR_ROLES,
       env.v2.ETHRegistrar.address,
     ]);
     expect(registrarEnabledAfter).toBe(true);
+
+    await migrateUnwrappedV1Name(firstMigrationLabel, user);
+
+    const migratedState = await verifyV2State(env, firstMigrationLabel);
+    expect(migratedState.status).toBe(STATUS.REGISTERED);
+    expect(migratedState.latestOwner.toLowerCase()).toBe(
+      user.address.toLowerCase(),
+    );
+
+    // The locked route reaches v2 through a different controller and receiver
+    // than the unwrapped one, so the phases have to wire both.
+    await migrateLockedV1Name(lockedMigrationLabel, user);
+
+    const lockedState = await verifyV2State(env, lockedMigrationLabel);
+    expect(lockedState.status).toBe(STATUS.REGISTERED);
+    expect(lockedState.latestOwner.toLowerCase()).toBe(
+      user.address.toLowerCase(),
+    );
 
     // The name is RESERVED from premigration, so the registrar refuses it.
     await expect(
@@ -191,6 +215,13 @@ describe("Phased migration rehearsal", () => {
       user.address.toLowerCase(),
     );
   }, 30_000);
+
+  function migrationControllers(): Address[] {
+    return [
+      env.v2.UnlockedMigrationController.address,
+      env.v2.LockedMigrationController.address,
+    ];
+  }
 
   function ethRegistrarControllerAddress(): Address {
     return env.rocketh.deployments["ETHRegistrarController"].address;

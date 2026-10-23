@@ -98,35 +98,56 @@ export const ROLES = {
   ADMIN,
 } as const;
 
+// Root roles that reach a registry's names or replace its code: setting a name's
+// child registry or resolver, unregistering it, letting its owner transfer it, and
+// upgrading the registry, each with its admin role. A registry where nobody holds
+// any of them at the root leaves its names emancipated.
+// see: RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP
+export const DANGEROUS_ROOT_ROLES =
+  ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
+  ROLES.REGISTRY.SET_SUBREGISTRY |
+  ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
+  ROLES.REGISTRY.SET_RESOLVER |
+  ROLES.ADMIN.REGISTRY.SET_RESOLVER |
+  ROLES.REGISTRY.UNREGISTER |
+  ROLES.ADMIN.REGISTRY.UNREGISTER |
+  ROLES.REGISTRY.UPGRADE |
+  ROLES.ADMIN.REGISTRY.UPGRADE;
+
+// Every root role outside the dangerous set, each with its admin role: registering
+// names and reserved names, setting the parent, renewing, setting the metadata URI,
+// and contract naming.
+const SAFE_ROOT_ROLES =
+  ROLES.REGISTRY.REGISTRAR |
+  ROLES.ADMIN.REGISTRY.REGISTRAR |
+  ROLES.REGISTRY.REGISTER_RESERVED |
+  ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
+  ROLES.REGISTRY.SET_PARENT |
+  ROLES.ADMIN.REGISTRY.SET_PARENT |
+  ROLES.REGISTRY.RENEW |
+  ROLES.ADMIN.REGISTRY.RENEW |
+  ROLES.REGISTRY.CAN_NAME |
+  ROLES.ADMIN.REGISTRY.CAN_NAME |
+  ROLES.REGISTRY.SET_URI |
+  ROLES.ADMIN.REGISTRY.SET_URI;
+
 // Role bitmaps for static deployment per README Static Deployment Permissions.
 export const DEPLOYMENT_ROLES = {
-  // RootRegistry root: REGISTRAR✓✓, REGISTER_RESERVED✓✓, SET_PARENT✓✓, RENEW✓✓
-  ROOT_REGISTRY_ROOT:
-    ROLES.REGISTRY.REGISTRAR |
-    ROLES.ADMIN.REGISTRY.REGISTRAR |
-    ROLES.REGISTRY.REGISTER_RESERVED |
-    ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
-    ROLES.REGISTRY.SET_PARENT |
-    ROLES.ADMIN.REGISTRY.SET_PARENT |
-    ROLES.REGISTRY.RENEW |
-    ROLES.ADMIN.REGISTRY.RENEW |
-    ROLES.REGISTRY.CAN_NAME |
-    ROLES.ADMIN.REGISTRY.CAN_NAME |
-    ROLES.REGISTRY.SET_URI |
-    ROLES.ADMIN.REGISTRY.SET_URI,
-  // .eth token: SET_SUBREGISTRY AR, SET_RESOLVER AR
-  ETH_TOKEN:
-    ROLES.REGISTRY.SET_SUBREGISTRY |
-    ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
-    ROLES.REGISTRY.SET_RESOLVER |
-    ROLES.ADMIN.REGISTRY.SET_RESOLVER,
-  // .reverse token: full role bitmap, held by the deployer only while it hands the
-  // name over. Some roles (e.g. REGISTRAR) are root-only and don't apply to tokens.
-  REVERSE_REGISTRY_ROOT: FLAGS.ALL,
-  // .reverse token once handed over: every regular role and no admin role. The owner
-  // operates the name, and nobody can grant or revoke roles on it.
-  REVERSE_REGISTRY_OPERATOR: FLAGS.ALL & ((1n << 128n) - 1n),
-  // ETHRegistry root deployer: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓, RENEW✓
+  // RootRegistry root at deploy: every safe root role with its admin role.
+  ROOT_REGISTRY_ROOT: SAFE_ROOT_ROLES,
+  // RootRegistry and ETHRegistry root, held by the owner after the handover: every
+  // safe root role with its admin role. None of them reaches a name, so both
+  // registries leave their names emancipated.
+  REGISTRY_OWNER_ROOT: SAFE_ROOT_ROLES,
+  // The root registry's `eth` and `reverse` tokens: every role and admin role,
+  // registered to the deployer and moved with the token to the name owner at the
+  // handover.
+  ROOT_NAME_TOKEN: FLAGS.ALL,
+  // A `.eth` name registered straight to its owner outside pre-migration, such as
+  // on.eth for the name owner: every role and admin role.
+  DIRECT_REGISTRATION: FLAGS.ALL,
+  // ETHRegistry root at deploy: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓,
+  // RENEW✓. None of these reaches a name, so a holder leaves .eth names emancipated.
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
     ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
