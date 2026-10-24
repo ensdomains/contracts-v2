@@ -52,7 +52,7 @@ const wrapperRegistryProfile: CompilerProfile = {
   solcVersion: "0.8.25",
   solcLongVersion: "0.8.25+commit.b61c2a91",
   evmVersion: "cancun",
-  optimizerRuns: 100,
+  optimizerRuns: 1,
 };
 const nameWrapperProfile: CompilerProfile = {
   solcVersion: "0.8.17",

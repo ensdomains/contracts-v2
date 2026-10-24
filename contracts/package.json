@@ -46,6 +46,7 @@
     "format": "solgrid fmt 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
     "format:check": "solgrid fmt --diff 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
     "check:types": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
+    "check:sizes": "bun run compile:hardhat && bun ./script/contractSizes.ts",
     "compile:forge": "forge build",
     "compile:hardhat": "hardhat compile --no-tests",
     "compile": "bun run compile:forge && bun run compile:hardhat",

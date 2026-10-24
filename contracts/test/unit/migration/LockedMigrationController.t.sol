@@ -478,6 +478,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_REGISTRAR |
             RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+            RegistryRolesLib.ROLE_UNREGISTER |
+            RegistryRolesLib.ROLE_UNREGISTER_ADMIN |
             RegistryRolesLib.ROLE_RENEW |
             RegistryRolesLib.ROLE_RENEW_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
