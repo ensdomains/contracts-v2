@@ -20,6 +20,8 @@ import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
 import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
 import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
 
+import {MockERC1271Owner} from "../../mocks/MockStandaloneHCAStack.sol";
+
 contract HCAFundingSessionValidatorTest is Test {
     struct ClaimFixture {
         uint256 nonce;
@@ -561,6 +563,27 @@ contract HCAFundingSessionValidatorTest is Test {
         _validate(digest, _envelope(proof, digest, claim, operation));
     }
 
+    function test_acceptsOwnerAuthorizationFromContractOwner() public {
+        MockERC1271Owner wallet = _useContractOwner();
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        _signOwnerAuthorization(proof, wallet, OWNER_KEY);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        assertEq(_validate(digest, _envelope(proof, digest, claim, operation)), ERC1271_MAGICVALUE);
+    }
+
+    function test_rejectsOwnerAuthorizationWhenContractOwnerRejects() public {
+        MockERC1271Owner wallet = _useContractOwner();
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        _signOwnerAuthorization(proof, wallet, 0xBAD);
+        bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
+        (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
+
+        vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
+        _validate(digest, _envelope(proof, digest, claim, operation));
+    }
+
     function test_rejectsAuthorizationForAnotherSelectedChain() public {
         HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
         proof.hashesAndChainIds[proof.sessionToEnableIndex].chainId = ARBITRUM_SEPOLIA_CHAIN_ID;
@@ -842,9 +865,20 @@ contract HCAFundingSessionValidatorTest is Test {
         proof.hashesAndChainIds[1] = HCASmartSessionLib.HashAndChainId({chainId: BASE_SEPOLIA_CHAIN_ID, sessionDigest: baseSessionDigest});
         proof.hashesAndChainIds[2] = HCASmartSessionLib.HashAndChainId({chainId: ARBITRUM_SEPOLIA_CHAIN_ID, sessionDigest: arbitrumSessionDigest});
 
-        bytes32[] memory chainSessionHashes = new bytes32[](proof.hashesAndChainIds.length);
-        for (uint256 i; i < proof.hashesAndChainIds.length; ++i) {
-            HCASmartSessionLib.HashAndChainId memory item = proof.hashesAndChainIds[i];
+        (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(
+            OWNER_KEY,
+            _ownerAuthorizationDigest(proof.hashesAndChainIds)
+        );
+    }
+
+    function _ownerAuthorizationDigest(HCASmartSessionLib.HashAndChainId[] memory hashesAndChainIds)
+        internal
+        pure
+        returns (bytes32)
+    {
+        bytes32[] memory chainSessionHashes = new bytes32[](hashesAndChainIds.length);
+        for (uint256 i; i < hashesAndChainIds.length; ++i) {
+            HCASmartSessionLib.HashAndChainId memory item = hashesAndChainIds[i];
             chainSessionHashes[i] = keccak256(
                 abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
             );
@@ -864,8 +898,32 @@ contract HCAFundingSessionValidatorTest is Test {
                     SMART_SESSION_VERSION_HASH
                 )
             );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
-        (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(OWNER_KEY, digest);
+        return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
+    }
+
+    function _useContractOwner() internal returns (MockERC1271Owner wallet) {
+        wallet = new MockERC1271Owner(vm.addr(OWNER_KEY));
+        owner = address(wallet);
+        config.owner = owner;
+        config.permissionId = _permissionId(config);
+        vm.startPrank(nexus);
+        validator.onUninstall("");
+        validator.onInstall(abi.encode(config));
+        vm.stopPrank();
+    }
+
+    function _signOwnerAuthorization(
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof,
+        MockERC1271Owner wallet,
+        uint256 privateKey
+    )
+        internal
+        view
+    {
+        (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(
+            privateKey,
+            wallet.wrap(_ownerAuthorizationDigest(proof.hashesAndChainIds))
+        );
     }
 
     function _signedSessionHash(HCAFundingSessionValidator.SessionConfig memory sessionConfig)
