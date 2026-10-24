@@ -116,6 +116,62 @@ jobs:
           CC_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           CC_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
 
+  hca-formal:
+    name: HCA Formal Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: "recursive"
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: contracts/script/formal/requirements.txt
+
+      - name: Install pinned verification tools
+        run: python -m pip install -r contracts/script/formal/requirements.txt
+
+      - name: Check the verification result gate
+        working-directory: contracts
+        run: python3 -m unittest discover -s script/formal -p 'test_*.py'
+
+      - name: Verify HCA properties
+        working-directory: contracts
+        run: python3 script/formal/run_hca.py
+
+      - name: Replay concrete cryptographic and deployed-executor controls
+        working-directory: contracts
+        env:
+          FOUNDRY_PROFILE: hca-formal
+        run: forge test --match-test '^test_' --json > out/hca-formal-native.json
+
+      - name: Require security mutations to produce counterexamples
+        working-directory: contracts
+        run: python3 script/formal/check_mutations.py
+
+      - name: Upload verification manifest, logs and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hca-formal-results
+          path: |
+            contracts/out/hca-formal-reports/
+            contracts/out/hca-formal-mutations/*/summary.json
+            contracts/out/hca-formal-mutations/*/*.log
+            contracts/out/hca-formal-mutations/*/workspace/out/hca-formal-reports/
+            contracts/out/hca-formal-native.json
+          if-no-files-found: error
+          retention-days: 30
+
   notify-coverage:
     name: Notify Coverage
     needs: [forge-tests, hardhat-tests]
@@ -155,7 +211,7 @@ jobs:
   publish-docker:
     name: Publish Docker Image
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch')
-    needs: [check-types, e2e-tests, forge-tests, hardhat-tests, unit-tests, lint]
+    needs: [check-types, e2e-tests, forge-tests, hardhat-tests, unit-tests, lint, hca-formal]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
