@@ -267,6 +267,41 @@ library LibResolution {
         }
     }
 
+    /// @dev Find the registry if and only if every ancestor is qualified.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name.
+    /// @param offset The offset into `name` to begin the search.
+    /// @return parent The parent registry or null if any ancestor was not qualified.
+    function findQualifiedRegistry(
+        address qualifier,
+        bytes4 qualifierSelector,
+        IRegistry rootRegistry,
+        bytes memory name,
+        uint256 offset
+    )
+        internal
+        view
+        returns (IRegistry parent)
+    {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        IRegistry registry;
+        if (bytes(label).length == 0) {
+            registry = rootRegistry;
+        } else {
+            registry = findQualifiedRegistry(qualifier, qualifierSelector, rootRegistry, name, next);
+            if (address(registry) != address(0)) {
+                registry = getSubregistry(registry, label);
+            }
+        }
+        if (address(registry) != address(0)) {
+            (bool ok, bytes memory v) =
+                qualifier.staticcall(abi.encodeWithSelector(qualifierSelector, registry));
+            if (ok && uint256(bytes32(v)) != 0) {
+                parent = registry;
+            }
+        }
+    }
+
     /// @dev Find all registries in the ancestry of `name`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.
@@ -281,6 +316,10 @@ library LibResolution {
         registries[registries.length - 1] = rootRegistry;
         _findRegistries(name, offset, registries, 0);
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Private Functions
+    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Recursive function for finding the nearest owner.
     function _findNearestOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)

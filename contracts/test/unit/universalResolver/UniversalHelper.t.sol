@@ -4,14 +4,32 @@ pragma solidity >=0.8.13;
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 
+import {
+    IEACGrantInitializable,
+    Grant
+} from "~src/access-control/interfaces/IEACGrantInitializable.sol";
+import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 // NOTE: most of these tests are covered by LibResolution.t.sol
 contract UniversalHelperTest is V2Fixture {
+    address userRegistryImpl;
+
     function setUp() external {
         deployV2Fixture();
+        userRegistryImpl = address(
+            new UserRegistry(labelStore, boxedRenderer, address(contractNamer))
+        );
+        trustedRegistrySet.approve(userRegistryImpl, true);
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // LibResolution Functions
+    ////////////////////////////////////////////////////////////////////////
 
     function test_findExactOwner() external {
         assertEq(universalHelper.findExactOwner(NameCoder.encode("")), address(0));
@@ -103,5 +121,63 @@ contract UniversalHelperTest is V2Fixture {
         IRegistry[] memory v = universalHelper.findRegistries(NameCoder.encode("eth"));
         assertEq(address(v[0]), address(ethRegistry));
         assertEq(address(v[1]), address(rootRegistry));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Verification Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_isTrustedRegistry() external {
+        assertTrue(universalHelper.isTrustedRegistry(rootRegistry), "root");
+        assertTrue(universalHelper.isTrustedRegistry(ethRegistry), "eth");
+
+        PermissionedRegistry permAdhoc =
+            new PermissionedRegistry(labelStore, address(this), EACBaseRolesLib.ALL_ROLES);
+        assertFalse(universalHelper.isTrustedRegistry(permAdhoc), "perm:adhoc");
+
+        assertFalse(
+            universalHelper.isTrustedRegistry(
+                IRegistry(verifiableFactory.deployProxy(address(permAdhoc), 0, ""))
+            ),
+            "perm:verified"
+        );
+
+        UserRegistry userAdhoc = new UserRegistry(labelStore, boxedRenderer, address(contractNamer));
+        assertFalse(universalHelper.isTrustedRegistry(userAdhoc), "user:adhoc");
+
+        assertTrue(universalHelper.isTrustedRegistry(_deployUserRegistry()), "user:verified:before");
+    }
+
+    function test_isEmancipatedRegistry_perm() external {
+        PermissionedRegistry r = new PermissionedRegistry(labelStore, address(this), 0);
+        assertTrue(r.isEmancipated(), "self");
+        assertFalse(universalHelper.isEmancipatedRegistry(r), "helper");
+    }
+
+    function test_isEmancipatedRegistry_user() external {
+        UserRegistry r = _deployUserRegistry();
+        assertFalse(r.isEmancipated(), "self:before");
+        assertFalse(universalHelper.isEmancipatedRegistry(r), "helper:before");
+
+        r.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this));
+        assertTrue(r.isEmancipated(), "self");
+        assertTrue(universalHelper.isEmancipatedRegistry(r), "helper");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////
+
+    function _deployUserRegistry() internal returns (UserRegistry) {
+        Grant[] memory grants = new Grant[](1);
+        grants[0] = Grant(address(this), EACBaseRolesLib.ALL_ROLES);
+        return
+            UserRegistry(
+                verifiableFactory.deployProxy(
+                    userRegistryImpl,
+                    block.number,
+                    abi.encodeCall(IEACGrantInitializable.initialize, (grants))
+                )
+            );
     }
 }

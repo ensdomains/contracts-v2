@@ -10,10 +10,13 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 import {UniversalHelper} from "~src/universalResolver/UniversalHelper.sol";
+import {BoxedURIRenderer} from "~src/registry/BoxedURIRenderer.sol";
+import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
 abstract contract V2Fixture is Test, ERC1155Holder {
@@ -24,7 +27,9 @@ abstract contract V2Fixture is Test, ERC1155Holder {
     PermissionedRegistry ethRegistry;
     GatewayProvider batchGatewayProvider;
     UniversalResolverV2 universalResolver;
+    PermissionedAddressSet trustedRegistrySet;
     UniversalHelper universalHelper;
+    BoxedURIRenderer boxedRenderer;
 
     /// @dev Role bitmaps matching README Static Deployment Permissions.
     function _rootRegistryRootRoles() internal pure returns (uint256) {
@@ -89,7 +94,16 @@ abstract contract V2Fixture is Test, ERC1155Holder {
             batchGatewayProvider,
             contractNamer
         );
-        universalHelper = new UniversalHelper(rootRegistry, contractNamer);
+        trustedRegistrySet = new PermissionedAddressSet(address(this));
+        trustedRegistrySet.approve(address(rootRegistry), true);
+        trustedRegistrySet.approve(address(ethRegistry), true);
+        universalHelper = new UniversalHelper(
+            rootRegistry,
+            verifiableFactory,
+            trustedRegistrySet,
+            contractNamer
+        );
+        boxedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));
     }
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {

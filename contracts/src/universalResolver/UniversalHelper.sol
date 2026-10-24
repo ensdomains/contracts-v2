@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {LibResolution} from "./libraries/LibResolution.sol";
 
@@ -17,16 +21,31 @@ contract UniversalHelper is DelegatedContractNamer {
     /// @notice ENSv2 root registry.
     IPermissionedRegistry public immutable ROOT_REGISTRY;
 
+    /// @notice The shared factory for verifiable deployments.
+    IVerifiableFactory public immutable VERIFIABLE_FACTORY;
+
+    /// @notice Set of trusted registry contracts and implementations.
+    IAddressSet public immutable TRUSTED_REGISTRY_SET;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
     /// @param rootRegistry The root registry.
+    /// @param verifiableFactory The VerifiableFactory.
+    /// @param trustedRegistrySet Set of trusted registry contracts and implementations.
     /// @param contractNamer Delegated contract namer.
-    constructor(IPermissionedRegistry rootRegistry, IContractNamer contractNamer)
+    constructor(
+        IPermissionedRegistry rootRegistry,
+        IVerifiableFactory verifiableFactory,
+        IAddressSet trustedRegistrySet,
+        IContractNamer contractNamer
+    )
         DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
+        VERIFIABLE_FACTORY = verifiableFactory;
+        TRUSTED_REGISTRY_SET = trustedRegistrySet;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -102,5 +121,70 @@ contract UniversalHelper is DelegatedContractNamer {
     /// @return Array of registries in label-order.
     function findRegistries(bytes calldata name) external view returns (IRegistry[] memory) {
         return LibResolution.findRegistries(ROOT_REGISTRY, name, 0);
+    }
+
+    /// @notice Find the parent registry if and only if every ancestor is trusted.
+    /// @param name The DNS-encoded name.
+    /// @return parent The parent registry or null if any ancestor was not trusted.
+    function findTrustedParentRegistry(bytes calldata name)
+        external
+        view
+        returns (IRegistry parent)
+    {
+        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, 0);
+        if (labelHash != bytes32(0)) {
+            parent = LibResolution.findQualifiedRegistry(
+                address(this),
+                this.isTrustedRegistry.selector,
+                ROOT_REGISTRY,
+                name,
+                next
+            );
+        }
+    }
+
+    /// @notice Find the parent registry if and only if every ancestor is emancipated.
+    /// @param name The DNS-encoded name.
+    /// @return parent The parent registry or null if any ancestor was not emancipated.
+    function findEmancipatedParentRegistry(bytes calldata name)
+        external
+        view
+        returns (IRegistry parent)
+    {
+        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, 0);
+        if (labelHash != bytes32(0)) {
+            parent = LibResolution.findQualifiedRegistry(
+                address(this),
+                this.isEmancipatedRegistry.selector,
+                ROOT_REGISTRY,
+                name,
+                next
+            );
+        }
+    }
+
+    /// @notice Determine if registry is trusted.  Does not check ancestory.
+    /// @param registry The registry to check.
+    /// @return `true` if registry is trusted.
+    function isTrustedRegistry(IRegistry registry) public view returns (bool) {
+        if (address(registry) == address(0)) {
+            return false;
+        }
+        if (TRUSTED_REGISTRY_SET.includes(address(registry))) {
+            return true;
+        }
+        try VERIFIABLE_FACTORY.verifyContract(address(registry)) returns (address impl) {
+            return TRUSTED_REGISTRY_SET.includes(impl);
+        } catch {
+            return false;
+        }
+    }
+
+    /// @notice Determine if registry is emancipated.  Does not check ancestory.
+    /// @param registry The registry to check.
+    /// @return `true` if registry is emancipated.
+    function isEmancipatedRegistry(IRegistry registry) public view returns (bool) {
+        return
+            isTrustedRegistry(registry) && IPermissionedRegistry(address(registry)).isEmancipated();
     }
 }
