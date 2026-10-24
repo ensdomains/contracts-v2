@@ -219,7 +219,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         returns (uint256 roleBitmap)
     {
         if ((fuses & CANNOT_CREATE_SUBDOMAIN) == 0) {
-            roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR;
+            roleBitmap |= RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_UNREGISTER;
         }
         roleBitmap |=
             RegistryRolesLib.ROLE_RENEW |
