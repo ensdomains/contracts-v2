@@ -9,13 +9,15 @@ import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
-import { parseEventLogs } from "viem/utils";
+import { isAddressEqual, parseEventLogs } from "viem/utils";
+import { ownerAddress } from "../script/migrations/fixture/config.ts";
 
 export default execute(
   async ({
     deploy,
     execute: write,
     get,
+    getOrNull,
     getV1,
     save,
     namedAccounts: { deployer },
@@ -47,7 +49,14 @@ export default execute(
       },
     );
 
-    if (migrationControllerImpl.newlyDeployed) {
+    let previousController = getOrNull<
+      (typeof Artifact_LockedMigrationController)["abi"]
+    >("LockedMigrationController");
+    if (previousController) {
+      if (migrationControllerImpl.newlyDeployed) {
+        console.warn("  -- LockedMigrationController requires upgrade!");
+      }
+    } else {
       const proxyDeployment = await write(verifiableFactory, {
         account: deployer,
         functionName: "deployProxy",
@@ -63,12 +72,12 @@ export default execute(
         eventName: "ProxyDeployed",
         logs: proxyDeployment.logs as any,
       });
-      const migrationControllerAddress = log.args.proxyAddress;
+      const controllerAddress = log.args.proxyAddress;
 
       // TODO: is this correct?
       await save("LockedMigrationController", {
         ...migrationControllerImpl,
-        address: migrationControllerAddress,
+        address: controllerAddress,
         receipt: {
           blockHash: proxyDeployment.blockHash,
           blockNumber: proxyDeployment.blockNumber,
@@ -79,10 +88,7 @@ export default execute(
       await write(ethRegistry, {
         account: deployer,
         functionName: "grantRootRoles",
-        args: [
-          DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
-          migrationControllerAddress,
-        ],
+        args: [DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT, controllerAddress],
       });
     }
   },
