@@ -4,7 +4,6 @@ pragma solidity >=0.8.13;
 import {console} from "forge-std/console.sol";
 
 import {
-    INameWrapper,
     OperationProhibited,
     CANNOT_UNWRAP,
     CAN_DO_EVERYTHING,
@@ -29,12 +28,10 @@ import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthoriz
 
 import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
-import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
 import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -48,7 +45,6 @@ import {
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
-import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 import {MockUpgradeable} from "~test/mocks/MockUpgradeable.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
@@ -88,7 +84,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(publicResolver),
             contractNamer
         );
-        
+
         migrationController = LockedMigrationController(
             verifiableFactory.deployProxy(address(migrationControllerImpl), 1, "")
         );
@@ -183,7 +179,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-     function test_implementationIsNameable_controller() external view {
+    function test_implementationIsNameable_controller() external view {
         assertTrue(migrationControllerImpl.isContractNamer(address(this)));
     }
 
