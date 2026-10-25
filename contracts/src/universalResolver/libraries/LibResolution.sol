@@ -282,10 +282,6 @@ library LibResolution {
         _findRegistries(name, offset, registries, 0);
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // Private Functions
-    ////////////////////////////////////////////////////////////////////////
-
     /// @dev Recursive function for finding the nearest owner.
     function _findNearestOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
         private

@@ -654,6 +654,16 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(universalHelper.findWrapperRegistry(name)),
             "findWrapperRegistry"
         );
+        assertEq(
+            address(subregistry),
+            address(universalHelper.findTrustedParentRegistry(NameCoder.addLabel(name, "any"))),
+            "findTrustedParentRegistry"
+        );
+        assertEq(
+            address(subregistry),
+            address(universalHelper.findEmancipatedParentRegistry(NameCoder.addLabel(name, "any"))),
+            "findEmancipatedParentRegistry"
+        );
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(ethRegistry)),
             "ROLE_REGISTRAR"
@@ -1243,6 +1253,16 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(registry3),
             address(universalHelper.findWrapperRegistry(name3)),
             "findWrapperRegistry3"
+        );
+        assertEq(
+            address(registry3),
+            address(universalHelper.findTrustedParentRegistry(NameCoder.addLabel(name3, "any"))),
+            "findTrustedParentRegistry"
+        );
+        assertEq(
+            address(registry3),
+            address(universalHelper.findEmancipatedParentRegistry(NameCoder.addLabel(name3, "any"))),
+            "findEmancipatedParentRegistry"
         );
 
         // check migrated 3LD child

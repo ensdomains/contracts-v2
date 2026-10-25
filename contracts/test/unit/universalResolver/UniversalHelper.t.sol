@@ -167,7 +167,7 @@ contract UniversalHelperTest is V2Fixture {
     }
 
     function test_findTrustedParentRegistry_subTestEth() external {
-        string memory label = "test";
+        string memory label = "test"; // arbitrary
         ethRegistry.register(
             label,
             address(this),
@@ -176,7 +176,7 @@ contract UniversalHelperTest is V2Fixture {
             EACBaseRolesLib.ALL_ROLES,
             type(uint64).max
         );
-        bytes memory name = NameCoder.addLabel(NameCoder.ethName(label), "sub");
+        bytes memory name = NameCoder.addLabel(NameCoder.ethName(label), "any"); // arbitrary
 
         assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "unset");
 

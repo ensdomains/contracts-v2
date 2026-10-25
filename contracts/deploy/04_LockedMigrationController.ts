@@ -53,7 +53,7 @@ export default execute(
         functionName: "deployProxy",
         args: [
           migrationControllerImpl.address,
-          BigInt(migrationControllerImpl.transaction.hash), // derive salt from deployment
+          BigInt(migrationControllerImpl.transaction!.hash), // derive salt from deployment (or bytecode?)
           "0x",
         ],
       });

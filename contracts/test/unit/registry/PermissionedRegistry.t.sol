@@ -1914,7 +1914,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         ForwardingReceiver r = new ForwardingReceiver(unsafe, user2);
         testOwner = address(r);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
-        // requires: _grantRoles() before _mint()
         vm.expectRevert(
             abi.encodeWithSelector(
                 IPermissionedRegistry.TransferDisallowed.selector,
@@ -1923,6 +1922,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             )
         );
         this._register();
+        // to fix:_grantRoles() before _mint()
         // uint256 tokenId = this._register();
         // assertEq(registry.getOwner(tokenId), address(user2));
     }
