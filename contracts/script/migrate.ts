@@ -55,6 +55,7 @@ import { mainnet, sepolia } from "viem/chains";
 import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
+import { Artifact_MockERC20Capped } from "generated/artifacts/MockERC20Capped.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
@@ -81,6 +82,7 @@ import {
   LOCAL_BATCH_GATEWAY_URL,
   MAINNET_DAI,
   MAINNET_USDC,
+  MOCK_USDC_DEPLOY_ARGS,
   ROLES,
   SEC_PER_DAY,
   STATUS,
@@ -7744,7 +7746,19 @@ export async function deployV2(opts: DeployV2Options) {
   }
 
   if (opts.fresh) {
-    archiveExistingDeploymentNamespace(deploymentsDir, deploymentNetwork);
+    const archive = archiveExistingDeploymentNamespace(
+      deploymentsDir,
+      deploymentNetwork,
+    );
+    // Pinned mocks only exist on public testnets; mainnet wires real tokens.
+    if (archive && chainId === sepolia.id) {
+      reusePinnedMockTokens(
+        deploymentsDir,
+        deploymentNetwork,
+        archive,
+        chainId,
+      );
+    }
   }
   // The records' addresses before the run, to tell whether it deployed anything.
   const addressesBefore = new Map(
@@ -9987,13 +10001,16 @@ function readDeploymentDeployedAt(path: string): string | undefined {
 // Moves an existing deployment namespace aside so a fresh deployment can take
 // its place. The archive is suffixed with the archived deployment's date and an
 // auto-incrementing revision, e.g. `sepolia-20260525-r1`.
-function archiveExistingDeploymentNamespace(root: string, environment: string) {
+function archiveExistingDeploymentNamespace(
+  root: string,
+  environment: string,
+): string | undefined {
   const path = join(root, environment);
-  if (!existsSync(path)) return;
+  if (!existsSync(path)) return undefined;
   const hasArtifacts = readdirSync(path).some(
     (file) => file.endsWith(".json") || file === ".chain",
   );
-  if (!hasArtifacts) return;
+  if (!hasArtifacts) return undefined;
   const deployedAt = readDeploymentDeployedAt(path) ?? new Date().toISOString();
   const stamp = deployedAt.slice(0, 10).replace(/-/g, "");
   let revision = 1;
@@ -10004,6 +10021,107 @@ function archiveExistingDeploymentNamespace(root: string, environment: string) {
   }
   renameSync(path, join(root, archive));
   console.log(`archived existing ${environment} deployment to ${archive}`);
+  return archive;
+}
+
+// Mock payment tokens are faucet contracts whose address consumers pin outside the
+// repository (the Rhinestone orchestrator whitelists Sepolia's mock USDC), so a fresh
+// deploy carries the previous namespace's token forward instead of orphaning it.
+// Rocketh only reuses an existing record whose build and constructor arguments are
+// unchanged, so a changed mock is deployed once and pinned from then on.
+const PINNED_MOCK_TOKENS = [
+  {
+    name: "MockUSDC",
+    artifact: Artifact_MockERC20Capped,
+    args: MOCK_USDC_DEPLOY_ARGS,
+  },
+] as const;
+
+/// Copies an archived namespace's pinned mock tokens into the namespace replacing it.
+/// Returns the names that were carried over.
+export function reusePinnedMockTokens(
+  root: string,
+  environment: string,
+  archive: string,
+  chainId: number,
+): string[] {
+  const target = join(root, environment);
+  const reused: string[] = [];
+  for (const { name, artifact, args } of PINNED_MOCK_TOKENS) {
+    const source = join(root, archive, `${name}.json`);
+    if (!existsSync(source)) continue;
+    const contents = readFileSync(source, "utf-8");
+    let previous: {
+      address?: string;
+      bytecode?: string;
+      argsData?: string;
+      buildInfoId?: string;
+    };
+    try {
+      previous = JSON.parse(contents) as typeof previous;
+    } catch {
+      continue;
+    }
+    if (!previous.address) continue;
+    const constructor = artifact.abi.find(
+      (item) => item.type === "constructor",
+    );
+    const argsData = constructor
+      ? encodeAbiParameters(constructor.inputs, args)
+      : "0x";
+    // Rocketh compares creation bytecode with the CBOR metadata trailer stripped,
+    // so compare the same prefix: a compiler-only change keeps the pin while any
+    // change to the code or the constructor arguments deploys a new mock.
+    const previousBytecode = previous.bytecode?.toLowerCase() ?? "";
+    const bytecode = artifact.bytecode.toLowerCase();
+    const cborLength = parseInt(previousBytecode.slice(-4), 16);
+    const sameBytecode =
+      cborLength > 0 &&
+      previousBytecode.length > cborLength * 2 &&
+      previousBytecode.slice(0, -cborLength * 2) ===
+        bytecode.slice(0, -cborLength * 2);
+    if (
+      !sameBytecode ||
+      previous.argsData?.toLowerCase() !== argsData.toLowerCase()
+    ) {
+      console.log(
+        `${name} changed since ${archive}; deploying a new one instead of reusing ${previous.address}`,
+      );
+      continue;
+    }
+    mkdirSync(target, { recursive: true });
+    // rocketh refuses to load a populated namespace without chain metadata, so the
+    // carried-over artifact needs the archived chain record beside it.
+    const chainFile = join(target, ".chain");
+    if (!existsSync(chainFile)) {
+      const archivedChainFile = join(root, archive, ".chain");
+      writeFileSync(
+        chainFile,
+        existsSync(archivedChainFile)
+          ? readFileSync(archivedChainFile)
+          : JSON.stringify({ chainId: String(chainId) }),
+      );
+    }
+    writeFileSync(join(target, `${name}.json`), contents);
+    if (previous.buildInfoId) {
+      const buildInfo = join(
+        root,
+        archive,
+        "build-info",
+        `${previous.buildInfoId}.json`,
+      );
+      if (existsSync(buildInfo)) {
+        mkdirSync(join(target, "build-info"), { recursive: true });
+        writeFileSync(
+          join(target, "build-info", `${previous.buildInfoId}.json`),
+          readFileSync(buildInfo),
+        );
+      }
+    }
+    reused.push(name);
+    console.log(`reusing ${name} at ${previous.address} from ${archive}`);
+  }
+  return reused;
 }
 
 // Minimal CLI option shapes. Commander hands us plain strings; the address and

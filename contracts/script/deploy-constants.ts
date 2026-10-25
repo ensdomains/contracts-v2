@@ -18,6 +18,20 @@ export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
 export const SEPOLIA_MOCK_USDC =
   "0x16f95D91DBa7dA3Aca778Ec053dF0FF6C6A8aA8e" as const;
 
+// Argument list for the faucet-mint mock USDC, shared by the deploy script and the
+// fresh-deploy reuse check so a redeploy can tell an identical mock from a changed
+// one. Issuance is capped because the token is mintable by anyone.
+export const MOCK_USDC_SYMBOL = "USDC";
+export const MOCK_USDC_DECIMALS = 6;
+export const MOCK_USDC_MAX_SUPPLY = 100_000_000n * 10n ** 6n;
+export const MOCK_USDC_MINT_LIMIT = 10_000n * 10n ** 6n;
+export const MOCK_USDC_DEPLOY_ARGS = [
+  MOCK_USDC_SYMBOL,
+  MOCK_USDC_DECIMALS,
+  MOCK_USDC_MAX_SUPPLY,
+  MOCK_USDC_MINT_LIMIT,
+] as const;
+
 export const RHINESTONE_INTENT_EXECUTOR =
   "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" as const;
 
