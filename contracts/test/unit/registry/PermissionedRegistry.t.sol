@@ -1634,18 +1634,46 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertTrue(registry.isEmancipated());
     }
 
-    function test_isEmancipated() external {
+    function test_isEmancipated_root() external {
         for (uint256 i; i < 64; ++i) {
+            uint256 bit = 1 << (i << 2);
             registry.__grantRoles(registry.ROOT_RESOURCE(), EACBaseRolesLib.ALL_ROLES, address(this));
             _makeEmancipated();
             assertTrue(registry.isEmancipated());
-            uint256 bit = 1 << (i << 2);
+
             registry.__grantRoles(registry.ROOT_RESOURCE(), bit, address(this));
             assertEq(
                 registry.isEmancipated(),
                 (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP & bit) == 0,
                 vm.toString(i)
             );
+        }
+    }
+
+    function test_isEmancipated_token() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+        _makeEmancipated();
+        assertTrue(registry.isEmancipated());
+        for (uint256 i; i < 32; ++i) {
+            uint256 bit = 1 << (i << 2);
+            vm.prank(testOwner);
+            registry.revokeRoles(tokenId, EACBaseRolesLib.ALL_ROLES, address(this));
+            vm.prank(testOwner);
+            registry.grantRoles(tokenId, bit, address(this));
+
+            tokenId = registry.getTokenId(tokenId);
+            if ((RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP & bit) != 0) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(
+                        IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,
+                        tokenId,
+                        testOwner
+                    )
+                );
+            }
+            vm.prank(testOwner);
+            registry.safeTransferFrom(testOwner, testOwner, tokenId, 1, "");
         }
     }
 

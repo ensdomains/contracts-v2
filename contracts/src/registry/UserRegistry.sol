@@ -6,6 +6,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {EACBaseRolesLib} from "../access-control/EnhancedAccessControl.sol";
 import {
     IEACGrantInitializable,
     Grant
@@ -96,6 +97,17 @@ contract UserRegistry is
         returns (bool allowed)
     {
         return true;
+    }
+
+    /// @inheritdoc PermissionedRegistry
+    /// @dev Override: includes `ROLE_UPGRADE` because implementation is unrestricted.
+    function isEmancipated() public view override returns (bool) {
+        return
+            ((RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP |
+                    RegistryRolesLib.ROLE_UPGRADE |
+                    RegistryRolesLib.ROLE_UPGRADE_ADMIN) &
+                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
+            0;
     }
 
     ////////////////////////////////////////////////////////////////////////
