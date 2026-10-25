@@ -7,6 +7,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
@@ -145,6 +146,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
         assertTrue(
             ERC165Checker.supportsInterface(address(proxy), type(IProxyAuthorization).interfaceId),
             "IProxyAuthorization"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(proxy), type(UUPSUpgradeable).interfaceId),
+            "UUPSUpgradeable"
         );
         assertTrue(
             ERC165Checker.supportsInterface(address(proxy), type(IEACGrantInitializable).interfaceId),

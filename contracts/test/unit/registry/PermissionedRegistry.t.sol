@@ -96,6 +96,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     ////////////////////////////////////////////////////////////////////////
 
     function test_register() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
         uint256 labelId = LibLabel.id(testLabel);
         uint256 tokenId = LibLabel.withVersion(labelId, 0);
         vm.expectEmit();
@@ -113,6 +114,8 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         emit IERC1155.TransferSingle(address(this), address(0), testOwner, tokenId, 1);
         vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
+        vm.expectEmit();
+        emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, 0, testRoles);
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
         vm.expectEmit();
