@@ -9,6 +9,8 @@ import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import { computeLockedMigrationControllerSalt } from "../script/salts.js";
+import { parseEventLogs } from "viem/utils";
 
 export default execute(
   async ({
@@ -16,6 +18,7 @@ export default execute(
     execute: write,
     get,
     getV1,
+    save,
     namedAccounts: { deployer },
   }) => {
     const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
@@ -27,19 +30,48 @@ export default execute(
     const publicResolverV2 = get<Abi_PublicResolverV2>("PublicResolverV2");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
-    const migrationController = await deploy("LockedMigrationController", {
+    const version = 0n;
+    const salt = computeLockedMigrationControllerSalt(version);
+    const migrationControllerImpl = await deploy(
+      "LockedMigrationControllerImpl",
+      {
+        account: deployer,
+        artifact: Artifact_LockedMigrationController,
+        args: [
+          nameWrapper.address,
+          graveyard.address,
+          ethRegistry.address,
+          verifiableFactory.address,
+          wrapperRegistryImpl.address,
+          publicResolverSet.address,
+          publicResolverV2.address,
+          contractNamer.address,
+        ],
+      },
+    );
+
+    const proxyDeployment = await write(verifiableFactory, {
       account: deployer,
-      artifact: Artifact_LockedMigrationController,
-      args: [
-        nameWrapper.address,
-        graveyard.address,
-        ethRegistry.address,
-        verifiableFactory.address,
-        wrapperRegistryImpl.address,
-        publicResolverSet.address,
-        publicResolverV2.address,
-        contractNamer.address,
-      ],
+      functionName: "deployProxy",
+      args: [migrationControllerImpl.address, salt, "0x"],
+    });
+
+    const [log] = parseEventLogs({
+      abi: verifiableFactory.abi,
+      eventName: "ProxyDeployed",
+      logs: proxyDeployment.logs as any,
+    });
+    const migrationControllerAddress = log.args.proxyAddress;
+
+    // TODO: is this correct?
+    await save("LockedMigrationController", {
+      ...migrationControllerImpl,
+      address: migrationControllerAddress,
+      receipt: {
+        blockHash: proxyDeployment.blockHash,
+        blockNumber: proxyDeployment.blockNumber,
+        transactionIndex: proxyDeployment.transactionIndex,
+      },
     });
 
     await write(ethRegistry, {
@@ -47,7 +79,7 @@ export default execute(
       functionName: "grantRootRoles",
       args: [
         DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
-        migrationController.address,
+        migrationControllerAddress,
       ],
     });
   },

@@ -34,4 +34,6 @@ contract MockUpgradeable is UUPSUpgradeable, IProxyAuthorization {
     function _authorizeUpgrade(address newImplementation) internal view override {
         require(upgradeTo[newImplementation]);
     }
+
+    function unique() external pure {}
 }

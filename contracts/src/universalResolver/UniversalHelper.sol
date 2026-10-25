@@ -3,9 +3,12 @@ pragma solidity 0.8.25;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
+import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {WrapperRegistryLib} from "../registry/libraries/WrapperRegistryLib.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
@@ -27,6 +30,9 @@ contract UniversalHelper is DelegatedContractNamer {
     /// @notice Set of trusted registry contracts and implementations.
     IAddressSet public immutable TRUSTED_REGISTRY_SET;
 
+    /// @notice Address of "eth" deployer for `WrapperRegistry`.
+    address public immutable ETH_WRAPPER_DEPLOYER;
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -34,11 +40,13 @@ contract UniversalHelper is DelegatedContractNamer {
     /// @param rootRegistry The root registry.
     /// @param verifiableFactory The VerifiableFactory.
     /// @param trustedRegistrySet Set of trusted registry contracts and implementations.
+    /// @param ethWrapperDeployer Address of "eth" deployer for `WrapperRegistry`.
     /// @param contractNamer Delegated contract namer.
     constructor(
         IPermissionedRegistry rootRegistry,
         IVerifiableFactory verifiableFactory,
         IAddressSet trustedRegistrySet,
+        address ethWrapperDeployer,
         IContractNamer contractNamer
     )
         DelegatedContractNamer(contractNamer)
@@ -46,6 +54,7 @@ contract UniversalHelper is DelegatedContractNamer {
         ROOT_REGISTRY = rootRegistry;
         VERIFIABLE_FACTORY = verifiableFactory;
         TRUSTED_REGISTRY_SET = trustedRegistrySet;
+        ETH_WRAPPER_DEPLOYER = ethWrapperDeployer;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -123,7 +132,7 @@ contract UniversalHelper is DelegatedContractNamer {
         return LibResolution.findRegistries(ROOT_REGISTRY, name, 0);
     }
 
-    /// @notice Find the parent registry if and only if every ancestor is trusted.
+    /// @notice Find the parent registry iff every ancestor is trusted.
     /// @param name The DNS-encoded name.
     /// @return parent The parent registry or null if any ancestor was not trusted.
     function findTrustedParentRegistry(bytes calldata name)
@@ -140,10 +149,11 @@ contract UniversalHelper is DelegatedContractNamer {
                 name,
                 next
             );
+            parent = _ensureWrapperRegistry(parent, name);
         }
     }
 
-    /// @notice Find the parent registry if and only if every ancestor is emancipated.
+    /// @notice Find the parent registry iff every ancestor is emancipated.
     /// @param name The DNS-encoded name.
     /// @return parent The parent registry or null if any ancestor was not emancipated.
     function findEmancipatedParentRegistry(bytes calldata name)
@@ -160,7 +170,18 @@ contract UniversalHelper is DelegatedContractNamer {
                 name,
                 next
             );
+            parent = _ensureWrapperRegistry(parent, name);
         }
+    }
+
+    /// @notice Compute the wrapped registry address for `name`.
+    /// @param name The DNS-encoded name.
+    /// @return The prediect
+    function computeWrapperRegistry(bytes calldata name) public view returns (IRegistry) {
+        return
+            IRegistry(
+                WrapperRegistryLib.computeAddress(VERIFIABLE_FACTORY, ETH_WRAPPER_DEPLOYER, name)
+            );
     }
 
     /// @notice Determine if registry is trusted.  Does not check ancestory.
@@ -186,5 +207,27 @@ contract UniversalHelper is DelegatedContractNamer {
     function isEmancipatedRegistry(IRegistry registry) public view returns (bool) {
         return
             isTrustedRegistry(registry) && IPermissionedRegistry(address(registry)).isEmancipated();
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev If the (verified) registry is a `WrapperRegistry`, ensure it was deployed via migration.
+    function _ensureWrapperRegistry(IRegistry registry, bytes calldata name)
+        internal
+        view
+        returns (IRegistry)
+    {
+        if (
+            ERC165Checker.supportsERC165InterfaceUnchecked(
+                address(registry),
+                type(IWrapperRegistry).interfaceId
+            ) &&
+            address(computeWrapperRegistry(name)) != address(registry)
+        ) {
+            return IRegistry(address(0));
+        }
+        return registry;
     }
 }

@@ -101,6 +101,7 @@ abstract contract V2Fixture is Test, ERC1155Holder {
             rootRegistry,
             verifiableFactory,
             trustedRegistrySet,
+            address(0),
             contractNamer
         );
         boxedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));

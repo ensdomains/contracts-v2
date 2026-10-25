@@ -267,7 +267,7 @@ library LibResolution {
         }
     }
 
-    /// @dev Find the registry if and only if every ancestor is qualified.
+    /// @dev Find the registry iff every ancestor is qualified.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name.
     /// @param offset The offset into `name` to begin the search.

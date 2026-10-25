@@ -6,34 +6,27 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 
 /// @dev Helper functions related to `WrapperRegistry`.
 library WrapperRegistryLib {
-    /// @notice Name did not match `*.eth`.
-    /// @dev Error selector: `0xe6277bc6`
-    error NotETHDescendant();
-
     /// @dev Compute `WrapperRegistry` address for a `name`.
     /// @param verifiableFactory The `VerifiableFactory`.
-    /// @param lockedMigrationController The `LockedMigrationController`.
+    /// @param ethWrapperDeployer Address of "eth" deployer for `WrapperRegistry`.
     /// @param name The DNS-encoded name.
     /// @return addr The address of the `WrapperRegistry` corresponding to `name`.
     function computeAddress(
         IVerifiableFactory verifiableFactory,
-        address lockedMigrationController,
+        address ethWrapperDeployer,
         bytes memory name
     )
         internal
         view
         returns (address addr)
     {
-        (, addr) = _computeAddress(verifiableFactory, lockedMigrationController, name, 0);
-        if (addr == address(0)) {
-            revert NotETHDescendant();
-        }
+        (, addr) = _computeAddress(verifiableFactory, ethWrapperDeployer, name, 0);
     }
 
     /// @dev Recursive function for computing the registry address.
     function _computeAddress(
         IVerifiableFactory verifiableFactory,
-        address lockedMigrationController,
+        address ethWrapperDeployer,
         bytes memory name,
         uint256 offset
     )
@@ -43,9 +36,9 @@ library WrapperRegistryLib {
     {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
         if (labelHash != bytes32(0)) {
-            (node, addr) = _computeAddress(verifiableFactory, lockedMigrationController, name, next);
+            (node, addr) = _computeAddress(verifiableFactory, ethWrapperDeployer, name, next);
             if (node == NameCoder.ETH_NODE) {
-                addr = lockedMigrationController;
+                addr = ethWrapperDeployer;
             }
             node = NameCoder.namehash(node, labelHash);
             if (addr != address(0)) {
