@@ -10,25 +10,39 @@ import {
 } from "~src/access-control/interfaces/IEACGrantInitializable.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {WrapperRegistryLib} from "~src/registry/libraries/WrapperRegistryLib.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
-import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {LibLabel} from "~src/utils/LibLabel.sol";
+import {UniversalHelper} from "~src/universalResolver/UniversalHelper.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-// NOTE: most of these tests are covered by LibResolution.t.sol
 contract UniversalHelperTest is V2Fixture {
+    address lockedMigrationController = makeAddr("LockedMigrationController");
     address userRegistryImpl;
+    UniversalHelper universalHelper;
 
     function setUp() external {
         deployV2Fixture();
+
         userRegistryImpl = address(
             new UserRegistry(labelStore, boxedRenderer, address(contractNamer))
         );
+
         trustedRegistrySet.approve(userRegistryImpl, true);
+
+        universalHelper = new UniversalHelper(
+            rootRegistry,
+            verifiableFactory,
+            trustedRegistrySet,
+            lockedMigrationController,
+            contractNamer
+        );
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // LibResolution Functions
+    // Tests covered by LibResolution.t.sol
     ////////////////////////////////////////////////////////////////////////
 
     function test_findExactOwner() external {
@@ -124,8 +138,55 @@ contract UniversalHelperTest is V2Fixture {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Tests covered by LockedMigrationController.t.sol
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_findWrapperRegistry() external view {
+        bytes memory name = NameCoder.encode("a.b.c.test.eth");
+        (address addr, ) =
+            WrapperRegistryLib.computeAddress(verifiableFactory, lockedMigrationController, name, 0);
+        assertEq(address(universalHelper.findWrapperRegistry(name)), addr);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Verification Functions
     ////////////////////////////////////////////////////////////////////////
+
+    function test_findTrustedParentRegistry_eth() external view {
+        assertEq(
+            address(universalHelper.findTrustedParentRegistry(NameCoder.encode("eth"))),
+            address(rootRegistry)
+        );
+    }
+
+    function test_findTrustedParentRegistry_testEth() external view {
+        assertEq(
+            address(universalHelper.findTrustedParentRegistry(NameCoder.encode("test.eth"))),
+            address(ethRegistry)
+        );
+    }
+
+    function test_findTrustedParentRegistry_subTestEth() external {
+        string memory label = "test";
+        ethRegistry.register(
+            label,
+            address(this),
+            IRegistry(address(0)),
+            address(0),
+            EACBaseRolesLib.ALL_ROLES,
+            type(uint64).max
+        );
+        bytes memory name = NameCoder.addLabel(NameCoder.ethName(label), "sub");
+
+        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "unset");
+
+        IRegistry valid = _deployUserRegistry();
+        ethRegistry.setSubregistry(LibLabel.id(label), valid);
+        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(valid), "valid");
+
+        ethRegistry.setSubregistry(LibLabel.id(label), IRegistry(makeAddr("invalid")));
+        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "invalid");
+    }
 
     function test_isTrustedRegistry() external {
         assertTrue(universalHelper.isTrustedRegistry(rootRegistry), "root");

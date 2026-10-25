@@ -10,21 +10,9 @@ library WrapperRegistryLib {
     /// @param verifiableFactory The `VerifiableFactory`.
     /// @param ethWrapperDeployer Address of "eth" deployer for `WrapperRegistry`.
     /// @param name The DNS-encoded name.
-    /// @return addr The address of the `WrapperRegistry` corresponding to `name`.
+    /// @return addr The address of the `WrapperRegistry` or null if `name` doesn't match `*.eth`.
+    /// @return node The namehash of `name`.
     function computeAddress(
-        IVerifiableFactory verifiableFactory,
-        address ethWrapperDeployer,
-        bytes memory name
-    )
-        internal
-        view
-        returns (address addr)
-    {
-        (, addr) = _computeAddress(verifiableFactory, ethWrapperDeployer, name, 0);
-    }
-
-    /// @dev Recursive function for computing the registry address.
-    function _computeAddress(
         IVerifiableFactory verifiableFactory,
         address ethWrapperDeployer,
         bytes memory name,
@@ -32,11 +20,11 @@ library WrapperRegistryLib {
     )
         internal
         view
-        returns (bytes32 node, address addr)
+        returns (address addr, bytes32 node)
     {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
         if (labelHash != bytes32(0)) {
-            (node, addr) = _computeAddress(verifiableFactory, ethWrapperDeployer, name, next);
+            (addr, node) = computeAddress(verifiableFactory, ethWrapperDeployer, name, next);
             if (node == NameCoder.ETH_NODE) {
                 addr = ethWrapperDeployer;
             }

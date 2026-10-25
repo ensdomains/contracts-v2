@@ -14,7 +14,6 @@ import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
-import {UniversalHelper} from "~src/universalResolver/UniversalHelper.sol";
 import {BoxedURIRenderer} from "~src/registry/BoxedURIRenderer.sol";
 import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
 
@@ -28,7 +27,6 @@ abstract contract V2Fixture is Test, ERC1155Holder {
     GatewayProvider batchGatewayProvider;
     UniversalResolverV2 universalResolver;
     PermissionedAddressSet trustedRegistrySet;
-    UniversalHelper universalHelper;
     BoxedURIRenderer boxedRenderer;
 
     /// @dev Role bitmaps matching README Static Deployment Permissions.
@@ -97,13 +95,6 @@ abstract contract V2Fixture is Test, ERC1155Holder {
         trustedRegistrySet = new PermissionedAddressSet(address(this));
         trustedRegistrySet.approve(address(rootRegistry), true);
         trustedRegistrySet.approve(address(ethRegistry), true);
-        universalHelper = new UniversalHelper(
-            rootRegistry,
-            verifiableFactory,
-            trustedRegistrySet,
-            address(0),
-            contractNamer
-        );
         boxedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));
     }
 

@@ -142,14 +142,7 @@ contract UniversalHelper is DelegatedContractNamer {
     {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, 0);
         if (labelHash != bytes32(0)) {
-            parent = LibResolution.findQualifiedRegistry(
-                address(this),
-                this.isTrustedRegistry.selector,
-                ROOT_REGISTRY,
-                name,
-                next
-            );
-            parent = _ensureWrapperRegistry(parent, name);
+            parent = _findQualifiedRegistry(isTrustedRegistry, name, next);
         }
     }
 
@@ -163,28 +156,20 @@ contract UniversalHelper is DelegatedContractNamer {
     {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, 0);
         if (labelHash != bytes32(0)) {
-            parent = LibResolution.findQualifiedRegistry(
-                address(this),
-                this.isEmancipatedRegistry.selector,
-                ROOT_REGISTRY,
-                name,
-                next
-            );
-            parent = _ensureWrapperRegistry(parent, name);
+            parent = _findQualifiedRegistry(isEmancipatedRegistry, name, next);
         }
     }
 
-    /// @notice Compute the wrapped registry address for `name`.
+    /// @notice Find the expected wrapped registry for `name`.
     /// @param name The DNS-encoded name.
-    /// @return The prediect
-    function computeWrapperRegistry(bytes calldata name) public view returns (IRegistry) {
-        return
-            IRegistry(
-                WrapperRegistryLib.computeAddress(VERIFIABLE_FACTORY, ETH_WRAPPER_DEPLOYER, name)
-            );
+    /// @return The expected wrapper registry (may not exist).
+    function findWrapperRegistry(bytes calldata name) external view returns (IWrapperRegistry) {
+        (address addr, ) =
+            WrapperRegistryLib.computeAddress(VERIFIABLE_FACTORY, ETH_WRAPPER_DEPLOYER, name, 0);
+        return IWrapperRegistry(addr);
     }
 
-    /// @notice Determine if registry is trusted.  Does not check ancestory.
+    /// @notice Determine if registry implementation is trusted.  Does not check ancestory.
     /// @param registry The registry to check.
     /// @return `true` if registry is trusted.
     function isTrustedRegistry(IRegistry registry) public view returns (bool) {
@@ -213,21 +198,76 @@ contract UniversalHelper is DelegatedContractNamer {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev If the (verified) registry is a `WrapperRegistry`, ensure it was deployed via migration.
-    function _ensureWrapperRegistry(IRegistry registry, bytes calldata name)
+    /// @dev Find the registry iff every ancestor is qualified without checking wrapper.
+    /// @param predicate Function for testing if a registry is qualified.
+    /// @param name The DNS-encoded name.
+    /// @param offset The offset into `name` to start qualifying.
+    /// @return registry The registry or null if any ancestor was not qualified.
+    function _findQualifiedRegistry(
+        function(IRegistry) view returns(bool) predicate,
+        bytes memory name,
+        uint256 offset
+    )
         internal
         view
-        returns (IRegistry)
+        returns (IRegistry registry)
     {
-        if (
-            ERC165Checker.supportsERC165InterfaceUnchecked(
-                address(registry),
-                type(IWrapperRegistry).interfaceId
-            ) &&
-            address(computeWrapperRegistry(name)) != address(registry)
-        ) {
-            return IRegistry(address(0));
+        uint256 wrapperOffset;
+        IRegistry nearestWrapper;
+        (registry, nearestWrapper, wrapperOffset) = _findQualifiedRegistryInner(
+            predicate,
+            name,
+            offset
+        );
+        if (address(nearestWrapper) != address(0)) {
+            (address addr, ) =
+                WrapperRegistryLib.computeAddress(
+                    VERIFIABLE_FACTORY,
+                    ETH_WRAPPER_DEPLOYER,
+                    name,
+                    wrapperOffset
+                );
+            if (address(nearestWrapper) != address(addr)) {
+                delete registry;
+            }
         }
-        return registry;
+    }
+
+    /// @dev Recursive function for finding the qualified registry.
+    function _findQualifiedRegistryInner(
+        function(IRegistry) view returns(bool) predicate,
+        bytes memory name,
+        uint256 offset
+    )
+        internal
+        view
+        returns (IRegistry registry, IRegistry nearestWrapper, uint256 wrapperOffset)
+    {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        if (bytes(label).length == 0) {
+            registry = ROOT_REGISTRY;
+        } else {
+            (registry, nearestWrapper, wrapperOffset) = _findQualifiedRegistryInner(
+                predicate,
+                name,
+                next
+            );
+            if (address(registry) != address(0)) {
+                registry = LibResolution.getSubregistry(registry, label);
+                if (predicate(registry)) {
+                    if (
+                        ERC165Checker.supportsERC165InterfaceUnchecked(
+                            address(registry),
+                            type(IWrapperRegistry).interfaceId
+                        )
+                    ) {
+                        nearestWrapper = registry; // remember
+                        wrapperOffset = offset;
+                    }
+                } else {
+                    delete registry;
+                }
+            }
+        }
     }
 }

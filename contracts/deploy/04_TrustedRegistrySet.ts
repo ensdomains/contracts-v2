@@ -52,7 +52,7 @@ export default execute(
     }
   },
   {
-    tags: ["TrustedRegistrySet", "migration:phase1:deploy-v2", "v2"],
+    tags: ["TrustedRegistrySet", "v2"],
     dependencies: [...NAMES],
   },
 );

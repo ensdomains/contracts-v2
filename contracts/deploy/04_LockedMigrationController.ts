@@ -9,7 +9,6 @@ import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
-import { computeLockedMigrationControllerSalt } from "../script/salts.js";
 import { parseEventLogs } from "viem/utils";
 
 export default execute(
@@ -30,8 +29,6 @@ export default execute(
     const publicResolverV2 = get<Abi_PublicResolverV2>("PublicResolverV2");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
-    const version = 0n;
-    const salt = computeLockedMigrationControllerSalt(version);
     const migrationControllerImpl = await deploy(
       "LockedMigrationControllerImpl",
       {
@@ -50,38 +47,44 @@ export default execute(
       },
     );
 
-    const proxyDeployment = await write(verifiableFactory, {
-      account: deployer,
-      functionName: "deployProxy",
-      args: [migrationControllerImpl.address, salt, "0x"],
-    });
+    if (migrationControllerImpl.newlyDeployed) {
+      const proxyDeployment = await write(verifiableFactory, {
+        account: deployer,
+        functionName: "deployProxy",
+        args: [
+          migrationControllerImpl.address,
+          BigInt(migrationControllerImpl.transaction.hash), // derive salt from deployment
+          "0x",
+        ],
+      });
 
-    const [log] = parseEventLogs({
-      abi: verifiableFactory.abi,
-      eventName: "ProxyDeployed",
-      logs: proxyDeployment.logs as any,
-    });
-    const migrationControllerAddress = log.args.proxyAddress;
+      const [log] = parseEventLogs({
+        abi: verifiableFactory.abi,
+        eventName: "ProxyDeployed",
+        logs: proxyDeployment.logs as any,
+      });
+      const migrationControllerAddress = log.args.proxyAddress;
 
-    // TODO: is this correct?
-    await save("LockedMigrationController", {
-      ...migrationControllerImpl,
-      address: migrationControllerAddress,
-      receipt: {
-        blockHash: proxyDeployment.blockHash,
-        blockNumber: proxyDeployment.blockNumber,
-        transactionIndex: proxyDeployment.transactionIndex,
-      },
-    });
+      // TODO: is this correct?
+      await save("LockedMigrationController", {
+        ...migrationControllerImpl,
+        address: migrationControllerAddress,
+        receipt: {
+          blockHash: proxyDeployment.blockHash,
+          blockNumber: proxyDeployment.blockNumber,
+          transactionIndex: proxyDeployment.transactionIndex,
+        },
+      });
 
-    await write(ethRegistry, {
-      account: deployer,
-      functionName: "grantRootRoles",
-      args: [
-        DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
-        migrationControllerAddress,
-      ],
-    });
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "grantRootRoles",
+        args: [
+          DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+          migrationControllerAddress,
+        ],
+      });
+    }
   },
   {
     tags: ["LockedMigrationController", "migration:phase1:deploy-v2", "v2"],
