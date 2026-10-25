@@ -207,18 +207,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_adhocInitialize_eth() external {
-        bytes32 node = NameCoder.ETH_NODE;
-        verifiableFactory.deployProxy(
-            address(wrapperRegistryImpl),
-            uint256(node),
-            abi.encodeCall(
-                IWrapperRegistryInitializable.initialize,
-                (NameCoder.ETH_NODE, ethRegistry)
-            )
-        );
-    }
-
     function test_adhocInitialize_notWrapped() external {
         bytes32 node = bytes32(uint256(1));
         vm.expectRevert(abi.encodeWithSelector(LibMigration.NameNotLocked.selector, node));
@@ -237,6 +225,45 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             0,
             abi.encodeCall(IWrapperRegistryInitializable.initialize, (node, ethRegistry))
+        );
+    }
+
+    function test_adhocInitialize_eth() external {
+        bytes32 node = NameCoder.ETH_NODE;
+        address registry =
+            verifiableFactory.deployProxy(
+                address(wrapperRegistryImpl),
+                uint256(node),
+                abi.encodeCall(
+                    IWrapperRegistryInitializable.initialize,
+                    (NameCoder.ETH_NODE, ethRegistry)
+                )
+            );
+
+        ethRegistry.register(
+            testLabel,
+            testOwner,
+            IRegistry(registry),
+            address(0),
+            0,
+            type(uint64).max
+        );
+        bytes memory name = NameCoder.ethName(testLabel);
+        assertEq(address(universalHelper.findExactRegistry(name)), registry, "findExactRegistry");
+        assertNotEq(
+            address(universalHelper.findWrapperRegistry(name)),
+            registry,
+            "findWrapperRegistry"
+        );
+        assertEq(
+            address(universalHelper.findTrustedParentRegistry(NameCoder.addLabel(name, "any"))),
+            address(0),
+            "findTrustedParentRegistry"
+        );
+        assertEq(
+            address(universalHelper.findEmancipatedParentRegistry(NameCoder.addLabel(name, "any"))),
+            address(0),
+            "findEmancipatedParentRegistry"
         );
     }
 
@@ -532,18 +559,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
 
         assertTrue(ethRegistry.hasRoles(tokenIdV1, RegistryRolesLib.ROLE_WAS_RESERVED, testOwner));
-    }
-
-    function test_findWrapperRegistry_root() external view {
-        assertEq(address(universalHelper.findWrapperRegistry(NameCoder.encode(""))), address(0));
-    }
-
-    function test_findWrapperRegistry_eth() external view {
-        assertEq(address(universalHelper.findWrapperRegistry(NameCoder.encode("eth"))), address(0));
-    }
-
-    function test_findWrapperRegistry_notEth() external view {
-        assertEq(address(universalHelper.findWrapperRegistry(NameCoder.encode("__dne"))), address(0));
     }
 
     function test_migrate() external {

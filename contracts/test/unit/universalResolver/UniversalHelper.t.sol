@@ -138,10 +138,22 @@ contract UniversalHelperTest is V2Fixture {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Tests covered by LockedMigrationController.t.sol
+    // Additional tests covered by LockedMigrationController.t.sol
     ////////////////////////////////////////////////////////////////////////
 
-    function test_findWrapperRegistry() external view {
+    function test_findWrapperRegistry_root() external view {
+        assertEq(address(universalHelper.findWrapperRegistry(NameCoder.encode(""))), address(0));
+    }
+
+    function test_findWrapperRegistry_eth() external view {
+        assertEq(address(universalHelper.findWrapperRegistry(NameCoder.encode("eth"))), address(0));
+    }
+
+    function test_findWrapperRegistry_notEth() external view {
+        assertEq(address(universalHelper.findWrapperRegistry(NameCoder.encode("__dne"))), address(0));
+    }
+
+    function test_findWrapperRegistry_ethDescendant() external view {
         bytes memory name = NameCoder.encode("a.b.c.test.eth");
         (address addr, ) =
             WrapperRegistryLib.computeAddress(verifiableFactory, lockedMigrationController, name, 0);
@@ -151,42 +163,6 @@ contract UniversalHelperTest is V2Fixture {
     ////////////////////////////////////////////////////////////////////////
     // Verification Functions
     ////////////////////////////////////////////////////////////////////////
-
-    function test_findTrustedParentRegistry_eth() external view {
-        assertEq(
-            address(universalHelper.findTrustedParentRegistry(NameCoder.encode("eth"))),
-            address(rootRegistry)
-        );
-    }
-
-    function test_findTrustedParentRegistry_testEth() external view {
-        assertEq(
-            address(universalHelper.findTrustedParentRegistry(NameCoder.encode("test.eth"))),
-            address(ethRegistry)
-        );
-    }
-
-    function test_findTrustedParentRegistry_subTestEth() external {
-        string memory label = "test"; // arbitrary
-        ethRegistry.register(
-            label,
-            address(this),
-            IRegistry(address(0)),
-            address(0),
-            EACBaseRolesLib.ALL_ROLES,
-            type(uint64).max
-        );
-        bytes memory name = NameCoder.addLabel(NameCoder.ethName(label), "any"); // arbitrary
-
-        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "unset");
-
-        IRegistry valid = _deployUserRegistry();
-        ethRegistry.setSubregistry(LibLabel.id(label), valid);
-        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(valid), "valid");
-
-        ethRegistry.setSubregistry(LibLabel.id(label), IRegistry(makeAddr("invalid")));
-        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "invalid");
-    }
 
     function test_isTrustedRegistry() external {
         assertTrue(universalHelper.isTrustedRegistry(rootRegistry), "root");
@@ -209,6 +185,54 @@ contract UniversalHelperTest is V2Fixture {
         assertTrue(universalHelper.isTrustedRegistry(_deployUserRegistry()), "user:verified:before");
     }
 
+    function test_findTrustedParentRegistry_notEth() external view {
+        assertEq(
+            address(universalHelper.findTrustedParentRegistry(NameCoder.encode("__dne"))),
+            address(rootRegistry)
+        );
+    }
+
+    function test_findTrustedParentRegistry_eth() external view {
+        assertEq(
+            address(universalHelper.findTrustedParentRegistry(NameCoder.encode("eth"))),
+            address(rootRegistry)
+        );
+    }
+
+    function test_findTrustedParentRegistry_eth2LD() external view {
+        assertEq(
+            address(universalHelper.findTrustedParentRegistry(NameCoder.encode("test.eth"))),
+            address(ethRegistry)
+        );
+    }
+
+    function test_findTrustedParentRegistry_eth3LD() external {
+        string memory label = "test"; // arbitrary
+        ethRegistry.register(
+            label,
+            address(this),
+            IRegistry(address(0)),
+            address(0),
+            EACBaseRolesLib.ALL_ROLES,
+            type(uint64).max
+        );
+        bytes memory name = NameCoder.addLabel(NameCoder.ethName(label), "any"); // arbitrary
+
+        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "unset");
+
+        IRegistry valid = _deployUserRegistry();
+        ethRegistry.setSubregistry(LibLabel.id(label), valid);
+        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(valid), "valid");
+
+        ethRegistry.setSubregistry(LibLabel.id(label), IRegistry(address(1)));
+        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "invalid");
+
+        IRegistry adhoc =
+            new PermissionedRegistry(labelStore, address(this), EACBaseRolesLib.ALL_ROLES);
+        ethRegistry.setSubregistry(LibLabel.id(label), adhoc);
+        assertEq(address(universalHelper.findTrustedParentRegistry(name)), address(0), "adhoc");
+    }
+
     function test_isEmancipatedRegistry_perm() external {
         PermissionedRegistry r = new PermissionedRegistry(labelStore, address(this), 0);
         assertTrue(r.isEmancipated(), "self");
@@ -223,6 +247,63 @@ contract UniversalHelperTest is V2Fixture {
         r.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this));
         assertTrue(r.isEmancipated(), "self");
         assertTrue(universalHelper.isEmancipatedRegistry(r), "helper");
+    }
+
+    function test_findEmancipatedParentRegistry_notEth() external view {
+        assertEq(
+            address(universalHelper.findEmancipatedParentRegistry(NameCoder.encode("__dne"))),
+            address(rootRegistry)
+        );
+    }
+
+    function test_findEmancipatedParentRegistry_eth() external view {
+        assertEq(
+            address(universalHelper.findEmancipatedParentRegistry(NameCoder.encode("eth"))),
+            address(rootRegistry)
+        );
+    }
+
+    function test_findEmancipatedParentRegistry_eth2LD() external view {
+        assertEq(
+            address(universalHelper.findEmancipatedParentRegistry(NameCoder.ethName("test"))),
+            address(ethRegistry)
+        );
+    }
+
+    function test_findEmancipatedParentRegistry_eth3LD() external {
+        string memory label = "test"; // arbitrary
+        ethRegistry.register(
+            label,
+            address(this),
+            IRegistry(address(0)),
+            address(0),
+            EACBaseRolesLib.ALL_ROLES,
+            type(uint64).max
+        );
+        bytes memory name = NameCoder.addLabel(NameCoder.ethName(label), "any"); // arbitrary
+
+        assertEq(address(universalHelper.findEmancipatedParentRegistry(name)), address(0), "unset");
+
+        UserRegistry valid = _deployUserRegistry();
+        ethRegistry.setSubregistry(LibLabel.id(label), valid);
+        assertFalse(valid.isEmancipated(), "valid:!emancipated");
+        assertEq(address(universalHelper.findEmancipatedParentRegistry(name)), address(0), "valid");
+
+        valid.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this));
+        assertTrue(valid.isEmancipated(), "valid:emancipated");
+        assertEq(
+            address(universalHelper.findEmancipatedParentRegistry(name)),
+            address(valid),
+            "valid2"
+        );
+
+        ethRegistry.setSubregistry(LibLabel.id(label), IRegistry(address(1)));
+        assertEq(address(universalHelper.findEmancipatedParentRegistry(name)), address(0), "invalid");
+
+        PermissionedRegistry adhoc = new PermissionedRegistry(labelStore, address(this), 0);
+        assertTrue(adhoc.isEmancipated(), "adhoc:emancipated");
+        ethRegistry.setSubregistry(LibLabel.id(label), adhoc);
+        assertEq(address(universalHelper.findEmancipatedParentRegistry(name)), address(0), "adhoc");
     }
 
     ////////////////////////////////////////////////////////////////////////

@@ -1934,7 +1934,19 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._register();
         vm.prank(testOwner);
         registry.unsafeTransfer(address(r), tokenId, "");
-        assertEq(registry.getOwner(tokenId), address(user2));
+        assertEq(registry.getOwner(tokenId), user2);
+        assertEq(registry.roles(tokenId, user2), testRoles, "roles");
+    }
+
+    function test_forwardingReceiver_transferReflect(bool unsafe) external {
+        _makeEmancipated();
+        ForwardingReceiver r = new ForwardingReceiver(unsafe, testOwner);
+        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        uint256 tokenId = this._register();
+        vm.prank(testOwner);
+        registry.unsafeTransfer(address(r), tokenId, "");
+        assertEq(registry.getOwner(tokenId), testOwner, "owner");
+        assertEq(registry.roles(tokenId, testOwner), testRoles, "roles");
     }
 
     ////////////////////////////////////////////////////////////////////////

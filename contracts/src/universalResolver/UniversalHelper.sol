@@ -177,10 +177,10 @@ contract UniversalHelper is DelegatedContractNamer {
             return false;
         }
         if (TRUSTED_REGISTRY_SET.includes(address(registry))) {
-            return true;
+            return true; // trusted deployment
         }
         try VERIFIABLE_FACTORY.verifyContract(address(registry)) returns (address impl) {
-            return TRUSTED_REGISTRY_SET.includes(impl);
+            return TRUSTED_REGISTRY_SET.includes(impl); // trusted implementation
         } catch {
             return false;
         }
@@ -198,7 +198,8 @@ contract UniversalHelper is DelegatedContractNamer {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Find the registry iff every ancestor is qualified without checking wrapper.
+    /// @dev Find the registry iff every ancestor is qualified without checking the nearest wrapper.
+    ///      Assumes root registry is qualified.
     /// @param predicate Function for testing if a registry is qualified.
     /// @param name The DNS-encoded name.
     /// @param offset The offset into `name` to start qualifying.
