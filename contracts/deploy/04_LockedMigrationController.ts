@@ -9,18 +9,15 @@ import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
-import { isAddressEqual, parseEventLogs } from "viem/utils";
-import { ownerAddress } from "../script/migrations/fixture/config.ts";
 
 export default execute(
   async ({
-    deploy,
+    deployViaProxy,
     execute: write,
     get,
-    getOrNull,
     getV1,
-    save,
-    namedAccounts: { deployer },
+    read,
+    namedAccounts: { deployer, owner },
   }) => {
     const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
     const graveyard = get<Abi_Graveyard>("Graveyard");
@@ -31,8 +28,8 @@ export default execute(
     const publicResolverV2 = get<Abi_PublicResolverV2>("PublicResolverV2");
     const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
-    const migrationControllerImpl = await deploy(
-      "LockedMigrationControllerImpl",
+    const lmc = await deployViaProxy(
+      "LockedMigrationController",
       {
         account: deployer,
         artifact: Artifact_LockedMigrationController,
@@ -47,49 +44,35 @@ export default execute(
           contractNamer.address,
         ],
       },
+      {
+        proxyContract: "ERC173Proxy",
+        upgradeIndex: 0,
+        owner,
+      },
     );
 
-    let previousController = getOrNull<
-      (typeof Artifact_LockedMigrationController)["abi"]
-    >("LockedMigrationController");
-    if (previousController) {
-      if (migrationControllerImpl.newlyDeployed) {
-        console.warn("  -- LockedMigrationController requires upgrade!");
+    const controllerRoles = DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT;
+    const proxyHasGrant = await read(ethRegistry, {
+      functionName: "hasRootRoles",
+      args: [controllerRoles, lmc.address],
+    });
+    if (!proxyHasGrant) {
+      const adminRoles = (controllerRoles | (controllerRoles >> 128n)) << 128n;
+      const deployerCanGrant = await read(ethRegistry, {
+        functionName: "hasRootRoles",
+        args: [adminRoles, deployer],
+      });
+      if (deployerCanGrant) {
+        await write(ethRegistry, {
+          account: deployer,
+          functionName: "grantRootRoles",
+          args: [controllerRoles, lmc.address],
+        });
+      } else {
+        console.warn(
+          `  -- Warn: LockedMigrationController requires root roles`,
+        );
       }
-    } else {
-      const proxyDeployment = await write(verifiableFactory, {
-        account: deployer,
-        functionName: "deployProxy",
-        args: [
-          migrationControllerImpl.address,
-          BigInt(migrationControllerImpl.transaction!.hash), // derive salt from deployment (or bytecode?)
-          "0x",
-        ],
-      });
-
-      const [log] = parseEventLogs({
-        abi: verifiableFactory.abi,
-        eventName: "ProxyDeployed",
-        logs: proxyDeployment.logs as any,
-      });
-      const controllerAddress = log.args.proxyAddress;
-
-      // TODO: is this correct?
-      await save("LockedMigrationController", {
-        ...migrationControllerImpl,
-        address: controllerAddress,
-        receipt: {
-          blockHash: proxyDeployment.blockHash,
-          blockNumber: proxyDeployment.blockNumber,
-          transactionIndex: proxyDeployment.transactionIndex,
-        },
-      });
-
-      await write(ethRegistry, {
-        account: deployer,
-        functionName: "grantRootRoles",
-        args: [DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT, controllerAddress],
-      });
     }
   },
   {

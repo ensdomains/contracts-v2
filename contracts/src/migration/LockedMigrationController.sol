@@ -3,14 +3,10 @@ pragma solidity 0.8.25;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
@@ -23,12 +19,7 @@ import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 /// Assumes premigration has `RESERVED` existing ENSv1 names.
 /// Requires `ROLE_REGISTER_RESERVED` on .eth registry to perform migration.
 ///
-contract LockedMigrationController is
-    LockedWrapperReceiver,
-    DelegatedContractNamer,
-    UUPSUpgradeable,
-    IProxyAuthorization
-{
+contract LockedMigrationController is LockedWrapperReceiver, DelegatedContractNamer {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -79,28 +70,12 @@ contract LockedMigrationController is
         override(AbstractWrapperReceiver, DelegatedContractNamer)
         returns (bool)
     {
-        return
-            interfaceId == type(UUPSUpgradeable).interfaceId ||
-            interfaceId == type(IProxyAuthorization).interfaceId ||
-            super.supportsInterface(interfaceId);
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `false` as this is the first implementation.
-    function canUpgradeFrom(
-        address /* previousImplementation */
-    )
-        external
-        pure
-        virtual
-        override
-        returns (bool allowed)
-    {}
 
     /// @notice Returns the DNS-encoded name for "eth".
     function getWrappedNode() public pure override returns (bytes32) {
@@ -133,22 +108,6 @@ contract LockedMigrationController is
                 roleBitmap,
                 0 // use reserved expiry
             ); // reverts if not RESERVED
-    }
-
-    /// @dev Restricts UUPS upgrades to accounts holding the `ROLE_REGISTER_RESERVED_ADMIN`
-    ///      on the `ETHRegistry` root resource.
-    /// @param {newImplementation} Ignored.
-    function _authorizeUpgrade(
-        address /*newImplementation*/
-    )
-        internal
-        view
-        override
-    {
-        uint256 roleBitmap = RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN;
-        if (!ETH_REGISTRY.hasRootRoles(roleBitmap, msg.sender)) {
-            revert IEnhancedAccessControl.EACUnauthorizedAccountRoles(0, roleBitmap, msg.sender);
-        }
     }
 
     /// @inheritdoc LockedWrapperReceiver

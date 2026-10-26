@@ -50,7 +50,6 @@ import {MockUpgradeable} from "~test/mocks/MockUpgradeable.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
-    LockedMigrationController migrationControllerImpl;
     LockedMigrationController migrationController;
     PublicResolverV2 publicResolver;
     WrapperRegistry wrapperRegistryImpl;
@@ -77,7 +76,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         trustedRegistrySet.approve(address(wrapperRegistryImpl), true);
 
-        migrationControllerImpl = new LockedMigrationController(
+        migrationController = new LockedMigrationController(
             nameWrapper,
             address(graveyard),
             ethRegistry,
@@ -86,10 +85,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             publicResolverSet,
             address(publicResolver),
             contractNamer
-        );
-
-        migrationController = LockedMigrationController(
-            verifiableFactory.deployProxy(address(migrationControllerImpl), 1, "")
         );
 
         ethRegistry.grantRootRoles(
@@ -150,20 +145,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "IERC1155Receiver"
         );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(migrationController),
-                type(IProxyAuthorization).interfaceId
-            ),
-            "IProxyAuthorization"
-        );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(migrationController),
-                type(UUPSUpgradeable).interfaceId
-            ),
-            "UUPSUpgradeable"
-        );
     }
 
     function test_supportsInterface_registry() external view {
@@ -184,17 +165,27 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         assertTrue(
             ERC165Checker.supportsInterface(
                 address(wrapperRegistryImpl),
+                type(UUPSUpgradeable).interfaceId
+            ),
+            "UUPSUpgradeable"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(wrapperRegistryImpl),
+                type(IProxyAuthorization).interfaceId
+            ),
+            "IProxyAuthorization"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(
+                address(wrapperRegistryImpl),
                 type(IWrapperRegistryInitializable).interfaceId
             ),
             "IWrapperRegistryInitializable"
         );
     }
 
-    function test_implementationIsNameable_controller() external view {
-        assertTrue(migrationControllerImpl.isContractNamer(address(this)));
-    }
-
-    function test_implementationIsNameable_registry() external view {
+    function test_implementationIsNameable() external view {
         assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
@@ -267,39 +258,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_canUpgradeFrom_controller_rejectsAll() external view {
-        assertFalse(migrationControllerImpl.canUpgradeFrom(address(0)), "zero");
-        assertFalse(migrationControllerImpl.canUpgradeFrom(address(migrationControllerImpl)), "self");
-    }
-
-    function test_upgradeToAndCall_controller() external {
-        MockUpgradeable impl = new MockUpgradeable();
-        impl.setUpgradeFrom(address(migrationControllerImpl), true);
-        migrationController.upgradeToAndCall(address(impl), "");
-        MockUpgradeable(address(migrationController)).unique();
-    }
-
-    function test_upgradeToAndCall_controller_notAuthorized() external {
-        MockUpgradeable impl = new MockUpgradeable();
-        impl.setUpgradeFrom(address(migrationControllerImpl), true);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                0,
-                RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN,
-                actor
-            )
-        );
-        vm.prank(actor);
-        migrationController.upgradeToAndCall(address(impl), "");
-    }
-
-    function test_canUpgradeFrom_registry_rejectsAll() external view {
+    function test_canUpgradeFrom_rejectsAll() external view {
         assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(0)), "zero");
         assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(wrapperRegistryImpl)), "self");
     }
 
-    function test_upgradeToAndCall_registry_rejectsAll() external {
+    function test_upgradeToAndCall_rejectsAll() external {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         MockUpgradeable impl = new MockUpgradeable();
         MockUpgradeable c = MockUpgradeable(verifiableFactory.deployProxy(address(impl), 0, ""));
@@ -321,7 +285,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_upgradeToAndCall_registry_revertsForUnapprovedTarget() external {
+    function test_upgradeToAndCall_revertsForUnapprovedTarget() external {
         WrapperRegistry registry = _migrateAndGetWrapperRegistry();
         MockUpgradeable impl = new MockUpgradeable();
         impl.setUpgradeFrom(address(wrapperRegistryImpl), true);
@@ -332,7 +296,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry.upgradeToAndCall(address(impl), "");
     }
 
-    function test_upgradeToAndCall_registry_allowsApprovedTarget() external {
+    function test_upgradeToAndCall_allowsApprovedTarget() external {
         WrapperRegistry registry = _migrateAndGetWrapperRegistry();
         MockUpgradeable impl = new MockUpgradeable();
         impl.setUpgradeFrom(address(wrapperRegistryImpl), true);
@@ -343,7 +307,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         MockUpgradeable(address(registry)).unique();
     }
 
-    function test_upgradeToAndCall_registry_requiresUpgradeRole() external {
+    function test_upgradeToAndCall_requiresUpgradeRole() external {
         WrapperRegistry registry = _migrateAndGetWrapperRegistry();
         MockUpgradeable impl = new MockUpgradeable();
         impl.setUpgradeFrom(address(wrapperRegistryImpl), true);
