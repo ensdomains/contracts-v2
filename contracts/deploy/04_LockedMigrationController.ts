@@ -1,4 +1,5 @@
 import { execute } from "@rocketh";
+import { encodeFunctionData, isAddressEqual, parseEventLogs } from "viem/utils";
 import type { Abi_INameWrapper } from "generated/abis/INameWrapper.js";
 import type { Abi_Graveyard } from "generated/abis/Graveyard.js";
 import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
@@ -6,17 +7,9 @@ import type { Abi_IVerifiableFactory } from "generated/abis/IVerifiableFactory.j
 import type { Abi_WrapperRegistry } from "generated/abis/WrapperRegistry.js";
 import type { Abi_IAddressSet } from "generated/abis/IAddressSet.js";
 import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
-import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
-import { DEPLOYMENT_ROLES, ROLES } from "../script/deploy-constants.js";
-import {
-  encodeFunctionData,
-  isAddressEqual,
-  keccak256,
-  parseEventLogs,
-} from "viem/utils";
-import { ownerAddress } from "../script/migrations/fixture/config.ts";
-import { idFromLabel } from "../test/utils/utils.ts";
+import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import { idFromLabel } from "../test/utils/utils.js";
 
 export default execute(
   async ({
