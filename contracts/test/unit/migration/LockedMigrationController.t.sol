@@ -21,13 +21,9 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {
-    OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
@@ -56,7 +52,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     PublicResolverV2 publicResolver;
     WrapperRegistry wrapperRegistryImpl;
-    address implNamer = makeAddr("implNamer");
 
     function setUp() external {
         deployMigrationControllerFixture();
@@ -75,7 +70,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             boxedRenderer,
             publicResolverSet,
             address(publicResolver),
-            implNamer // impl namer
+            address(this) // impl namer
         );
 
         migrationControllerImpl = new LockedMigrationController(
@@ -86,15 +81,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             publicResolverSet,
             address(publicResolver),
-            implNamer // impl namer
+            contractNamer
         );
 
         migrationController = LockedMigrationController(
-            verifiableFactory.deployProxy(
-                address(migrationControllerImpl),
-                1,
-                abi.encodeCall(LockedMigrationController.initialize, (address(this)))
-            )
+            address(new ERC1967Proxy(address(migrationControllerImpl), ""))
         );
 
         ethRegistry.grantRootRoles(
@@ -117,8 +108,12 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
+        assertEq(
+            address(migrationController.CONTRACT_NAMER()),
+            address(contractNamer),
+            "CONTRACT_NAMER"
+        );
 
-        assertEq(address(migrationController.owner()), address(this), "owner");
         assertEq(migrationController.getWrappedName(), NameCoder.encode("eth"), "getWrappedName");
         assertEq(migrationController.getWrappedNode(), NameCoder.ETH_NODE, "getWrappedNode");
     }
@@ -142,20 +137,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
                 type(IERC1155Receiver).interfaceId
             ),
             "IERC1155Receiver"
-        );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(migrationController),
-                type(IProxyAuthorization).interfaceId
-            ),
-            "IProxyAuthorization"
-        );
-        assertTrue(
-            ERC165Checker.supportsInterface(
-                address(migrationController),
-                type(UUPSUpgradeable).interfaceId
-            ),
-            "UUPSUpgradeable"
         );
     }
 
@@ -184,11 +165,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function test_implementationIsNameable_controller() external view {
-        assertEq(migrationControllerImpl.owner(), implNamer);
+        assertTrue(migrationControllerImpl.isContractNamer(address(this)));
     }
 
     function test_implementationIsNameable_registry() external view {
-        assertTrue(wrapperRegistryImpl.isContractNamer(implNamer));
+        assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
     }
 
     function test_adhocInitialize_root() external {
@@ -221,27 +202,27 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_canUpgradeFrom_controller_rejectsAll() external view {
-        assertFalse(migrationControllerImpl.canUpgradeFrom(address(0)), "zero");
-        assertFalse(migrationControllerImpl.canUpgradeFrom(address(migrationControllerImpl)), "self");
-    }
+    // function test_canUpgradeFrom_controller_rejectsAll() external view {
+    //     assertFalse(migrationControllerImpl.canUpgradeFrom(address(0)), "zero");
+    //     assertFalse(migrationControllerImpl.canUpgradeFrom(address(migrationControllerImpl)), "self");
+    // }
 
-    function test_upgradeToAndCall_controller() external {
-        MockUpgradeable impl = new MockUpgradeable();
-        impl.setUpgradeFrom(address(migrationControllerImpl), true);
-        migrationController.upgradeToAndCall(address(impl), "");
-        MockUpgradeable(address(migrationController)).unique();
-    }
+    // function test_upgradeToAndCall_controller() external {
+    //     MockUpgradeable impl = new MockUpgradeable();
+    //     impl.setUpgradeFrom(address(migrationControllerImpl), true);
+    //     migrationController.upgradeToAndCall(address(impl), "");
+    //     MockUpgradeable(address(migrationController)).unique();
+    // }
 
-    function test_upgradeToAndCall_controller_notAuthorized() external {
-        MockUpgradeable impl = new MockUpgradeable();
-        impl.setUpgradeFrom(address(migrationControllerImpl), true);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, actor)
-        );
-        vm.prank(actor);
-        migrationController.upgradeToAndCall(address(impl), "");
-    }
+    // function test_upgradeToAndCall_controller_notAuthorized() external {
+    //     MockUpgradeable impl = new MockUpgradeable();
+    //     impl.setUpgradeFrom(address(migrationControllerImpl), true);
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, actor)
+    //     );
+    //     vm.prank(actor);
+    //     migrationController.upgradeToAndCall(address(impl), "");
+    // }
 
     function test_canUpgradeFrom_registry_rejectsAll() external view {
         assertFalse(wrapperRegistryImpl.canUpgradeFrom(address(0)), "zero");
