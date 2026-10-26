@@ -1,0 +1,11 @@
+# BuildKit uses this instead of the root .dockerignore when building .oss-scanner/Dockerfile. The root file is for
+# the devnet image and drops contracts/deployments/, which the scanner should see.
+**/node_modules/
+contracts/out/
+contracts/artifacts/
+contracts/cache/
+contracts/cache_hardhat/
+contracts/generated/
+**/coverage/
+.env
+.env.local
