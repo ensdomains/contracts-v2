@@ -4215,10 +4215,7 @@ export async function verifyV2Roles(opts: {
     deploymentNetwork,
     owner,
   );
-  const described = [
-    ...findings.map(describeRoleFinding),
-    ...proxyFindings,
-  ];
+  const described = [...findings.map(describeRoleFinding), ...proxyFindings];
   // Written before the verdict, so a failed audit still leaves the state it found.
   const docPath = writeRolesMarkdown(
     { ...map, audit: { stage, findings: described } },
