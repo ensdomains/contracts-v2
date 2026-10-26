@@ -570,6 +570,14 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
     top-level name, to its operator by registering it to them (a zero expiry keeps the
     reservation's), and authorize or remove registrars, renewers and migration controllers,
     including one that registers names still reserved by pre-migration.
+  - On mainnet the root and `.eth` registries keep the safe-transfer rule they were deployed with,
+    which needs the sender to be the only holder of every role on the name. The later rule (#483)
+    counts only the roles that reach a name, but neither registry can be upgraded or replaced. So
+    the owner, through any of its admin roles, can grant a role on a registered name to another
+    account and block that name's safe transfers until it revokes the grant. `unsafeTransfer`
+    still moves the name. The handover keeps those admin roles anyway: without them nobody could
+    ever authorize or remove a registrar, renewer or migration controller again. Only a DAO vote
+    can make such a grant, in public and behind the timelock.
   - The owner holds no role on the `eth` or `reverse` entry. The DAO timelock cannot hold either
     token in any case: it does not accept ERC-1155 tokens.
   - The deployer holds no role on either registry or on the `eth` or `reverse` entry, and holds
