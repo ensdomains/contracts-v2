@@ -547,8 +547,9 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   bun run migration -- phase hand-over-registry-admin --network mainnet
   bun run migration -- phase verify-roles             --network mainnet --stage post-registry-handover
   ```
-- **Prerequisites:** phase 7 complete. Phase 6 needs the deployer's `.eth` registry admin roles,
-  and the handover removes them for good.
+- **Prerequisites:** phase 6 complete. Phase 6 needs the deployer's `.eth` registry admin roles,
+  and the handover removes them for good. It does not depend on phase 7: on mainnet the handover
+  comes first and the Security Council's phase 7 upgrade ends the deployment.
 - **Env / args:** `DEPLOYER_KEY` signs the handover. `--owner` overrides who takes the root registry
   (default: the owner the namespace was deployed with). `--name-owner` overrides who takes the `eth`
   token (default: the network's configured name owner, on mainnet the ENS DAO name owner, a Safe
@@ -589,7 +590,7 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   transfer, grants and revocations still missing. It
   then checks the end state from the registries' own role counts, so a holder it did not look for
   is caught too: the owner is the only admin on each registry, nobody holds a dangerous root role,
-  and both registries report themselves emancipated. The handover is the end of the deployment.
+  and both registries report themselves emancipated. The handover is the deployer's last action.
   `fork full` runs it and audits the roles after it.
 
 ## Replacing the root registry under a live deployment
@@ -904,11 +905,13 @@ The phases run in this order:
    execution and phase 6, no `.eth` name can be registered: v1 is frozen and v2 is not yet open.
 6. **After execution**, run the same checks against mainnet, then phase 5 with a CSV exported after
    the freeze and `register-direct-names` for `on.eth` — its `premigration reconcile` must pass,
-   since v1 no longer changes — then phase 6, and phase 7's `upgrade-managed-urp`, executed by the Security Council Safe.
+   since v1 no longer changes — then phase 6.
 7. **Phase 8**, `hand-over-registry-admin`, signed by the deployer: the `eth` token goes to the ENS
    DAO name owner Safe, and every root role but the dangerous ones on both registries to the DAO.
-   The handover also renounces every batch registrar, strips the deployer from the archived root,
-   and ends the deployment.
+   The handover also renounces every batch registrar and strips the deployer from the archived root.
+8. **Phase 7** last: `upgrade-managed-urp`, executed by the Security Council Safe, switches
+   resolution to v2 and ends the deployment. It waits on the Safe's signers, so it comes after the
+   handover instead of holding it up; nothing before it depends on it.
 
 ## ENSv1 test fixture corpus
 
