@@ -9,8 +9,14 @@ import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
 import { DEPLOYMENT_ROLES, ROLES } from "../script/deploy-constants.js";
-import { isAddressEqual, parseEventLogs } from "viem/utils";
+import {
+  encodeFunctionData,
+  isAddressEqual,
+  keccak256,
+  parseEventLogs,
+} from "viem/utils";
 import { ownerAddress } from "../script/migrations/fixture/config.ts";
+import { idFromLabel } from "../test/utils/utils.ts";
 
 export default execute(
   async ({
@@ -21,7 +27,7 @@ export default execute(
     getV1,
     read,
     save,
-    namedAccounts: { deployer },
+    namedAccounts: { deployer, owner },
   }) => {
     const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
     const graveyard = get<Abi_Graveyard>("Graveyard");
@@ -30,7 +36,6 @@ export default execute(
     const wrapperRegistryImpl = get<Abi_WrapperRegistry>("WrapperRegistryImpl");
     const publicResolverSet = get<Abi_IAddressSet>("PublicResolverSet");
     const publicResolverV2 = get<Abi_PublicResolverV2>("PublicResolverV2");
-    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     const migrationControllerImpl = await deploy(
       "LockedMigrationControllerImpl",
@@ -45,7 +50,7 @@ export default execute(
           wrapperRegistryImpl.address,
           publicResolverSet.address,
           publicResolverV2.address,
-          contractNamer.address,
+          owner, // impl namer
         ],
       },
     );
@@ -55,18 +60,27 @@ export default execute(
     >("LockedMigrationController");
     if (migrationControllerProxy) {
       if (migrationControllerImpl.newlyDeployed) {
-        const deployerCanUpgrade = await read(ethRegistry, {
-          functionName: "hasRootRoles",
-          args: [ROLES.ADMIN.REGISTRY.REGISTER_RESERVED, deployer],
+        const currentOwner = await read(migrationControllerProxy, {
+          functionName: "owner",
         });
-        if (deployerCanUpgrade) {
+        // TODO: depends on future implementation
+        if (isAddressEqual(currentOwner, deployer)) {
           await write(migrationControllerProxy, {
             account: deployer,
             functionName: "upgradeToAndCall",
-            args: [migrationControllerImpl.address, "0x"], // TODO: update when we need to upgrade
+            args: [
+              migrationControllerImpl.address,
+              encodeFunctionData({
+                abi: Artifact_LockedMigrationController.abi,
+                functionName: "initialize",
+                args: [currentOwner],
+              }),
+            ],
           });
         } else {
-          console.warn("  -- Warn: LockedMigrationController requires upgrade");
+          console.warn(
+            `  -- Warn: LockedMigrationController requires upgrade to ${migrationControllerImpl.address}`,
+          );
         }
       }
     } else {
@@ -75,8 +89,12 @@ export default execute(
         functionName: "deployProxy",
         args: [
           migrationControllerImpl.address,
-          BigInt(migrationControllerImpl.transaction!.hash), // derive salt from deployment
-          "0x",
+          idFromLabel("LockedMigrationController"),
+          encodeFunctionData({
+            abi: Artifact_LockedMigrationController.abi,
+            functionName: "initialize",
+            args: [owner],
+          }),
         ],
       });
 
@@ -115,7 +133,6 @@ export default execute(
       "WrapperRegistryImpl",
       "PublicResolverSet",
       "PublicResolverV2",
-      "ContractNamer",
     ],
   },
 );

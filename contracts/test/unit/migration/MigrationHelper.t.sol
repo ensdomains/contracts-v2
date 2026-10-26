@@ -55,7 +55,7 @@ contract MigrationHelperTest is MigrationControllerFixture {
             boxedRenderer,
             publicResolverSet,
             address(0), // publicResolver
-            address(this) // namer
+            address(this) // impl namer
         );
         lockedController = new LockedMigrationController(
             nameWrapper,
@@ -65,7 +65,7 @@ contract MigrationHelperTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             publicResolverSet,
             address(0), // publicResolver
-            contractNamer
+            address(this) // impl namer
         );
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, premigrationController);
         ethRegistry.grantRootRoles(

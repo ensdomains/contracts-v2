@@ -22,6 +22,9 @@ import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
@@ -53,6 +56,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     PublicResolverV2 publicResolver;
     WrapperRegistry wrapperRegistryImpl;
+    address implNamer = makeAddr("implNamer");
 
     function setUp() external {
         deployMigrationControllerFixture();
@@ -71,7 +75,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             boxedRenderer,
             publicResolverSet,
             address(publicResolver),
-            address(this) // namer
+            implNamer // impl namer
         );
 
         migrationControllerImpl = new LockedMigrationController(
@@ -82,11 +86,15 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             publicResolverSet,
             address(publicResolver),
-            contractNamer
+            implNamer // impl namer
         );
 
         migrationController = LockedMigrationController(
-            verifiableFactory.deployProxy(address(migrationControllerImpl), 1, "")
+            verifiableFactory.deployProxy(
+                address(migrationControllerImpl),
+                1,
+                abi.encodeCall(LockedMigrationController.initialize, (address(this)))
+            )
         );
 
         ethRegistry.grantRootRoles(
@@ -109,12 +117,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(wrapperRegistryImpl),
             "WRAPPER_REGISTRY_IMPL"
         );
-        assertEq(
-            address(migrationController.CONTRACT_NAMER()),
-            address(contractNamer),
-            "CONTRACT_NAMER"
-        );
 
+        assertEq(address(migrationController.owner()), address(this), "owner");
         assertEq(migrationController.getWrappedName(), NameCoder.encode("eth"), "getWrappedName");
         assertEq(migrationController.getWrappedNode(), NameCoder.ETH_NODE, "getWrappedNode");
     }
@@ -180,11 +184,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     }
 
     function test_implementationIsNameable_controller() external view {
-        assertTrue(migrationControllerImpl.isContractNamer(address(this)));
+        assertEq(migrationControllerImpl.owner(), implNamer);
     }
 
     function test_implementationIsNameable_registry() external view {
-        assertTrue(wrapperRegistryImpl.isContractNamer(address(this)));
+        assertTrue(wrapperRegistryImpl.isContractNamer(implNamer));
     }
 
     function test_adhocInitialize_root() external {
@@ -233,12 +237,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         MockUpgradeable impl = new MockUpgradeable();
         impl.setUpgradeFrom(address(migrationControllerImpl), true);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                0,
-                RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN,
-                actor
-            )
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, actor)
         );
         vm.prank(actor);
         migrationController.upgradeToAndCall(address(impl), "");

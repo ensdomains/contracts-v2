@@ -5,14 +5,13 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
-import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
@@ -25,8 +24,8 @@ import {LockedWrapperReceiver} from "./LockedWrapperReceiver.sol";
 ///
 contract LockedMigrationController is
     LockedWrapperReceiver,
-    DelegatedContractNamer,
     UUPSUpgradeable,
+    OwnableUpgradeable,
     IProxyAuthorization
 {
     ////////////////////////////////////////////////////////////////////////
@@ -47,7 +46,7 @@ contract LockedMigrationController is
     /// @param wrapperRegistryImpl The `WrapperRegistry` implementation contract.
     /// @param publicResolverSet The list of `PublicResolver` contracts that require replacement.
     /// @param publicResolver The replacement `PublicResolver`.
-    /// @param contractNamer Delegated contract namer.
+    /// @param namer The implementation namer.
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
@@ -56,7 +55,7 @@ contract LockedMigrationController is
         address wrapperRegistryImpl,
         IAddressSet publicResolverSet,
         address publicResolver,
-        IContractNamer contractNamer
+        address namer
     )
         LockedWrapperReceiver(
             nameWrapper,
@@ -66,19 +65,20 @@ contract LockedMigrationController is
             publicResolverSet,
             publicResolver
         )
-        DelegatedContractNamer(contractNamer)
     {
+        _disableInitializers();
+        _transferOwnership(namer);
         ETH_REGISTRY = ethRegistry;
     }
 
-    /// @inheritdoc DelegatedContractNamer
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(AbstractWrapperReceiver, DelegatedContractNamer)
-        returns (bool)
-    {
+    /// @notice Initialize the contract.
+    /// @param owner_ The contract owner.
+    function initialize(address owner_) external initializer {
+        __Ownable_init(owner_);
+    }
+
+    /// @inheritdoc AbstractWrapperReceiver
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(UUPSUpgradeable).interfaceId ||
             interfaceId == type(IProxyAuthorization).interfaceId ||
@@ -135,8 +135,7 @@ contract LockedMigrationController is
             ); // reverts if not RESERVED
     }
 
-    /// @dev Restricts UUPS upgrades to accounts holding the `ROLE_REGISTER_RESERVED_ADMIN`
-    ///      on the `ETHRegistry` root resource.
+    /// @dev Restrict UUPS upgrades to owner.
     /// @param {newImplementation} Ignored.
     function _authorizeUpgrade(
         address /*newImplementation*/
@@ -144,12 +143,8 @@ contract LockedMigrationController is
         internal
         view
         override
-    {
-        uint256 roleBitmap = RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN;
-        if (!ETH_REGISTRY.hasRootRoles(roleBitmap, msg.sender)) {
-            revert IEnhancedAccessControl.EACUnauthorizedAccountRoles(0, roleBitmap, msg.sender);
-        }
-    }
+        onlyOwner
+    {}
 
     /// @inheritdoc LockedWrapperReceiver
     function _getRegistry() internal view override returns (IRegistry) {
