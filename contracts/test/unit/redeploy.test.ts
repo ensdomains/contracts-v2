@@ -200,6 +200,26 @@ describe("redeployDiff", () => {
     ]);
   });
 
+  it("counts the proxy records of a contract now behind a proxy as replaced", () => {
+    const after = new Map(replaced);
+    after.set("LockedMigrationController_Implementation", {
+      address: address(300),
+    });
+    after.set("LockedMigrationController_Proxy", {
+      address: after.get("LockedMigrationController")!.address,
+    });
+    after.set("ETHRegistry_Proxy", { address: address(301) });
+    const { replaced: moved, problems } = redeployDiff(
+      before,
+      after,
+      REPLACED_DEPLOYMENTS,
+    );
+    expect(problems).toEqual([
+      `ETHRegistry_Proxy: new record at ${address(301)}`,
+    ]);
+    expect(moved).toHaveLength(REPLACED_DEPLOYMENTS.length + 2);
+  });
+
   it("expects nothing of a replaced contract the namespace never had", () => {
     const withoutHca = (records: typeof before) =>
       new Map(

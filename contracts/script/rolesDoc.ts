@@ -227,7 +227,7 @@ export function renderRolesMarkdown(
       "",
       "## Registry emancipation",
       "",
-      "A registry is emancipated when nobody holds a registry-wide role that reaches its names: setting a name's child registry or resolver, unregistering it, upgrading the registry, or controlling transfers. Until then the registry refuses safe transfers of its names.",
+      "A registry is emancipated when nobody holds a registry-wide role that reaches its names: setting a name's child registry or resolver, unregistering it, or controlling transfers, and for an upgradeable registry, upgrading it. Until then the registry refuses safe transfers of its names.",
       "",
       markdownTable([
         ["Registry", "Emancipated"],

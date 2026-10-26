@@ -101,8 +101,10 @@ export const ROLES = {
 // Root roles that reach a registry's names or replace its code: setting a name's
 // child registry or resolver, unregistering it, letting its owner transfer it, and
 // upgrading the registry, each with its admin role. A registry where nobody holds
-// any of them at the root leaves its names emancipated.
-// see: RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP
+// any of them at the root leaves its names emancipated. This is
+// RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP plus the upgrade roles, which only an
+// upgradeable registry counts (see: UserRegistry.isEmancipated); nobody is meant to
+// hold them on any registry.
 export const DANGEROUS_ROOT_ROLES =
   ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
   ROLES.REGISTRY.SET_SUBREGISTRY |

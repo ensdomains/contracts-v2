@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Address } from "viem";
 
+import { isProxyArtifact } from "../addressDocs.js";
 import { sameAddress } from "./plumbing.js";
 
 /// The deploy script that only ever runs once per namespace and builds the
@@ -439,7 +440,8 @@ export function namespaceBeforeRedeploy(
 
 /// Compares the namespace after a redeploy with the records before it: every
 /// replaced deployment the namespace had must be at a new address, and every other
-/// one where it was.
+/// one where it was. A replaced deployment that is now behind a proxy brings its
+/// proxy and implementation records, which count as replaced with it.
 export function redeployDiff(
   before: Map<string, DeploymentRecord>,
   after: Map<string, DeploymentRecord>,
@@ -463,6 +465,12 @@ export function redeployDiff(
   for (const [name, record] of after) {
     if (replacedSet.has(name)) continue;
     const old = before.get(name)?.address;
+    if (isProxyArtifact(name, replacedSet)) {
+      if (!old || !record.address || !sameAddress(old, record.address)) {
+        replaced.push(`${name}: ${old ?? "(none)"} -> ${record.address}`);
+      }
+      continue;
+    }
     if (!old) {
       problems.push(`${name}: new record at ${record.address}`);
     } else if (!record.address || !sameAddress(old, record.address)) {

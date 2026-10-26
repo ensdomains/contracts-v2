@@ -17,11 +17,22 @@ export default execute(
     const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
 
     console.log("Deploying RootRegistry");
-    const rootRegistry = await deploy("RootRegistry", {
-      account: deployer,
-      artifact: Artifact_PermissionedRegistry,
-      args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT],
-    });
+    // The registry cannot be upgraded and its names cannot move, so a recorded one is
+    // kept even when the build has changed; `phase redeploy-root` archives the record
+    // to replace it.
+    const rootRegistry = await deploy(
+      "RootRegistry",
+      {
+        account: deployer,
+        artifact: Artifact_PermissionedRegistry,
+        args: [
+          labelStore.address,
+          deployer,
+          DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
+        ],
+      },
+      { skipIfAlreadyDeployed: true },
+    );
 
     const [[currentURI, currentRenderer], ownerIsManager] = await Promise.all([
       read(rootRegistry, { functionName: "getURI" }),

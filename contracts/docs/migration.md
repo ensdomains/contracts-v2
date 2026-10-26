@@ -561,8 +561,8 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
   - On both the root registry and the `.eth` registry, the owner holds every root role except the
     dangerous ones, each with its admin role: registering names and reserved names, setting the
     registry's parent, renewing, setting the metadata URI, and contract naming. The dangerous root
-    roles (`DANGEROUS_ROOT_ROLES` in `script/deploy-constants.ts`, the registries'
-    `UNEMANCIPATED_ROLE_BITMAP`) are setting a name's child registry or resolver, unregistering it,
+    roles (`DANGEROUS_ROOT_ROLES` in `script/deploy-constants.ts`: the registries'
+    `UNEMANCIPATED_ROLE_BITMAP` plus the upgrade roles) are setting a name's child registry or resolver, unregistering it,
     letting its owner transfer it, and upgrading the registry, each with its admin role. Nobody
     holds any of them, so both registries are emancipated: no root role reaches a registered name,
     and the `.eth` registry allows safe transfers of its names, which it refuses otherwise.
@@ -647,7 +647,8 @@ bun ./script/generateAddressDocs.ts --network mainnet
 
 When the contracts change after phase 1, `phase redeploy-contracts` replaces the deployed ones whose
 build differs, with every contract that holds one of them as a constructor argument, and reuses the
-rest. The root registry stays: a build that changes it needs `phase redeploy-root`.
+rest. It never replaces the root registry: keep it with `--keep`, or replace it with
+`phase redeploy-root`.
 
 ```bash
 bun run migration -- phase redeploy-contracts --network mainnet \
@@ -671,9 +672,16 @@ bun ./script/generateAddressDocs.ts --network mainnet
   check, which moves the record out of the namespace, gets such a contract replaced.
 - It compares each record with the build of the record's own source file. The `ContractNamer` proxy was
   built from the deploy tool's bundled `ERC1967Proxy`, not from ours, so it is compared with that.
+- A contract deployed behind a proxy has `<name>_Implementation` and `<name>_Proxy` records beside
+  it, and they count as replaced with it. `LockedMigrationController` sits behind an `ERC173Proxy`
+  owned by the owner, so replacing it, as when `WrapperRegistryImpl` changes, puts a new proxy at a new
+  address. `phase verify-roles` fails unless the owner alone can upgrade every such proxy.
 - `--keep` names contracts whose build differs but which must stay, and whose deploy scripts reuse the
   record. It must name exactly those that differ, as the build being compared sees them:
   - `ENSV1Resolver`: every pre-migration reservation names it, and nobody can repoint a reservation.
+  - `ETHRegistry` and `RootRegistry`, once a build changes `PermissionedRegistry`: neither can be
+    upgraded, the `.eth` registry holds every reservation and registration, and the contracts the DAO
+    proposal names hold its address. A registry change made after phase 1 never reaches mainnet.
   - `VerifiableFactory`, only when the build differs from it: many contracts hold its address. Its
     creation code embeds the proxy's, whose metadata changes whenever the compiler settings of the
     build do, so a build made elsewhere than the original deploy's can differ from it. The mainnet

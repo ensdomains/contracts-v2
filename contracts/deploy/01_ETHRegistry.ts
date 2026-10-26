@@ -25,11 +25,21 @@ export default execute(
     const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
 
     console.log("Deploying ETHRegistry");
-    const ethRegistry = await deploy("ETHRegistry", {
-      account: deployer,
-      artifact: Artifact_PermissionedRegistry,
-      args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
-    });
+    // The registry cannot be upgraded and holds every reservation and registration,
+    // so a recorded one is kept even when the build has changed.
+    const ethRegistry = await deploy(
+      "ETHRegistry",
+      {
+        account: deployer,
+        artifact: Artifact_PermissionedRegistry,
+        args: [
+          labelStore.address,
+          deployer,
+          DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+        ],
+      },
+      { skipIfAlreadyDeployed: true },
+    );
 
     const currentStatus = await read(rootRegistry, {
       functionName: "getStatus",

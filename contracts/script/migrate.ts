@@ -4209,24 +4209,61 @@ export async function verifyV2Roles(opts: {
   }
 
   const findings = diffRoleMatrix(holders, expectations);
+  const proxyFindings = proxyUpgraderFindings(
+    map.control,
+    deploymentsDir,
+    deploymentNetwork,
+    owner,
+  );
+  const described = [
+    ...findings.map(describeRoleFinding),
+    ...proxyFindings,
+  ];
   // Written before the verdict, so a failed audit still leaves the state it found.
   const docPath = writeRolesMarkdown(
-    { ...map, audit: { stage, findings: findings.map(describeRoleFinding) } },
+    { ...map, audit: { stage, findings: described } },
     deploymentsDir,
     deploymentNetwork,
   );
   console.log(`role mapping: ${docPath}`);
 
-  if (findings.length === 0) {
+  if (described.length === 0) {
     console.log(`role audit passed: ${holders.length} holder(s) as expected`);
     return findings;
   }
 
-  for (const finding of findings) {
-    console.error(describeRoleFinding(finding));
+  for (const line of described) {
+    console.error(line);
   }
   if (!opts.reportOnly) {
-    throw new Error(`role audit failed: ${findings.length} finding(s)`);
+    throw new Error(`role audit failed: ${described.length} finding(s)`);
+  }
+  return findings;
+}
+
+/// Whoever can upgrade a proxied contract controls it, so every contract the
+/// namespace deployed behind a proxy must be upgradeable by the owner alone. The
+/// upgrader is the ERC-1967 admin where the proxy keeps one, else the contract's
+/// `owner()`.
+function proxyUpgraderFindings(
+  control: ContractControl[],
+  deploymentsDir: string,
+  deploymentNetwork: string,
+  owner: Address,
+): string[] {
+  const records = readNamespaceRecords(deploymentsDir, deploymentNetwork);
+  const findings: string[] = [];
+  for (const [name, { address }] of records) {
+    if (!records.has(`${name}_Proxy`) || !address) continue;
+    const entry = control.find(({ contract }) =>
+      sameAddress(contract.address, address),
+    );
+    const upgrader = (entry?.proxyAdmin ?? entry?.owner)?.address;
+    if (!upgrader || !sameAddress(upgrader, owner)) {
+      findings.push(
+        `${name} (${address}) can be upgraded by ${upgrader ?? "no readable account"}, not the owner ${owner}`,
+      );
+    }
   }
   return findings;
 }
