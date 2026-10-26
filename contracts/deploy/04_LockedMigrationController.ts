@@ -8,7 +8,7 @@ import type { Abi_WrapperRegistry } from "generated/abis/WrapperRegistry.js";
 import type { Abi_IAddressSet } from "generated/abis/IAddressSet.js";
 import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
-import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES, ROLES } from "../script/deploy-constants.js";
 import { idFromLabel } from "../test/utils/utils.js";
 
 export default execute(
@@ -48,7 +48,7 @@ export default execute(
       },
     );
 
-    const migrationControllerProxy = getOrNull<
+    let migrationControllerProxy = getOrNull<
       (typeof Artifact_LockedMigrationController)["abi"]
     >("LockedMigrationController");
     if (migrationControllerProxy) {
@@ -56,18 +56,13 @@ export default execute(
         const currentOwner = await read(migrationControllerProxy, {
           functionName: "owner",
         });
-        // TODO: depends on future implementation
         if (isAddressEqual(currentOwner, deployer)) {
           await write(migrationControllerProxy, {
             account: deployer,
             functionName: "upgradeToAndCall",
             args: [
               migrationControllerImpl.address,
-              encodeFunctionData({
-                abi: Artifact_LockedMigrationController.abi,
-                functionName: "initialize",
-                args: [currentOwner],
-              }),
+              "0x", // TODO: depends on future implementation
             ],
           });
         } else {
@@ -99,7 +94,7 @@ export default execute(
       const controllerAddress = log.args.proxyAddress;
 
       // TODO: is this correct?
-      await save("LockedMigrationController", {
+      migrationControllerProxy = {
         ...migrationControllerImpl,
         address: controllerAddress,
         receipt: {
@@ -107,13 +102,32 @@ export default execute(
           blockNumber: proxyDeployment.blockNumber,
           transactionIndex: proxyDeployment.transactionIndex,
         },
-      });
+      };
+      await save("LockedMigrationController", migrationControllerProxy);
+    }
 
-      await write(ethRegistry, {
-        account: deployer,
-        functionName: "grantRootRoles",
-        args: [DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT, controllerAddress],
+    const controllerRoles = DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT;
+    const proxyHasGrant = await read(ethRegistry, {
+      functionName: "hasRootRoles",
+      args: [controllerRoles, migrationControllerProxy.address],
+    });
+    if (!proxyHasGrant) {
+      const adminRoles = (controllerRoles | (controllerRoles >> 128n)) << 128n;
+      const deployerCanGrant = await read(ethRegistry, {
+        functionName: "hasRootRoles",
+        args: [adminRoles, deployer],
       });
+      if (deployerCanGrant) {
+        await write(ethRegistry, {
+          account: deployer,
+          functionName: "grantRootRoles",
+          args: [controllerRoles, migrationControllerProxy.address],
+        });
+      } else {
+        console.warn(
+          `  -- Warn: LockedMigrationController requires root roles`,
+        );
+      }
     }
   },
   {
