@@ -8,8 +8,8 @@ itself.
 
 - **Network:** mainnet
 - **Chain ID:** 1
-- **Read at block:** 26252570
-- **Read at:** 2026-10-23T03:15:10.578Z
+- **Read at block:** 26277207
+- **Read at:** 2026-10-26T13:38:00.600Z
 - **Not listed:** the roles each name's owner holds on its own name in ETHRegistry
 
 ## Audit
@@ -82,7 +82,7 @@ The root and .eth registries match what the migration intends at the `pre-handof
 
 ### UserRegistryImpl
 
-[0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb](https://etherscan.io/address/0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb)
+[0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72](https://etherscan.io/address/0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72)
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ The root and .eth registries match what the migration intends at the `pre-handof
 
 ### WrapperRegistryImpl
 
-[0x18580394dD1aDeED3E9A933FFA7881DF403b981d](https://etherscan.io/address/0x18580394dD1aDeED3E9A933FFA7881DF403b981d)
+[0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888](https://etherscan.io/address/0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888)
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
@@ -110,6 +110,7 @@ The root and .eth registries match what the migration intends at the `pre-handof
 | **ENSURIRenderer**<br>[0x82CaC0d801b9A392a4fF217D5E68145801E90a41](https://etherscan.io/address/0x82CaC0d801b9A392a4fF217D5E68145801E90a41) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **ETHRegistrar**<br>[0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81](https://etherscan.io/address/0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
 | **ETHRenewerV1**<br>[0x56c447F308F463A01121C41E72b0E7e7557fCb68](https://etherscan.io/address/0x56c447F308F463A01121C41E72b0E7e7557fCb68) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
+| **LockedMigrationController**<br>[0x3ceA18620883a69ED349B23328A3B6302598e51A](https://etherscan.io/address/0x3ceA18620883a69ED349B23328A3B6302598e51A) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) |
 | **ManagedUniversalResolverProxy**<br>[0xcFFd2Ae680CD110D28739a70922636B5937b022B](https://etherscan.io/address/0xcFFd2Ae680CD110D28739a70922636B5937b022B) | — | **security council / ENS Security Council Safe**<br>[0x7101B78638e34444F0a5AdE9e1149fbEeC029931](https://etherscan.io/address/0x7101B78638e34444F0a5AdE9e1149fbEeC029931) |
 | **RootBatchRegistrar**<br>[0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164](https://etherscan.io/address/0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164) | **deployer**<br>[0x85a73f63309128d53928EE891E6e11E2B4695C20](https://etherscan.io/address/0x85a73f63309128d53928EE891E6e11E2B4695C20) | — |
 | **StandaloneHCAFactory**<br>[0x742bf21897a78e2C98cC5f5C5473A370a081e561](https://etherscan.io/address/0x742bf21897a78e2C98cC5f5C5473A370a081e561) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
@@ -118,11 +119,11 @@ The root and .eth registries match what the migration intends at the `pre-handof
 
 ## Registry emancipation
 
-A registry is emancipated when nobody holds a registry-wide role that reaches its names: setting a name's child registry or resolver, unregistering it, upgrading the registry, or controlling transfers. Until then the registry refuses safe transfers of its names.
+A registry is emancipated when nobody holds a registry-wide role that reaches its names: setting a name's child registry or resolver, unregistering it, or controlling transfers, and for an upgradeable registry, upgrading it. Until then the registry refuses safe transfers of its names.
 
 | Registry | Emancipated |
 | --- | --- |
 | **ETHRegistry**<br>[0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2](https://etherscan.io/address/0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2) | yes |
 | **RootRegistry**<br>[0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e](https://etherscan.io/address/0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e) | yes |
-| **UserRegistryImpl**<br>[0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb](https://etherscan.io/address/0x75FF9AdBcFcE2469B097AC68f6Ae650EaE1351Bb) | yes |
-| **WrapperRegistryImpl**<br>[0x18580394dD1aDeED3E9A933FFA7881DF403b981d](https://etherscan.io/address/0x18580394dD1aDeED3E9A933FFA7881DF403b981d) | yes |
+| **UserRegistryImpl**<br>[0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72](https://etherscan.io/address/0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72) | yes |
+| **WrapperRegistryImpl**<br>[0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888](https://etherscan.io/address/0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888) | yes |

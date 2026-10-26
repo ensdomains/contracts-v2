@@ -4,7 +4,7 @@
 
 - **Network:** mainnet
 - **Chain ID:** 1
-- **Deployed at:** 2026-10-23T03:07:37.345Z
+- **Deployed at:** 2026-10-26T13:25:02.259Z
 - **First deployed at:** 2026-10-02T15:56:48.580Z
 
 | Contract | Address |
@@ -27,9 +27,9 @@
 | HCAOwnerAndSessionValidator | [0xa818428ed2f3f949bdc71b8a15bdd7b5d27ce938](https://etherscan.io/address/0xa818428ed2f3f949bdc71b8a15bdd7b5d27ce938) |
 | HCAUpgradeSet | [0x85e115f5b43c72e2ba4419a9a95e325db18431c2](https://etherscan.io/address/0x85e115f5b43c72e2ba4419a9a95e325db18431c2) |
 | LabelStore | [0x31e5e081fe38d15b3e8214ba5cb08dc4708b70ba](https://etherscan.io/address/0x31e5e081fe38d15b3e8214ba5cb08dc4708b70ba) |
-| LockedMigrationController | [0x811814c098378488f916afa89f43b36baa5425ad](https://etherscan.io/address/0x811814c098378488f916afa89f43b36baa5425ad) |
+| LockedMigrationController | [0x3cea18620883a69ed349b23328a3b6302598e51a](https://etherscan.io/address/0x3cea18620883a69ed349b23328a3b6302598e51a) |
 | ManagedUniversalResolverProxy | [0xcffd2ae680cd110d28739a70922636b5937b022b](https://etherscan.io/address/0xcffd2ae680cd110d28739a70922636b5937b022b) |
-| MigrationHelper | [0xf1aa81ae63a04aebd6c257a3f2c490aad8b4b136](https://etherscan.io/address/0xf1aa81ae63a04aebd6c257a3f2c490aad8b4b136) |
+| MigrationHelper | [0x6c8452afc6043b5af32eb345a8135108906f07ee](https://etherscan.io/address/0x6c8452afc6043b5af32eb345a8135108906f07ee) |
 | PermissionedResolverImpl | [0x565b0f456a04ac9b48758190e90030623cff57c5](https://etherscan.io/address/0x565b0f456a04ac9b48758190e90030623cff57c5) |
 | PublicResolverSet | [0xffceda021cbdf20f1a66ebbef32e49d208cabf62](https://etherscan.io/address/0xffceda021cbdf20f1a66ebbef32e49d208cabf62) |
 | PublicResolverV2 | [0x66f9f566ff2f26309c1bd9134388478a801da3e1](https://etherscan.io/address/0x66f9f566ff2f26309c1bd9134388478a801da3e1) |
@@ -45,6 +45,6 @@
 | UniversalResolverV2 | [0x06fdd07f007adac667177b46ab2eb9a75132cfd5](https://etherscan.io/address/0x06fdd07f007adac667177b46ab2eb9a75132cfd5) |
 | UnlockedMigrationController | [0xab821ca676cf2e0790fa273526a165cfa86aeb64](https://etherscan.io/address/0xab821ca676cf2e0790fa273526a165cfa86aeb64) |
 | UpgradableUniversalResolverProxy | [0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe) |
-| UserRegistryImpl | [0x75ff9adbcfce2469b097ac68f6ae650eae1351bb](https://etherscan.io/address/0x75ff9adbcfce2469b097ac68f6ae650eae1351bb) |
+| UserRegistryImpl | [0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72](https://etherscan.io/address/0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72) |
 | VerifiableFactory | [0x77510ba162dfea3d8989e3f0928a691b345730d2](https://etherscan.io/address/0x77510ba162dfea3d8989e3f0928a691b345730d2) |
-| WrapperRegistryImpl | [0x18580394dd1adeed3e9a933ffa7881df403b981d](https://etherscan.io/address/0x18580394dd1adeed3e9a933ffa7881df403b981d) |
+| WrapperRegistryImpl | [0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888](https://etherscan.io/address/0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888) |
