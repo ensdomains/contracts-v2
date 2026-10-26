@@ -16,7 +16,6 @@ import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
@@ -214,16 +213,6 @@ contract WrapperRegistry is
         returns (bytes32)
     {
         return _node;
-    }
-
-    /// @inheritdoc PermissionedRegistry
-    function isEmancipated()
-        public
-        pure
-        override(PermissionedRegistry, IPermissionedRegistry)
-        returns (bool)
-    {
-        return true; // see: LockedWrapperReceiver._subregistryRoleBitmapFromFuses()
     }
 
     ////////////////////////////////////////////////////////////////////////
