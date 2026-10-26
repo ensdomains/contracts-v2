@@ -252,9 +252,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "findTrustedParentRegistry"
         );
         assertEq(
-            address(universalHelper.findEmancipatedParentRegistry(NameCoder.addLabel(name, "any"))),
+            address(universalHelper.findEmancipatedRegistry(name)),
             address(0),
-            "findEmancipatedParentRegistry"
+            "findEmancipatedRegistry"
         );
     }
 
@@ -640,9 +640,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(
             address(subregistry),
-            address(universalHelper.findEmancipatedParentRegistry(NameCoder.addLabel(name, "any"))),
-            "findEmancipatedParentRegistry"
+            address(universalHelper.findEmancipatedRegistry(name)),
+            "findEmancipatedRegistry"
         );
+        (IPermissionedRegistry parent, address owner_, uint256 tokenId_) =
+            universalHelper.findEmancipatedToken(name);
+        assertEq(address(parent), address(ethRegistry), "findEmancipatedToken:parent");
+        assertEq(owner_, md.owner, "findEmancipatedToken:owner");
+        assertEq(tokenId_, tokenId, "findEmancipatedToken:tokenId");
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(ethRegistry)),
             "ROLE_REGISTRAR"
@@ -1218,11 +1223,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(registry2.getResolver(data3.label), data3.resolver, "resolver3");
         checkResolution(name3, address(ensV2Resolver), data3.resolver);
-        assertEq(
-            registry2.ownerOf(registry2.getTokenId(LibLabel.id(data3.label))),
-            data3.owner,
-            "owner3"
-        );
+        uint256 tokenId3 = registry2.getTokenId(LibLabel.id(data3.label));
+        assertEq(registry2.ownerOf(tokenId3), data3.owner, "owner3");
         IRegistry registry3 = registry2.getSubregistry(data3.label);
         assertTrue(
             ERC165Checker.supportsInterface(address(registry3), type(IWrapperRegistry).interfaceId),
@@ -1240,9 +1242,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(
             address(registry3),
-            address(universalHelper.findEmancipatedParentRegistry(NameCoder.addLabel(name3, "any"))),
-            "findEmancipatedParentRegistry"
+            address(universalHelper.findEmancipatedRegistry(name3)),
+            "findEmancipatedRegistry"
         );
+        (IPermissionedRegistry parent, address owner_, uint256 tokenId_) =
+            universalHelper.findEmancipatedToken(name3);
+        assertEq(address(parent), address(registry2), "findEmancipatedToken:parent");
+        assertEq(owner_, data3.owner, "findEmancipatedToken:owner");
+        assertEq(tokenId_, tokenId3, "findEmancipatedToken:tokenId");
 
         // check migrated 3LD child
         vm.expectRevert(

@@ -8,6 +8,7 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {WrapperRegistryLib} from "../registry/libraries/WrapperRegistryLib.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
@@ -132,31 +133,53 @@ contract UniversalHelper is DelegatedContractNamer {
         return LibResolution.findRegistries(ROOT_REGISTRY, name, 0);
     }
 
-    /// @notice Find the parent registry iff every ancestor is trusted.
+    /// @notice Find the exact registry iff every ancestor is trusted.
     /// @param name The DNS-encoded name.
-    /// @return parent The parent registry or null if any ancestor was not trusted.
-    function findTrustedParentRegistry(bytes calldata name)
-        external
-        view
-        returns (IRegistry parent)
-    {
-        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, 0);
-        if (labelHash != bytes32(0)) {
-            parent = _findQualifiedRegistry(isTrustedRegistry, name, next);
-        }
+    /// @return The parent registry or null if any ancestor was not trusted.
+    function findTrustedRegistry(bytes calldata name) external view returns (IPermissionedRegistry) {
+        return _findQualifiedRegistry(isTrustedRegistry, name, 0);
     }
 
-    /// @notice Find the parent registry iff every ancestor is emancipated.
+    /// @notice Find the exact registry iff every ancestor is emancipated.
     /// @param name The DNS-encoded name.
-    /// @return parent The parent registry or null if any ancestor was not emancipated.
-    function findEmancipatedParentRegistry(bytes calldata name)
+    /// @return The parent registry or null if any ancestor was not emancipated.
+    function findEmancipatedRegistry(bytes calldata name)
         external
         view
-        returns (IRegistry parent)
+        returns (IPermissionedRegistry)
+    {
+        return _findQualifiedRegistry(isEmancipatedRegistry, name, 0);
+    }
+
+    /// @notice Determine if every ancestor is emancipated and the token permits safe transfer.
+    /// @param name The DNS-encoded name.
+    /// @return parent The parent registry or null if any ancestor was not emancipated.
+    /// @return owner The token owner.
+    /// @return tokenId The token ID.
+    function findEmancipatedToken(bytes calldata name)
+        external
+        view
+        returns (IPermissionedRegistry parent, address owner, uint256 tokenId)
     {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, 0);
         if (labelHash != bytes32(0)) {
             parent = _findQualifiedRegistry(isEmancipatedRegistry, name, next);
+            if (address(parent) != address(0)) {
+                tokenId = parent.getTokenId(uint256(labelHash));
+                owner = parent.ownerOf(tokenId);
+                if (
+                    !parent.isOnlyAssignee(
+                        tokenId,
+                        RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP,
+                        owner
+                    )
+                ) {
+                    /// see: PermissionedRegistry._update()
+                    delete parent;
+                    delete tokenId;
+                    delete owner;
+                }
+            }
         }
     }
 
@@ -211,7 +234,7 @@ contract UniversalHelper is DelegatedContractNamer {
     )
         internal
         view
-        returns (IRegistry registry)
+        returns (IPermissionedRegistry registry)
     {
         uint256 wrapperOffset;
         IRegistry nearestWrapper;
@@ -242,7 +265,7 @@ contract UniversalHelper is DelegatedContractNamer {
     )
         internal
         view
-        returns (IRegistry registry, IRegistry nearestWrapper, uint256 wrapperOffset)
+        returns (IPermissionedRegistry registry, IRegistry nearestWrapper, uint256 wrapperOffset)
     {
         (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
         if (bytes(label).length == 0) {
@@ -254,7 +277,9 @@ contract UniversalHelper is DelegatedContractNamer {
                 next
             );
             if (address(registry) != address(0)) {
-                registry = LibResolution.getSubregistry(registry, label);
+                registry = IPermissionedRegistry(
+                    address(LibResolution.getSubregistry(registry, label))
+                );
                 if (predicate(registry)) {
                     if (
                         ERC165Checker.supportsERC165InterfaceUnchecked(
