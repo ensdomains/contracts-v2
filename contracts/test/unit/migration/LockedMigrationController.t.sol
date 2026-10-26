@@ -247,9 +247,9 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             "findWrapperRegistry"
         );
         assertEq(
-            address(universalHelper.findTrustedParentRegistry(NameCoder.addLabel(name, "any"))),
+            address(universalHelper.findTrustedRegistry(name)),
             address(0),
-            "findTrustedParentRegistry"
+            "findTrustedRegistry"
         );
         assertEq(
             address(universalHelper.findEmancipatedRegistry(name)),
@@ -635,8 +635,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(
             address(subregistry),
-            address(universalHelper.findTrustedParentRegistry(NameCoder.addLabel(name, "any"))),
-            "findTrustedParentRegistry"
+            address(universalHelper.findTrustedRegistry(name)),
+            "findTrustedRegistry"
         );
         assertEq(
             address(subregistry),
@@ -1237,8 +1237,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(
             address(registry3),
-            address(universalHelper.findTrustedParentRegistry(NameCoder.addLabel(name3, "any"))),
-            "findTrustedParentRegistry"
+            address(universalHelper.findTrustedRegistry(name3)),
+            "findTrustedRegistry"
         );
         assertEq(
             address(registry3),
