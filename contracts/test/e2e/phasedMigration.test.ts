@@ -279,9 +279,18 @@ describe("Phased migration rehearsal", () => {
     await env.sync({ warpSec: Number(minCommitmentAge) + 1 });
 
     const price = await controller.read.rentPrice([label, ONE_YEAR_SECONDS]);
+    const value = price.base + price.premium;
+    // The price oracle works its premium out bit by bit from the time elapsed, so a
+    // registration's gas moves with the timestamp of the block it lands in; headroom
+    // over the estimate keeps a later block from running it out of gas.
+    const gas = await controller.estimateGas.register([registration], {
+      account,
+      value,
+    });
     await controller.write.register([registration], {
       account,
-      value: price.base + price.premium,
+      value,
+      gas: (gas * 5n) / 4n,
     });
   }
 
