@@ -8,16 +8,13 @@ import {MockERC20Capped} from "~test/mocks/MockERC20.sol";
 contract MockERC20CappedTest is Test {
     MockERC20Capped token;
 
-    address admin;
     address alice;
 
     uint256 constant MAX_SUPPLY = 1_000e6;
     uint256 constant MINT_LIMIT = 100e6;
 
     function setUp() external {
-        admin = makeAddr("admin");
         alice = makeAddr("alice");
-        vm.prank(admin);
         token = new MockERC20Capped("USDC", 6, MAX_SUPPLY, MINT_LIMIT);
     }
 
@@ -26,7 +23,6 @@ contract MockERC20CappedTest is Test {
         assertEq(token.decimals(), 6, "decimals");
         assertEq(token.MAX_SUPPLY(), MAX_SUPPLY, "MAX_SUPPLY");
         assertEq(token.MINT_LIMIT(), MINT_LIMIT, "MINT_LIMIT");
-        assertEq(token.ADMIN(), admin, "ADMIN");
         assertEq(token.totalSupply(), 0, "totalSupply");
     }
 
@@ -85,20 +81,5 @@ contract MockERC20CappedTest is Test {
         amount = bound(amount, 0, MINT_LIMIT);
         token.mint(alice, amount);
         assertEq(token.balanceOf(alice), amount, "balance");
-    }
-
-    function test_nuke() external {
-        token.mint(alice, 1e6);
-        vm.prank(admin);
-        token.nuke(alice);
-        assertEq(token.balanceOf(alice), 0, "balance");
-        assertEq(token.totalSupply(), 0, "totalSupply");
-    }
-
-    function test_nuke_revertNotAdmin() external {
-        token.mint(alice, 1e6);
-        vm.expectRevert(abi.encodeWithSelector(MockERC20Capped.Unauthorized.selector, alice));
-        vm.prank(alice);
-        token.nuke(alice);
     }
 }

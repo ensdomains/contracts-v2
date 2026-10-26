@@ -10027,8 +10027,8 @@ function archiveExistingDeploymentNamespace(
 // Mock payment tokens are faucet contracts whose address consumers pin outside the
 // repository (the Rhinestone orchestrator whitelists Sepolia's mock USDC), so a fresh
 // deploy carries the previous namespace's token forward instead of orphaning it.
-// Rocketh only reuses an existing record whose build and constructor arguments are
-// unchanged, so a changed mock is deployed once and pinned from then on.
+// The copy only happens while the archived build's code and constructor arguments
+// still match, so a changed mock is deployed once and pinned from then on.
 const PINNED_MOCK_TOKENS = [
   {
     name: "MockUSDC",
@@ -10036,6 +10036,17 @@ const PINNED_MOCK_TOKENS = [
     args: MOCK_USDC_DEPLOY_ARGS,
   },
 ] as const;
+
+/// Removes the CBOR metadata trailer — the payload plus the two-byte length suffix
+/// that follows it — from creation bytecode.
+function stripMetadataTrailer(bytecode: string): string {
+  const cborLength = parseInt(bytecode.slice(-4), 16);
+  const trailerLength = (cborLength + 2) * 2;
+  if (!Number.isFinite(cborLength) || bytecode.length < trailerLength) {
+    return bytecode;
+  }
+  return bytecode.slice(0, -trailerLength);
+}
 
 /// Copies an archived namespace's pinned mock tokens into the namespace replacing it.
 /// Returns the names that were carried over.
@@ -10069,17 +10080,12 @@ export function reusePinnedMockTokens(
     const argsData = constructor
       ? encodeAbiParameters(constructor.inputs, args)
       : "0x";
-    // Rocketh compares creation bytecode with the CBOR metadata trailer stripped,
-    // so compare the same prefix: a compiler-only change keeps the pin while any
-    // change to the code or the constructor arguments deploys a new mock.
-    const previousBytecode = previous.bytecode?.toLowerCase() ?? "";
-    const bytecode = artifact.bytecode.toLowerCase();
-    const cborLength = parseInt(previousBytecode.slice(-4), 16);
+    // The metadata trailer records build provenance, not behavior: ignore it along
+    // with the length suffix so a compiler-only change keeps the pin, while any
+    // change to the executable code or the constructor arguments deploys a new mock.
     const sameBytecode =
-      cborLength > 0 &&
-      previousBytecode.length > cborLength * 2 &&
-      previousBytecode.slice(0, -cborLength * 2) ===
-        bytecode.slice(0, -cborLength * 2);
+      stripMetadataTrailer(previous.bytecode?.toLowerCase() ?? "") ===
+      stripMetadataTrailer(artifact.bytecode.toLowerCase());
     if (
       !sameBytecode ||
       previous.argsData?.toLowerCase() !== argsData.toLowerCase()

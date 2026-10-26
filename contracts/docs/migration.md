@@ -1478,11 +1478,13 @@ instead (rocketh is idempotent, sending only the not-yet-deployed contracts). Se
 [`deployments/README.md`](../deployments/README.md) for the namespace layout, archiving, git-tracking,
 and idempotency rules.
 
-Sepolia's mock USDC survives the archive: its record is copied into the new namespace while its build
-and constructor arguments are unchanged, because external consumers pin that faucet token's address.
-The mock is now supply-capped and its per-call mint limit bounds faucet use, so a record from an older
-unrestricted build does not match and the current mock is deployed once at a new address. Every other
-contract in the archived namespace is left behind.
+Sepolia's mock USDC survives the archive: its record is copied into the new namespace while its
+executable code and constructor arguments are unchanged, because external consumers pin that faucet
+token's address. Only the compiler's metadata trailer is ignored, so a compiler-only change keeps the
+token; the copy is never re-checked afterwards, and replacing the mock needs a fresh deploy whose
+archived code no longer matches. The mock is now supply-capped and its per-call mint limit bounds
+faucet use, so a record from an older unrestricted build does not match and the current mock is
+deployed once at a new address. Every other contract in the archived namespace is left behind.
 
 ### CLI commands
 

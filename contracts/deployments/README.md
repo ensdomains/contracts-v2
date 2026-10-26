@@ -106,9 +106,12 @@ equivalent; the default archive just automates it with a dated name.
 On Sepolia the archived namespace's `MockUSDC` is carried into the new one so the
 faucet token keeps the address consumers pin outside this repository (the
 Rhinestone orchestrator whitelists it). The record is copied only while its
-creation bytecode and constructor arguments still match the current build; a
-changed mock — a different supply ceiling, say — is deployed once at a new address
-and pinned from then on. Every other contract, including `MockDAI`, is redeployed.
+executable code (ignoring the compiler's metadata trailer) and constructor
+arguments still match the current build; a changed mock — a different supply
+ceiling, say — is deployed once at a new address and pinned from then on. A
+carried-over record is never compared again, so changing the mock requires a fresh
+deploy whose archive no longer matches. Every other contract, including `MockDAI`,
+is redeployed.
 
 Phase 1 sends many transactions and can be interrupted partway. Re-run with
 `--resume` to continue into the **existing** namespace instead of archiving:
