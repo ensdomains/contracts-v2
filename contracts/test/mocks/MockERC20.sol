@@ -29,7 +29,7 @@ contract MockERC20 is ERC20Permit {
     }
 
     /// @notice Burns the whole balance of `owner`.
-    function nuke(address owner) external virtual {
+    function nuke(address owner) external {
         _burn(owner, balanceOf(owner));
     }
 
@@ -40,9 +40,9 @@ contract MockERC20 is ERC20Permit {
 
 
 /// @notice Mock ERC-20 whose issuance is bounded by a total supply ceiling and a
-/// per-call mint limit, with burning reserved for its admin.
+/// per-call mint limit.
 /// @dev Used for the mock payment token on public testnets, where anyone may mint
-/// from a faucet but the token must not be infinitely inflatable or wipeable.
+/// from a faucet but the token must not be infinitely inflatable.
 contract MockERC20Capped is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -54,9 +54,6 @@ contract MockERC20Capped is MockERC20 {
     /// @notice Maximum amount a single mint call can create.
     uint256 public immutable MINT_LIMIT;
 
-    /// @notice Account allowed to burn balances with {nuke}.
-    address public immutable ADMIN;
-
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -67,9 +64,6 @@ contract MockERC20Capped is MockERC20 {
     /// @notice A mint would take the total supply past {MAX_SUPPLY}.
     error MaxSupplyExceeded(uint256 amount, uint256 remainingSupply);
 
-    /// @notice The caller is not {ADMIN}.
-    error Unauthorized(address caller);
-
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -79,7 +73,6 @@ contract MockERC20Capped is MockERC20 {
     {
         MAX_SUPPLY = maxSupply_;
         MINT_LIMIT = mintLimit_;
-        ADMIN = msg.sender;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -96,14 +89,6 @@ contract MockERC20Capped is MockERC20 {
             revert MaxSupplyExceeded(amount, remainingSupply);
         }
         _mint(to, amount);
-    }
-
-    /// @notice Burns the whole balance of `owner`. Restricted to {ADMIN}.
-    function nuke(address owner) external override {
-        if (msg.sender != ADMIN) {
-            revert Unauthorized(msg.sender);
-        }
-        _burn(owner, balanceOf(owner));
     }
 }
 

@@ -40,12 +40,13 @@ function record(overrides: Record<string, unknown> = {}) {
   });
 }
 
-/// Replaces the metadata payload of a build, keeping its trailer length intact.
-function withDifferentMetadata(bytecode: string): string {
+/// Rewrites the metadata trailer of a build, leaving the executable code alone.
+function withMetadataTrailer(bytecode: string, payloadBytes: number): string {
   const cborLength = parseInt(bytecode.slice(-4), 16);
-  const metadataStart = bytecode.length - cborLength * 2;
-  const flipped = bytecode[metadataStart] === "0" ? "1" : "0";
-  return `${bytecode.slice(0, metadataStart)}${flipped}${bytecode.slice(metadataStart + 1)}`;
+  const code = bytecode.slice(0, -(cborLength * 2 + 4));
+  const payload = "ab".repeat(payloadBytes);
+  const suffix = payloadBytes.toString(16).padStart(4, "0");
+  return `${code}${payload}${suffix}`;
 }
 
 describe("reusePinnedMockTokens", () => {
@@ -98,7 +99,31 @@ describe("reusePinnedMockTokens", () => {
     writeFileSync(
       join(archived, "MockUSDC.json"),
       record({
-        bytecode: withDifferentMetadata(Artifact_MockERC20Capped.bytecode),
+        bytecode: withMetadataTrailer(
+          Artifact_MockERC20Capped.bytecode,
+          parseInt(Artifact_MockERC20Capped.bytecode.slice(-4), 16),
+        ),
+      }),
+    );
+
+    const reused = reusePinnedMockTokens(
+      root,
+      ENVIRONMENT,
+      ARCHIVE,
+      sepolia.id,
+    );
+
+    expect(reused).toEqual(["MockUSDC"]);
+  });
+
+  it("keeps a build whose metadata trailer length differs", () => {
+    writeFileSync(
+      join(archived, "MockUSDC.json"),
+      record({
+        bytecode: withMetadataTrailer(
+          Artifact_MockERC20Capped.bytecode,
+          parseInt(Artifact_MockERC20Capped.bytecode.slice(-4), 16) + 2,
+        ),
       }),
     );
 
