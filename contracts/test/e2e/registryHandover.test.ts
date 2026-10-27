@@ -160,7 +160,7 @@ describe("registry handover", () => {
       expect(rolesDoc).toContain("### RootRegistry");
       expect(rolesDoc).toMatch(
         new RegExp(
-          `"eth" entry \\| \\*\\*nameOwner[^*]*\\*\\*<br>\\[${nameOwner()}\\]`,
+          `"eth" entry \\| \\*\\*nameOwner[^*]*\\*\\* \\(\\[${nameOwner()}\\]`,
         ),
       );
     },

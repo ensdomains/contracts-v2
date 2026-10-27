@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { getAddress, zeroAddress } from "viem";
 
 import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
+import { nameRoles } from "../../script/migrations/roleAudit.js";
 import {
   addressLabels,
   renderRolesMarkdown,
@@ -13,6 +14,10 @@ const DAO = getAddress("0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7");
 const REGISTRY = getAddress("0x00000000000000000000000000000000000000e1");
 const REGISTRAR = getAddress("0x00000000000000000000000000000000000000e2");
 const PROXY = getAddress("0x00000000000000000000000000000000000000e3");
+// The lowest role slot the registry vocabulary leaves without a name.
+const UNNAMED_BIT = (({ unnamed }) => unnamed & -unnamed)(
+  nameRoles(ROLES.ALL, "REGISTRY"),
+);
 
 describe("roleFamily", () => {
   it("names roles in the vocabulary of the contract type", () => {
@@ -72,6 +77,22 @@ describe("renderRolesMarkdown", () => {
         roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
         family: "REGISTRY",
       },
+      {
+        contract: { label: "ETHRegistry", address: REGISTRY },
+        resource: 1n << 32n,
+        entry: "eth",
+        holder: { label: "owner / ENS DAO timelock", address: DAO },
+        roles: ROLES.ALL,
+        family: "REGISTRY",
+      },
+      {
+        contract: { label: "ETHRegistry", address: REGISTRY },
+        resource: 2n << 32n,
+        entry: "reverse",
+        holder: { label: "ETHRegistrar", address: REGISTRAR },
+        roles: ROLES.REGISTRY.RENEW | UNNAMED_BIT,
+        family: "REGISTRY",
+      },
     ],
     control: [
       {
@@ -90,10 +111,10 @@ describe("renderRolesMarkdown", () => {
   it("names and addresses every holder and contract", () => {
     expect(markdown).toContain("### ETHRegistry");
     expect(markdown).toContain(
-      `**owner / ENS DAO timelock**<br>[${DAO}](https://etherscan.io/address/${DAO})`,
+      `**owner / ENS DAO timelock** ([${DAO}](https://etherscan.io/address/${DAO}))`,
     );
     expect(markdown).toContain(
-      `**ETHRegistrar**<br>[${REGISTRAR}](https://etherscan.io/address/${REGISTRAR})`,
+      `**ETHRegistrar** ([${REGISTRAR}](https://etherscan.io/address/${REGISTRAR}))`,
     );
   });
 
@@ -109,14 +130,24 @@ describe("renderRolesMarkdown", () => {
     expect(markdown).toContain("REGISTRAR, RENEW");
   });
 
-  it("shows the raw bitmap beside the role names", () => {
-    expect(markdown).toContain(
-      `\`0x${(ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW).toString(16)}\``,
+  it("reads every role slot as all roles, and counts bits it has no name for", () => {
+    expect(markdown).toContain(`| "eth" entry | **owner / ENS DAO timelock**`);
+    expect(markdown).toMatch(
+      /\| "eth" entry \|[^\n]*\| all roles, including every admin role \|/,
+    );
+    expect(markdown).toMatch(
+      /\| "reverse" entry \|[^\n]*\| RENEW, 1 unnamed role slot \|/,
     );
   });
 
+  it("carries no HTML tags or raw role bitmaps", () => {
+    expect(markdown).not.toContain("<br>");
+    expect(markdown).not.toContain("unknown(");
+    expect(markdown).not.toMatch(/`0x[0-9a-f]+`/);
+  });
+
   it("flags a registry that is not emancipated", () => {
-    expect(markdown).toMatch(/ETHRegistry\*\*<br>.*\| \*\*no\*\* \|/);
+    expect(markdown).toMatch(/ETHRegistry\*\* \(.*\| \*\*no\*\* \|/);
   });
 
   it("says which per-name roles it leaves out", () => {

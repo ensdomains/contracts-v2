@@ -13,9 +13,10 @@ import { join } from "node:path";
 import { type Address, getAddress, zeroAddress } from "viem";
 
 import { explorerUrl, isProxyArtifact, markdownTable } from "./addressDocs.js";
-import { describeRoleBitmap } from "./migrations/roleAudit.js";
+import { ROLES } from "./deploy-constants.js";
+import { nameRoles, type RoleFamily } from "./migrations/roleAudit.js";
 
-export type RoleFamily = "REGISTRY" | "RESOLVER" | "ORACLE" | "ADDRESS_SET";
+export type { RoleFamily };
 
 /// A named address: a deployed contract or a known account.
 export type Labelled = { label: string; address: Address };
@@ -114,17 +115,21 @@ function addressCell(chainId: number, address: Address): string {
 
 function named(chainId: number, item: Labelled | undefined): string {
   if (!item) return "—";
-  return `**${item.label}**<br>${addressCell(chainId, item.address)}`;
+  return `**${item.label}** (${addressCell(chainId, item.address)})`;
 }
 
-/// The roles a holder has, named in the contract's own vocabulary, with the raw
-/// bitmap so the names can be checked against the contract.
+/// The roles a holder has, named in the contract's own vocabulary. Every role slot,
+/// admin slots included, reads as all roles, and bits this build has no name for are
+/// counted rather than dropped, so the cell still accounts for everything held.
 function rolesCell(holding: RoleHolding): string {
-  // A bare `|` would end the table cell.
-  const names = describeRoleBitmap(holding.roles, holding.family)
-    .split(" | ")
-    .join(", ");
-  return `${names}<br>\`0x${holding.roles.toString(16)}\``;
+  if (holding.roles === ROLES.ALL)
+    return "all roles, including every admin role";
+  const { names, unnamed } = nameRoles(holding.roles, holding.family);
+  const slots = unnamed.toString(2).split("1").length - 1;
+  if (slots > 0) {
+    names.push(`${slots} unnamed role slot${slots === 1 ? "" : "s"}`);
+  }
+  return names.length ? names.join(", ") : "none";
 }
 
 export function renderRolesMarkdown(
