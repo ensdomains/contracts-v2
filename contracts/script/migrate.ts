@@ -2514,8 +2514,9 @@ async function resolveGraveyards(
   return { graveyards, v1Contracts };
 }
 
-// Smallest block span worth requesting before a provider's refusal is taken at face
-// value rather than as a demand for a narrower one.
+// Smallest block span a failed log query is narrowed to before it is asked again
+// unchanged. A span refusal is narrowed further, down to a single block, since a cap
+// on the result count can refuse even a short span of dense blocks.
 const LOG_SCAN_MIN_SPAN = 1_000n;
 
 // A decoded log with the position fields a consumer needs to order results or
@@ -2535,7 +2536,7 @@ type ScannedLog = {
 // scan, so the cap is discovered once rather than rediscovered per subrange. A
 // load-balanced endpoint also fails some requests at random, so any other error is
 // retried as `QueryRetry` allows, bisecting the span while it is above the smallest.
-// The blocks covered are the same either way; a refusal at the smallest span, or a
+// The blocks covered are the same either way; a refusal of a single block, or a
 // failure past the retry limit, raises.
 export async function readEventLogs(
   client: Pick<ReturnType<typeof publicClient>, "getLogs">,
@@ -2578,7 +2579,7 @@ export async function readEventLogs(
       return logs as unknown as ScannedLog[];
     } catch (error) {
       if (isLogSpanRefusal(error)) {
-        if (span <= LOG_SCAN_MIN_SPAN) throw error;
+        if (span <= 1n) throw error;
       } else {
         await retry.failed(error);
         if (span <= LOG_SCAN_MIN_SPAN) return readSpan(fromBlock, toBlock);
