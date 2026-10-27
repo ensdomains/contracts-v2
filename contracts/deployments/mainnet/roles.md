@@ -8,8 +8,8 @@ itself.
 
 - **Network:** mainnet
 - **Chain ID:** 1
-- **Read at block:** 26282814
-- **Read at:** 2026-10-27T08:21:50.426Z
+- **Read at block:** 26283216
+- **Read at:** 2026-10-27T09:42:21.899Z
 - **Not listed:** the roles each name's owner holds on its own name in ETHRegistry
 
 ## Audit
@@ -24,11 +24,11 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **ETHRegistrar**<br>[0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81](https://etherscan.io/address/0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81) | REGISTRAR, RENEW<br>`0x10001` |
-| registry-wide | **ETHRenewerV1**<br>[0x56c447F308F463A01121C41E72b0E7e7557fCb68](https://etherscan.io/address/0x56c447F308F463A01121C41E72b0E7e7557fCb68) | RENEW<br>`0x10000` |
-| registry-wide | **LockedMigrationController**<br>[0x3ceA18620883a69ED349B23328A3B6302598e51A](https://etherscan.io/address/0x3ceA18620883a69ED349B23328A3B6302598e51A) | REGISTER_RESERVED<br>`0x10` |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | REGISTRAR, REGISTER_RESERVED, SET_PARENT, RENEW, SET_URI, CAN_NAME, REGISTRAR_ADMIN, REGISTER_RESERVED_ADMIN, SET_PARENT_ADMIN, RENEW_ADMIN, SET_URI_ADMIN, CAN_NAME_ADMIN<br>`0x100000000000000000000100001011101000000000000000000001000010111` |
-| registry-wide | **UnlockedMigrationController**<br>[0xaB821Ca676CF2e0790Fa273526a165CFa86aEB64](https://etherscan.io/address/0xaB821Ca676CF2e0790Fa273526a165CFa86aEB64) | REGISTER_RESERVED<br>`0x10` |
+| registry-wide | **ETHRegistrar** ([0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81](https://etherscan.io/address/0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81)) | REGISTRAR, RENEW |
+| registry-wide | **ETHRenewerV1** ([0x56c447F308F463A01121C41E72b0E7e7557fCb68](https://etherscan.io/address/0x56c447F308F463A01121C41E72b0E7e7557fCb68)) | RENEW |
+| registry-wide | **LockedMigrationController** ([0x3ceA18620883a69ED349B23328A3B6302598e51A](https://etherscan.io/address/0x3ceA18620883a69ED349B23328A3B6302598e51A)) | REGISTER_RESERVED |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | REGISTRAR, REGISTER_RESERVED, SET_PARENT, RENEW, SET_URI, CAN_NAME, REGISTRAR_ADMIN, REGISTER_RESERVED_ADMIN, SET_PARENT_ADMIN, RENEW_ADMIN, SET_URI_ADMIN, CAN_NAME_ADMIN |
+| registry-wide | **UnlockedMigrationController** ([0xaB821Ca676CF2e0790Fa273526a165CFa86aEB64](https://etherscan.io/address/0xaB821Ca676CF2e0790Fa273526a165CFa86aEB64)) | REGISTER_RESERVED |
 
 ### HCAUpgradeSet
 
@@ -36,7 +36,7 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | APPROVE, CAN_NAME, APPROVE_ADMIN, CAN_NAME_ADMIN<br>`0x1100000000000000000000000000000011` |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | APPROVE, CAN_NAME, APPROVE_ADMIN, CAN_NAME_ADMIN |
 
 ### PermissionedResolverImpl
 
@@ -44,7 +44,7 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | CAN_NAME, CAN_NAME_ADMIN<br>`0x100000000000000000000000000000001000000000000000000000000000000` |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | CAN_NAME, CAN_NAME_ADMIN |
 
 ### PublicResolverSet
 
@@ -52,7 +52,7 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | APPROVE, CAN_NAME, APPROVE_ADMIN, CAN_NAME_ADMIN<br>`0x1100000000000000000000000000000011` |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | APPROVE, CAN_NAME, APPROVE_ADMIN, CAN_NAME_ADMIN |
 
 ### RegistryUpgradeSet
 
@@ -60,7 +60,7 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | APPROVE, CAN_NAME, APPROVE_ADMIN, CAN_NAME_ADMIN<br>`0x1100000000000000000000000000000011` |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | APPROVE, CAN_NAME, APPROVE_ADMIN, CAN_NAME_ADMIN |
 
 ### RootRegistry
 
@@ -68,9 +68,9 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| "eth" entry | **nameOwner / ENS DAO name owner**<br>[0x5B716D6587d241166bC8914858640F8684F3A2F3](https://etherscan.io/address/0x5B716D6587d241166bC8914858640F8684F3A2F3) | REGISTRAR, REGISTER_RESERVED, SET_PARENT, UNREGISTER, RENEW, SET_SUBREGISTRY, SET_RESOLVER, CAN_TRANSFER, WAS_RESERVED, SET_URI, CAN_NAME, UPGRADE, REGISTRAR_ADMIN, REGISTER_RESERVED_ADMIN, SET_PARENT_ADMIN, UNREGISTER_ADMIN, RENEW_ADMIN, SET_SUBREGISTRY_ADMIN, SET_RESOLVER_ADMIN, CAN_TRANSFER_ADMIN, WAS_RESERVED_ADMIN, SET_URI_ADMIN, CAN_NAME_ADMIN, UPGRADE_ADMIN, unknown(0x11111111111111111111000000000000111111111111111111110000000000)<br>`0x1111111111111111111111111111111111111111111111111111111111111111` |
-| "reverse" entry | **nameOwner / ENS DAO name owner**<br>[0x5B716D6587d241166bC8914858640F8684F3A2F3](https://etherscan.io/address/0x5B716D6587d241166bC8914858640F8684F3A2F3) | REGISTRAR, REGISTER_RESERVED, SET_PARENT, UNREGISTER, RENEW, SET_SUBREGISTRY, SET_RESOLVER, CAN_TRANSFER, WAS_RESERVED, SET_URI, CAN_NAME, UPGRADE, REGISTRAR_ADMIN, REGISTER_RESERVED_ADMIN, SET_PARENT_ADMIN, UNREGISTER_ADMIN, RENEW_ADMIN, SET_SUBREGISTRY_ADMIN, SET_RESOLVER_ADMIN, CAN_TRANSFER_ADMIN, WAS_RESERVED_ADMIN, SET_URI_ADMIN, CAN_NAME_ADMIN, UPGRADE_ADMIN, unknown(0x11111111111111111111000000000000111111111111111111110000000000)<br>`0x1111111111111111111111111111111111111111111111111111111111111111` |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | REGISTRAR, REGISTER_RESERVED, SET_PARENT, RENEW, SET_URI, CAN_NAME, REGISTRAR_ADMIN, REGISTER_RESERVED_ADMIN, SET_PARENT_ADMIN, RENEW_ADMIN, SET_URI_ADMIN, CAN_NAME_ADMIN<br>`0x100000000000000000000100001011101000000000000000000001000010111` |
+| "eth" entry | **nameOwner / ENS DAO name owner** ([0x5B716D6587d241166bC8914858640F8684F3A2F3](https://etherscan.io/address/0x5B716D6587d241166bC8914858640F8684F3A2F3)) | all roles, including every admin role |
+| "reverse" entry | **nameOwner / ENS DAO name owner** ([0x5B716D6587d241166bC8914858640F8684F3A2F3](https://etherscan.io/address/0x5B716D6587d241166bC8914858640F8684F3A2F3)) | all roles, including every admin role |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | REGISTRAR, REGISTER_RESERVED, SET_PARENT, RENEW, SET_URI, CAN_NAME, REGISTRAR_ADMIN, REGISTER_RESERVED_ADMIN, SET_PARENT_ADMIN, RENEW_ADMIN, SET_URI_ADMIN, CAN_NAME_ADMIN |
 
 ### StandardRentPriceOracle
 
@@ -78,7 +78,7 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | UPDATE_TOKEN, DISABLE_TOKEN, CAN_NAME, UPDATE_TOKEN_ADMIN, DISABLE_TOKEN_ADMIN, CAN_NAME_ADMIN<br>`0x11100000000000000000000000000000111` |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | UPDATE_TOKEN, DISABLE_TOKEN, CAN_NAME, UPDATE_TOKEN_ADMIN, DISABLE_TOKEN_ADMIN, CAN_NAME_ADMIN |
 
 ### UserRegistryImpl
 
@@ -86,7 +86,7 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | CAN_NAME, CAN_NAME_ADMIN<br>`0x100000000000000000000000000000001000000000000000000000000000000` |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | CAN_NAME, CAN_NAME_ADMIN |
 
 ### WrapperRegistryImpl
 
@@ -94,7 +94,7 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Scope | Holder | Roles |
 | --- | --- | --- |
-| registry-wide | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | CAN_NAME, CAN_NAME_ADMIN<br>`0x100000000000000000000000000000001000000000000000000000000000000` |
+| registry-wide | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | CAN_NAME, CAN_NAME_ADMIN |
 
 ## Owners and upgrade admins
 
@@ -102,20 +102,20 @@ The root and .eth registries match what the migration intends at the `post-regis
 
 | Contract | Owner | Proxy admin |
 | --- | --- | --- |
-| **BatchRegistrar**<br>[0xf0CcfBF6DbA1E01CCB833CED6d551A8F000E9721](https://etherscan.io/address/0xf0CcfBF6DbA1E01CCB833CED6d551A8F000E9721) | **nobody**<br>[0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000) | — |
-| **BoxedENSURIRenderer**<br>[0x6f412Ff4144d525f791777d3384e9A1B170492Fb](https://etherscan.io/address/0x6f412Ff4144d525f791777d3384e9A1B170492Fb) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
-| **ContractNamer**<br>[0x5cDaF63d4C2a01218149DDe707E5bc239c68730c](https://etherscan.io/address/0x5cDaF63d4C2a01218149DDe707E5bc239c68730c) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
-| **ContractNamer_Implementation**<br>[0x87d7CDffAfBe9826D978FBdBE3Ad45E7A4BF3D1C](https://etherscan.io/address/0x87d7CDffAfBe9826D978FBdBE3Ad45E7A4BF3D1C) | **nobody**<br>[0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000) | — |
-| **DNSSECGatewayProvider**<br>[0xA646BCEE466D77669A087f3379640CB03aCA7c3D](https://etherscan.io/address/0xA646BCEE466D77669A087f3379640CB03aCA7c3D) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
-| **ENSURIRenderer**<br>[0x82CaC0d801b9A392a4fF217D5E68145801E90a41](https://etherscan.io/address/0x82CaC0d801b9A392a4fF217D5E68145801E90a41) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
-| **ETHRegistrar**<br>[0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81](https://etherscan.io/address/0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
-| **ETHRenewerV1**<br>[0x56c447F308F463A01121C41E72b0E7e7557fCb68](https://etherscan.io/address/0x56c447F308F463A01121C41E72b0E7e7557fCb68) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
-| **LockedMigrationController**<br>[0x3ceA18620883a69ED349B23328A3B6302598e51A](https://etherscan.io/address/0x3ceA18620883a69ED349B23328A3B6302598e51A) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) |
-| **ManagedUniversalResolverProxy**<br>[0xcFFd2Ae680CD110D28739a70922636B5937b022B](https://etherscan.io/address/0xcFFd2Ae680CD110D28739a70922636B5937b022B) | — | **security council / ENS Security Council Safe**<br>[0x7101B78638e34444F0a5AdE9e1149fbEeC029931](https://etherscan.io/address/0x7101B78638e34444F0a5AdE9e1149fbEeC029931) |
-| **RootBatchRegistrar**<br>[0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164](https://etherscan.io/address/0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164) | **nobody**<br>[0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000) | — |
-| **StandaloneHCAFactory**<br>[0x742bf21897a78e2C98cC5f5C5473A370a081e561](https://etherscan.io/address/0x742bf21897a78e2C98cC5f5C5473A370a081e561) | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) | — |
-| **StandaloneHCAImplementation**<br>[0x116F462FA078ec0009e9b25DCd60309E70aaC4F4](https://etherscan.io/address/0x116F462FA078ec0009e9b25DCd60309E70aaC4F4) | **nobody**<br>[0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000) | — |
-| **UniversalResolver (top proxy) / UpgradableUniversalResolverProxy**<br>[0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe) | — | **owner / ENS DAO timelock / v1 owner**<br>[0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7) |
+| **BatchRegistrar** ([0xf0CcfBF6DbA1E01CCB833CED6d551A8F000E9721](https://etherscan.io/address/0xf0CcfBF6DbA1E01CCB833CED6d551A8F000E9721)) | **nobody** ([0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000)) | — |
+| **BoxedENSURIRenderer** ([0x6f412Ff4144d525f791777d3384e9A1B170492Fb](https://etherscan.io/address/0x6f412Ff4144d525f791777d3384e9A1B170492Fb)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | — |
+| **ContractNamer** ([0x5cDaF63d4C2a01218149DDe707E5bc239c68730c](https://etherscan.io/address/0x5cDaF63d4C2a01218149DDe707E5bc239c68730c)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | — |
+| **ContractNamer_Implementation** ([0x87d7CDffAfBe9826D978FBdBE3Ad45E7A4BF3D1C](https://etherscan.io/address/0x87d7CDffAfBe9826D978FBdBE3Ad45E7A4BF3D1C)) | **nobody** ([0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000)) | — |
+| **DNSSECGatewayProvider** ([0xA646BCEE466D77669A087f3379640CB03aCA7c3D](https://etherscan.io/address/0xA646BCEE466D77669A087f3379640CB03aCA7c3D)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | — |
+| **ENSURIRenderer** ([0x82CaC0d801b9A392a4fF217D5E68145801E90a41](https://etherscan.io/address/0x82CaC0d801b9A392a4fF217D5E68145801E90a41)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | — |
+| **ETHRegistrar** ([0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81](https://etherscan.io/address/0xD6D8369e55c94Ae8AFA714E6cF7AB5bE54D5CC81)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | — |
+| **ETHRenewerV1** ([0x56c447F308F463A01121C41E72b0E7e7557fCb68](https://etherscan.io/address/0x56c447F308F463A01121C41E72b0E7e7557fCb68)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | — |
+| **LockedMigrationController** ([0x3ceA18620883a69ED349B23328A3B6302598e51A](https://etherscan.io/address/0x3ceA18620883a69ED349B23328A3B6302598e51A)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) |
+| **ManagedUniversalResolverProxy** ([0xcFFd2Ae680CD110D28739a70922636B5937b022B](https://etherscan.io/address/0xcFFd2Ae680CD110D28739a70922636B5937b022B)) | — | **security council / ENS Security Council Safe** ([0x7101B78638e34444F0a5AdE9e1149fbEeC029931](https://etherscan.io/address/0x7101B78638e34444F0a5AdE9e1149fbEeC029931)) |
+| **RootBatchRegistrar** ([0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164](https://etherscan.io/address/0xe467Ae049DDd65A21fb85B5f1dE5F7997a8Eb164)) | **nobody** ([0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000)) | — |
+| **StandaloneHCAFactory** ([0x742bf21897a78e2C98cC5f5C5473A370a081e561](https://etherscan.io/address/0x742bf21897a78e2C98cC5f5C5473A370a081e561)) | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) | — |
+| **StandaloneHCAImplementation** ([0x116F462FA078ec0009e9b25DCd60309E70aaC4F4](https://etherscan.io/address/0x116F462FA078ec0009e9b25DCd60309E70aaC4F4)) | **nobody** ([0x0000000000000000000000000000000000000000](https://etherscan.io/address/0x0000000000000000000000000000000000000000)) | — |
+| **UniversalResolver (top proxy) / UpgradableUniversalResolverProxy** ([0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe)) | — | **owner / ENS DAO timelock / v1 owner** ([0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7](https://etherscan.io/address/0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7)) |
 
 ## Registry emancipation
 
@@ -123,7 +123,7 @@ A registry is emancipated when nobody holds a registry-wide role that reaches it
 
 | Registry | Emancipated |
 | --- | --- |
-| **ETHRegistry**<br>[0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2](https://etherscan.io/address/0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2) | yes |
-| **RootRegistry**<br>[0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e](https://etherscan.io/address/0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e) | yes |
-| **UserRegistryImpl**<br>[0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72](https://etherscan.io/address/0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72) | yes |
-| **WrapperRegistryImpl**<br>[0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888](https://etherscan.io/address/0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888) | yes |
+| **ETHRegistry** ([0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2](https://etherscan.io/address/0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2)) | yes |
+| **RootRegistry** ([0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e](https://etherscan.io/address/0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e)) | yes |
+| **UserRegistryImpl** ([0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72](https://etherscan.io/address/0xFAA23592ACA10A6d8875b18eA86954e8EB6d8d72)) | yes |
+| **WrapperRegistryImpl** ([0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888](https://etherscan.io/address/0xe86A4ef4d7A210aAA1d6A9594fC7Add7cD2Cf888)) | yes |
