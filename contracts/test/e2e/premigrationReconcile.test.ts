@@ -268,10 +268,13 @@ describe("premigration reconcile", () => {
 
   it("reports an expiry that does not match the bonus-adjusted v1 expiry", async () => {
     const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
 
-    // Claim a different v1 expiry than the one the name was seeded from.
-    writeIndex(workDir, [
-      { id: indexEntries[0].id, expiry: indexEntries[0].expiry + 12345n },
+    // v1 alone moves on, as a renewal the sync missed leaves it: v2 still holds the
+    // expiry the name was seeded from.
+    await env.v1.BaseRegistrar.write.renew([
+      BigInt(indexEntries[0].id),
+      12345n,
     ]);
 
     const result = await run(workDir, fromBlock, { reportOnly: true });
@@ -279,6 +282,26 @@ describe("premigration reconcile", () => {
     expect(result.expiryMismatched).toHaveLength(1);
     expect(result.expiryMismatched[0]).toContain(indexEntries[0].id);
     expect(result.missing).toEqual([]);
+  });
+
+  it("accepts a reservation renewed on v1 and v2 together after the index was built", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    // Both sides extend by the same span once the index has read v1, as the renewer
+    // leaves them; a sync brings v2 to the renewed v1 expiry the same way.
+    await env.v1.BaseRegistrar.write.renew([
+      BigInt(indexEntries[0].id),
+      12345n,
+    ]);
+    await preMigrationMain(
+      buildMainArgs(env, csvFile, { bonusPeriodDays: BONUS_PERIOD_DAYS }),
+    );
+
+    const result = await run(workDir, fromBlock);
+
+    expect(result.reserved).toBe(1);
+    expect(result.expiryMismatched).toEqual([]);
   });
 
   it("applies the bonus period when computing the expected v2 expiry", async () => {

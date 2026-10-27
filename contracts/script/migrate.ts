@@ -889,7 +889,6 @@ async function reconcileRehearsalPreMigration(opts: {
   v1BaseRegistrar: Address;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
-  renewedIds?: readonly Hex[];
 }): Promise<ReconcileResult> {
   // Pre-migration skips a label it cannot submit, so the index does too.
   const ids = [
@@ -916,7 +915,6 @@ async function reconcileRehearsalPreMigration(opts: {
     v1BaseRegistrar: opts.v1BaseRegistrar,
     v1DeploymentsDir: opts.v1DeploymentsDir,
     v1DeploymentNetwork: opts.v1DeploymentNetwork,
-    renewedIds: opts.renewedIds,
   });
 }
 
@@ -1349,10 +1347,6 @@ export async function reconcilePreMigration(opts: {
   // purpose are listed apart rather than counted as missing. A chain can carry more
   // than one seeded cohort, each in its own work directory.
   fixtureWorkDirs?: string[];
-  // Names renewed on v1 after the index was built. The index reads v1 state at a
-  // block the renewal is not in, so their v2 expiry is checked for extension rather
-  // than for equality with what the index reports.
-  renewedIds?: readonly Hex[];
   // Names registered directly to their owners rather than reserved; the network's
   // table by default.
   directRegistrations?: readonly DirectRegistration[];
@@ -1363,9 +1357,6 @@ export async function reconcilePreMigration(opts: {
   const chain = forkChain(opts.network, chainId, opts.rpcUrl);
   const client = publicClient(opts.rpcUrl, chain);
   const v1Client = publicClient(opts.mainnetRpcUrl ?? opts.rpcUrl, chain);
-  const renewedIds = new Set(
-    (opts.renewedIds ?? []).map((id) => id.toLowerCase()),
-  );
 
   // A pass stands only until the next reconciliation. Revoked before anything can
   // fail, so a refused CSV, a count disagreement or an unreachable node cannot leave
@@ -1488,14 +1479,17 @@ export async function reconcilePreMigration(opts: {
       result.missing.push(`${entry.id} v1 lookup failed: ${read.error}`);
       continue;
     }
-    // Judged on the index's expiry, as the rest of the pass is.
+    // Eligibility is judged on the index's expiry, as the cross-source count is. A
+    // claimable name carries the expiry read here instead: the renewer extends v1 and
+    // v2 together after the index was built, so v2 has to match v1 as it is now.
     const eligibility = v1Eligibility(
       { expiry: entry.expiry, registrant: read.registrant },
       v1Now,
       graveyards,
     );
-    if (eligibility === "claimable") claimable.push(entry);
-    else if (eligibility === "graveyard") {
+    if (eligibility === "claimable") {
+      claimable.push({ id: entry.id, expiry: read.expiry });
+    } else if (eligibility === "graveyard") {
       graveyardIds.add(toLabelhashHex(canonicalLabelId(entry.id)));
     }
   }
@@ -1620,10 +1614,9 @@ export async function reconcilePreMigration(opts: {
     );
     // A registered name's owner can renew it on v2, which only ever extends it. A
     // reservation keeps the expiry pre-migration wrote, since the renewer extends
-    // v1 and v2 together — unless the renewal came after the index, which reports
-    // the expiry it superseded.
+    // v1 and v2 together.
     const expiryHolds =
-      status === STATUS.REGISTERED || renewedIds.has(entry.id.toLowerCase())
+      status === STATUS.REGISTERED
         ? actualExpiry >= expectedExpiry
         : actualExpiry === expectedExpiry;
     if (!expiryHolds) {
@@ -8772,8 +8765,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
     );
     // The sign-off phase 3 refuses to freeze v1 without, run over the rows the
     // pre-migration passes were given.
-    // Phase 4 renews a name on v1 and v2 together, after the index has read v1.
-    const renewedIds: Hex[] = [];
     const reconcileRehearsal = (stage: string, limit: string | undefined) =>
       reconcileRehearsalPreMigration({
         network: opts.network,
@@ -8787,7 +8778,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
         deploymentNetwork,
         v1BaseRegistrar: v1BaseRegistrar.address,
         ...v1Deployments,
-        renewedIds,
       });
     console.log("phase 2: reconcile pre-migration");
     await reconcileRehearsal("initial", opts.initialLimit);
@@ -8900,7 +8890,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
         mockUsdc,
         preFunded: paymentTokenPreFunded,
       });
-      renewedIds.push(keccak256(stringToHex(smokeLabels.reservedOnly)));
       coveredChecks.push(SMOKE_CHECKS.renewal);
     } else if (!postMigration) {
       // Post-migration mode already accounts for this skip: the renewal needs the
