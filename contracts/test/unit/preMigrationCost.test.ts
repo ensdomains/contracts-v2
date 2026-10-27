@@ -220,6 +220,9 @@ describe("scanRegistrations", () => {
 
 describe("summariseScan", () => {
   const now = 1_000_000_000n;
+  // A name registered with `[labelhash]`-shaped text, beside a placeholder of that
+  // shape standing in for a label nobody knows.
+  const bracketName = `[${"cd".repeat(32)}]`;
   const scan = (): RegistrationScan => ({
     expiries: new Map([
       [idOf("live"), now + 1n],
@@ -228,25 +231,28 @@ describe("summariseScan", () => {
       [idOf("cleared"), now + 1000n],
       [idOf("unlabelled"), now + 1n],
       [idOf("bracketed"), now + 1n],
+      [idOf(bracketName), now + 1n],
     ]),
     graveyardHeld: new Set([idOf("cleared")]),
     labels: new Map([
       [idOf("live"), "live"],
       [idOf("in-grace"), "in-grace"],
       [idOf("bracketed"), `[${"ab".repeat(32)}]`],
+      [idOf(bracketName), bracketName],
     ]),
     logs: 0,
   });
 
   it("counts the names pre-migration reserves, in labelhash order", () => {
     const summary = summariseScan(scan(), now);
-    expect(summary.distinct).toBe(6);
+    expect(summary.distinct).toBe(7);
     expect(summary.claimable).toEqual(
       [
         idOf("live"),
         idOf("in-grace"),
         idOf("unlabelled"),
         idOf("bracketed"),
+        idOf(bracketName),
       ].sort((a, b) => (a < b ? -1 : 1)),
     );
     expect(summary.graveyardHeld).toBe(1);
@@ -255,7 +261,7 @@ describe("summariseScan", () => {
   it("samples only labels pre-migration accepts", () => {
     const summary = summariseScan(scan(), now);
     expect(new Set(summary.labelled)).toEqual(
-      new Set([idOf("live"), idOf("in-grace")]),
+      new Set([idOf("live"), idOf("in-grace"), idOf(bracketName)]),
     );
   });
 });

@@ -82,6 +82,7 @@ import {
   DEFAULT_MAX_GAS_PRICE,
   graveyardSet,
   isClaimableOnV1,
+  isEncodedLabelhash,
   isValidLabel,
   median,
   readV1Registrations,
@@ -124,7 +125,16 @@ export function summariseScan(
     else claimable.push(id);
   }
   claimable.sort(compareBigInt);
-  const labelled = claimable.filter((id) => isValidLabel(scan.labels.get(id)));
+  // A `[labelhash]`-shaped label names its id only when it hashes to it; otherwise it
+  // stands in for a label nobody knows, which pre-migration cannot submit.
+  const labelled = claimable.filter((id) => {
+    const label = scan.labels.get(id);
+    return (
+      isValidLabel(label) &&
+      (!isEncodedLabelhash(label) ||
+        BigInt(keccak256(stringToBytes(label))) === id)
+    );
+  });
   return {
     distinct: scan.expiries.size,
     claimable,
