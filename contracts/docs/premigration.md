@@ -146,8 +146,10 @@ the row's labelhash, is an export's stand-in for a label nobody knows: Dune writ
 or reserving the stand-in text as a name.
 
 **Application-level filtering** happens *after* structural parsing and does **not** abort: labels
-longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped and counted as
-`invalidLabelCount`.
+longer than 255 bytes are skipped and counted as `invalidLabelCount`. A label in the
+bracketed-labelhash form (`[…]`) is judged by v1 like any other. A name registered with that text
+itself is a v1 name under the hash of the text, and is reserved. A placeholder for a label nobody
+knows has a hash v1 never registered, so it is skipped and counted as `invalidLabelCount`.
 
 > **Limitation:** `readline` splits on `\n`, so a field containing a literal newline inside quotes is
 > misread. No exporter we control produces these; pre-process the file if you have one.

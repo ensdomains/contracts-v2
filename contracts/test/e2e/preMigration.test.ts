@@ -1240,6 +1240,39 @@ describe("PreMigration", () => {
     expect(checkpoint!.invalidLabelCount).toBe(2);
   });
 
+  it("reserves a name registered with [labelhash]-shaped text", async () => {
+    const { user } = env.namedAccounts;
+
+    // Some live mainnet names were registered by typing ENS's placeholder text. v1
+    // knows such a name under the hash of that text, while a placeholder's own hash is
+    // never registered, so only the placeholder counts as an invalid label.
+    const bracketed = `[${"c0de".repeat(16)}]`;
+    const bracketedId = BigInt(keccak256(toHex(bracketed)));
+    await env.v1.BaseRegistrar.write.register([
+      bracketedId,
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const v1Expiry = await env.v1.BaseRegistrar.read.nameExpires([bracketedId]);
+    const placeholder = `[${"b".repeat(64)}]`;
+
+    createCSVFile(csvFilePath, [bracketed, placeholder]);
+    const bonusPeriodDays = 62;
+    await main(buildMainArgs(env, csvFilePath, { bonusPeriodDays }));
+
+    const state = await verifyV2State(env, bracketed);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
+    expect((await verifyV2State(env, placeholder)).status).toBe(
+      STATUS.AVAILABLE,
+    );
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.invalidLabelCount).toBe(1);
+    expect(checkpoint!.skippedNeverRegisteredCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
+  });
+
   // ─── Edge cases ────────────────────────────────────────────────────
 
   it("handles empty CSV file gracefully", async () => {
@@ -1985,13 +2018,7 @@ describe("PreMigration - Live Mainnet v1 Verification", () => {
     }
   });
 
-  it("throws InvalidLabelNameError for encoded labelhash", async () => {
-    const encodedLabel = `[${"a".repeat(64)}]`;
-    try {
-      await verifyNameOnV1(encodedLabel, mainnetClient);
-      expect.unreachable("should have thrown");
-    } catch (e) {
-      expect(e).toBeInstanceOf(InvalidLabelNameError);
-    }
+  it("accepts an encoded labelhash as a label for v1 to judge", () => {
+    expect(isValidLabel(`[${"a".repeat(64)}]`)).toBe(true);
   });
 });

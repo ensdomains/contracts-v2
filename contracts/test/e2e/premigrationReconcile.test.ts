@@ -691,12 +691,13 @@ describe("premigration reconcile", () => {
     ).toBeNull();
   });
 
-  it("lists a name the CSV carries only in [labelhash] form apart from the missing", async () => {
+  it("counts a name registered with [labelhash]-shaped text as missing until it is reserved", async () => {
     const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
     const { user } = env.namedAccounts;
 
     // A name registered with ENS's placeholder text as its label, as some live
-    // mainnet names were. Pre-migration refuses that shape, so it never reaches v2.
+    // mainnet names were. Pre-migration reserves it under the hash of that text, so
+    // its CSV row does not excuse it.
     const bracketed = `[${"0418".padEnd(64, "0")}]`;
     const bracketedId = keccak256(stringToHex(bracketed));
     await env.v1.BaseRegistrar.write.register([
@@ -716,12 +717,18 @@ describe("premigration reconcile", () => {
       { id: bracketedId, expiry: bracketedExpiry },
     ]);
 
+    const before = await run(workDir, fromBlock, { csvFile, reportOnly: true });
+    expect(before.missing).toEqual([bracketedId]);
+    expect(before.unreservable).toEqual([]);
+
+    await preMigrationMain(
+      buildMainArgs(env, csvFile, { bonusPeriodDays: BONUS_PERIOD_DAYS }),
+    );
     const result = await run(workDir, fromBlock, { csvFile });
 
     expect(result.missing).toEqual([]);
-    expect(result.unreservable).toEqual([
-      { id: bracketedId, label: bracketed },
-    ]);
+    expect(result.unreservable).toEqual([]);
+    expect(result.reserved).toBe(2);
   });
 
   it("lists a name the CSV names only by its labelhash apart from the missing", async () => {

@@ -165,15 +165,19 @@ leaves the rest of the namespace untouched.
 >
 > **Names whose CSV label pre-migration refuses are listed apart.** ENS writes a label it cannot show
 > as text — one nobody knows, or one longer than DNS encoding's 255 bytes — as its labelhash in square
-> brackets, and ENSIP-15 disallows brackets in a normalized name. Pre-migration refuses a label of that
-> shape, since the text alone cannot say whether it is a placeholder or a name registered with the
-> placeholder text itself; mainnet holds a handful of the latter, registered by typing the bracketed
-> form. It also refuses a label the export does give as text but that is longer than 255 bytes, which
-> no DNS-encoded name can carry, and a row whose label an export leaves empty or fills with text that
-> does not hash to the row's labelhash, which it reads in bracketed form (see
-> [CSV input](./premigration.md#csv-input)). Such a name can never be reserved from the CSV, so when `--csv-file`
-> is given reconcile lists each one under "not reservable from the CSV" instead of counting it as
-> missing. Without the CSV they cannot be told apart and count as missing.
+> brackets, and ENSIP-15 disallows brackets in a normalized name. The text alone cannot say whether a
+> label of that shape is a placeholder or a name registered with the placeholder text itself; mainnet
+> holds a handful of the latter, registered by typing the bracketed form. v1 can: such a name is a v1
+> name under the hash of its text, and pre-migration reserves it like any other, while a placeholder's
+> own hash is never registered, so pre-migration counts it as an invalid label. Pre-migration also
+> refuses a label the export does give as text but that is longer than 255 bytes, which no DNS-encoded
+> name can carry, and a row whose label an export leaves empty or fills with text that does not hash
+> to the row's labelhash, which it reads in bracketed form (see
+> [CSV input](./premigration.md#csv-input)). The name behind a placeholder, or behind a label over 255
+> bytes, can never be reserved from the CSV, so when `--csv-file` is given reconcile lists each one
+> under "not reservable from the CSV" instead of counting it as missing. A name registered with the
+> bracketed text is not listed there: unreserved, it counts as missing. Without the CSV the names
+> behind placeholders cannot be told apart and count as missing.
 >
 > **Read the `cross-source:` line first.** Before comparing anything against v2, reconcile prints the
 > CSV's label count beside the index's claimable count. Two independent views of the same chain must

@@ -111,21 +111,33 @@ export class FailedNamesError extends Error {
 const ENCODED_LABELHASH_RE = /^\[[0-9a-fA-F]{64}\]$/;
 
 /// Whether a label has the `[labelhash]` shape ENS uses to show a label it does not
-/// know. A CSV row in that shape is not a label pre-migration can submit: it is either
-/// such a placeholder, or a name registered with the placeholder text itself, and the
-/// two cannot be told apart from the text.
+/// know. A label in that shape is either such a placeholder, or a name registered with
+/// the placeholder text itself, and the text alone cannot tell the two apart; v1 can
+/// (see `isLabelPlaceholder`).
 export function isEncodedLabelhash(label: string): boolean {
   return ENCODED_LABELHASH_RE.test(label);
 }
 
+/// Whether a label is text pre-migration can submit. A `[labelhash]`-shaped label is
+/// accepted here and judged by its v1 registration, like any other.
 export function isValidLabel(label: any): label is string {
   return (
     !!label &&
     typeof label === "string" &&
     label.trim() !== "" &&
-    Buffer.from(label).length <= 255 &&
-    !isEncodedLabelhash(label)
+    Buffer.from(label).length <= 255
   );
+}
+
+/// Whether a label is a placeholder for a label nobody knows rather than a name. A
+/// placeholder's own hash is never a v1 name, while that of a name registered with
+/// the placeholder text is, so a `[labelhash]`-shaped label v1 never registered is a
+/// placeholder and counts as an invalid label, not as a name v1 lacks.
+export function isLabelPlaceholder(
+  label: string,
+  eligibility: V1Eligibility,
+): boolean {
+  return eligibility === "never-registered" && isEncodedLabelhash(label);
 }
 
 // Types
@@ -2050,6 +2062,14 @@ async function processBatch(
       }
 
       const eligibility = result.v1Eligibility;
+      if (isLabelPlaceholder(registration.labelName, eligibility)) {
+        logger.skippingInvalidName(registration.labelName);
+        checkpoint.invalidLabelCount++;
+        checkpoint.totalProcessed++;
+        clearFailedLine(registration.lineNumber);
+        logger.finishedName(registration.labelName, "skipped");
+        continue;
+      }
       if (eligibility !== "claimable") {
         const reason = V1_INELIGIBILITY_REASONS[eligibility];
         logger.v1NotRegistered(

@@ -226,6 +226,7 @@ import {
   csvExpiryColumnIndex,
   csvLabelColumns,
   isEncodedLabelhash,
+  isLabelPlaceholder,
   isValidLabel,
   loadCheckpoint,
   main as preMigrationMain,
@@ -402,24 +403,33 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // neither is present so callers can fail loudly instead of guessing a column.
 // How many CSV rows name a v1 registration that is still claimable at `chainNow`.
 //
-// Rows whose label pre-migration refuses, keyed by every labelhash the row can stand
-// for: the hash of the text itself, for a name registered with that text, and, for a
-// label of the `[labelhash]` shape, the hash inside the brackets, for a placeholder
-// of a label nobody knows.
+// Rows that name a name pre-migration cannot reserve, keyed by that name's labelhash.
+// A label pre-migration refuses stands for the hash of its own text. A `[labelhash]`
+// label stands for the hash inside the brackets, a name whose label nobody knows; a
+// name registered with that text is reserved under its own hash like any other, so it
+// is never listed here.
 function readUnreservableLabelRows(csvFile: string): Map<string, string> {
   const { rows, columns } = openLabelCsv(csvFile);
   const labels = new Map<string, string>();
   if (columns.label < 0) return labels;
   for (const line of rows) {
     const label = csvLabelCell(parseCSVLine(line), columns);
+    if (!label) continue;
+    if (isEncodedLabelhash(label)) {
+      labels.set(
+        toLabelhashHex(canonicalLabelId(`0x${label.slice(1, -1)}`)),
+        label,
+      );
+      continue;
+    }
     // Read into a plain boolean: the check is a type guard, and a refused string
     // would otherwise narrow to nothing.
     const refused: boolean = !isValidLabel(label);
-    if (!label || !refused) continue;
-    const ids = [keccak256(stringToHex(label))];
-    if (isEncodedLabelhash(label)) ids.push(`0x${label.slice(1, -1)}`);
-    for (const id of ids) {
-      labels.set(toLabelhashHex(canonicalLabelId(id)), label);
+    if (refused) {
+      labels.set(
+        toLabelhashHex(canonicalLabelId(keccak256(stringToHex(label)))),
+        label,
+      );
     }
   }
   return labels;
@@ -1056,6 +1066,10 @@ async function verifyPreMigration(opts: {
       const expiry = registration.expiry;
 
       const eligibility = v1Eligibility(registration, v1Now, graveyards);
+      if (isLabelPlaceholder(label, eligibility)) {
+        invalid++;
+        continue;
+      }
       if (eligibility !== "claimable") {
         skipped++;
         if (eligibility === "graveyard") skippedGraveyard++;
