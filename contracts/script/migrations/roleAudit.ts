@@ -61,10 +61,25 @@ const ROLE_BIT_NAMES: Array<[bigint, string]> = [
 // which family applies rather than every name being tried at once.
 export function describeRoleBitmap(
   bitmap: bigint,
-  family: "REGISTRY" | "RESOLVER" | "ORACLE" | "ADDRESS_SET" = "REGISTRY",
+  family: RoleFamily = "REGISTRY",
 ): string {
   if (bitmap === 0n) return "(none)";
 
+  // Anything left over is a bit this build has no name for — surfaced rather than
+  // dropped, so an audit never silently ignores a role it does not recognise.
+  const { names, unnamed } = nameRoles(bitmap, family);
+  if (unnamed !== 0n) names.push(`unknown(0x${unnamed.toString(16)})`);
+  return names.join(" | ");
+}
+
+export type RoleFamily = "REGISTRY" | "RESOLVER" | "ORACLE" | "ADDRESS_SET";
+
+/// The roles a bitmap holds, named in the contract's vocabulary, and the bits left
+/// over that this build has no name for.
+export function nameRoles(
+  bitmap: bigint,
+  family: RoleFamily,
+): { names: string[]; unnamed: bigint } {
   const prefix = `${family}_`;
   const names: string[] = [];
   let described = 0n;
@@ -73,12 +88,7 @@ export function describeRoleBitmap(
     names.push(name.slice(prefix.length));
     described |= bit;
   }
-
-  // Anything left over is a bit this build has no name for — surfaced rather than
-  // dropped, so an audit never silently ignores a role it does not recognise.
-  const unknown = bitmap & ~described;
-  if (unknown !== 0n) names.push(`unknown(0x${unknown.toString(16)})`);
-  return names.join(" | ");
+  return { names, unnamed: bitmap & ~described };
 }
 
 export type RoleHolder = {

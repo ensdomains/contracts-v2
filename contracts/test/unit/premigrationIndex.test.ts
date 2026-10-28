@@ -10,6 +10,7 @@ import {
   buildV1NameIndex,
   buildV1NameIndexFromRpc,
   createRpcIndexClient,
+  firstBlockWithCode,
   loadV1NameIndex,
   readV1NameIndexMeta,
   RangeTooWideError,
@@ -256,10 +257,16 @@ type Registration = { id: string; block: number; expiry: bigint };
 // A chain holding `registrations`. `maxLogs` mimics a provider that refuses a query
 // returning too many results, so the range-narrowing walk can be exercised.
 // `failAt` makes the scan throw once the given block is reached. `flaky` fails every
-// other log query, as a load-balanced provider fails some at random.
+// other log query, as a load-balanced provider fails some at random, and
+// `flakyExpiries` leaves every other expiry read unread the same way.
 function fakeChain(
   registrations: Registration[],
-  opts: { maxLogs?: number; failAt?: number; flaky?: boolean } = {},
+  opts: {
+    maxLogs?: number;
+    failAt?: number;
+    flaky?: boolean;
+    flakyExpiries?: boolean;
+  } = {},
 ) {
   const calls = { logs: 0, expiries: 0, failed: 0 };
   let queries = 0;
@@ -285,6 +292,10 @@ function fakeChain(
       return hits.map((entry) => entry.id);
     },
     async getExpiries(ids) {
+      if (opts.flakyExpiries && calls.expiries++ % 2 === 0) {
+        calls.failed++;
+        return ids.map(() => null);
+      }
       calls.expiries++;
       // Reads current expiry, which is what a renewal moves — the registration
       // log's own expiry is deliberately not consulted.
@@ -411,6 +422,35 @@ describe("premigrationIndex from chain logs", () => {
     expect(calls.failed).toBeGreaterThan(0);
     expect(meta.complete).toBe(true);
     expect(meta.entries).toBe(8);
+  });
+
+  it("asks again after an expiry read fails at random", async () => {
+    const dir = workDir();
+    const { client, calls } = fakeChain(
+      Array.from({ length: 8 }, (_, i) =>
+        registered(i + 1, 3_710_000 + i * 20_000),
+      ),
+      { flakyExpiries: true },
+    );
+
+    const meta = await buildFromRpc(dir, client);
+
+    expect(calls.failed).toBeGreaterThan(0);
+    expect(meta.complete).toBe(true);
+    expect(meta.entries).toBe(8);
+  });
+
+  it("stops when a name's expiry never reads", async () => {
+    const dir = workDir();
+    const { client } = fakeChain([registered(1, 3_710_000)]);
+    const unreadable: RpcIndexClient = {
+      ...client,
+      getExpiries: async (ids) => ids.map(() => null),
+    };
+
+    await expect(buildFromRpc(dir, unreadable)).rejects.toThrow(
+      /could not read nameExpires/,
+    );
   });
 
   it("drops names released long ago but keeps names inside grace", async () => {
@@ -579,5 +619,94 @@ describe("createRpcIndexClient log refusals", () => {
     await expect(failingClient(error).getRegisteredIds(1, 100)).rejects.toBe(
       error,
     );
+  });
+});
+
+describe("createRpcIndexClient expiry reads", () => {
+  it("reads a whole batch in one call", async () => {
+    const requests: unknown[] = [];
+    const client = createRpcIndexClient({
+      client: {
+        getBlockNumber: async () => 1n,
+        getBlock: async () => ({ timestamp: 0n }),
+        request: async () => [],
+        multicall: async (args) => {
+          requests.push(args);
+          const { contracts } = args as { contracts: unknown[] };
+          return contracts.map(() => ({
+            status: "success" as const,
+            result: 7n,
+          }));
+        },
+      },
+      baseRegistrar: "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85",
+    });
+
+    const ids = Array.from({ length: 500 }, (_, i) => labelhash(i + 1));
+    expect(await client.getExpiries(ids, 100)).toEqual(ids.map(() => 7n));
+    expect(requests).toHaveLength(1);
+    // A zero batch size stops the multicall splitting the batch into many calls.
+    expect(requests[0]).toMatchObject({ batchSize: 0, blockNumber: 100n });
+  });
+});
+
+describe("firstBlockWithCode", () => {
+  const ADDRESS = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85";
+
+  // A chain whose contract appears at `deployBlock`, counting the lookups made.
+  function chain(deployBlock: number | undefined, head = HEAD_BLOCK) {
+    const lookups: number[] = [];
+    return {
+      lookups,
+      client: {
+        getBlockNumber: async () => BigInt(head),
+        getCode: async ({ blockNumber }: { blockNumber: bigint }) => {
+          lookups.push(Number(blockNumber));
+          return deployBlock !== undefined && blockNumber >= BigInt(deployBlock)
+            ? ("0x6080" as const)
+            : undefined;
+        },
+      },
+    };
+  }
+
+  it("finds the block that deployed the contract", async () => {
+    for (const deployBlock of [0, 1, 9_380_410, HEAD_BLOCK - 1, HEAD_BLOCK]) {
+      const { client, lookups } = chain(deployBlock);
+      expect(await firstBlockWithCode(client, ADDRESS)).toBe(deployBlock);
+      expect(lookups.length).toBeLessThanOrEqual(
+        Math.ceil(Math.log2(HEAD_BLOCK)) + 1,
+      );
+    }
+  });
+
+  it("treats empty code as no contract", async () => {
+    const client = {
+      getBlockNumber: async () => 100n,
+      getCode: async ({ blockNumber }: { blockNumber: bigint }) =>
+        blockNumber >= 42n ? ("0x6080" as const) : ("0x" as const),
+    };
+    expect(await firstBlockWithCode(client, ADDRESS)).toBe(42);
+  });
+
+  it("asks a failed lookup again", async () => {
+    const { client } = chain(9_380_410);
+    let calls = 0;
+    const flaky = {
+      ...client,
+      getCode: async (args: { blockNumber: bigint }) => {
+        if (++calls % 3 === 0) {
+          throw new Error("pruned history unavailable");
+        }
+        return client.getCode(args);
+      },
+    };
+    expect(await firstBlockWithCode(flaky, ADDRESS, 0)).toBe(9_380_410);
+  });
+
+  it("refuses an address with no contract at the head block", async () => {
+    await expect(
+      firstBlockWithCode(chain(undefined).client, ADDRESS),
+    ).rejects.toThrow(/no contract at/);
   });
 });

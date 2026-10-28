@@ -73,7 +73,7 @@ Named accounts in [`rocketh/config.ts`](../rocketh/config.ts):
 | Account | Role | Value |
 | --- | --- | --- |
 | `owner` | Top URP admin | DAO on mainnet; deployer elsewhere |
-| `securityCouncil` | Intermediate URP admin | Intermediate URP admin wallet on sepolia; defaults to `deployer` elsewhere until a council multisig is configured per network |
+| `securityCouncil` | Intermediate URP admin | The ENS DAO Security Council Safe (`0x7101B78638e34444F0a5AdE9e1149fbEeC029931`) on mainnet; the intermediate URP admin wallet on sepolia; `deployer` elsewhere. `phase deploy-v2` defaults `--ur-manager` to it |
 | `urManager` | Account used by deploy scripts for intermediate-URP operations | Resolves to `securityCouncil` |
 
 ## CLI

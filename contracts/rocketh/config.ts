@@ -27,15 +27,36 @@ export const config = {
       1: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
     },
     securityCouncil: {
-      // admin of ManagedUniversalResolverProxy; set per-network to the
-      // security council multisig once one is designated
+      // admin of ManagedUniversalResolverProxy; the deployer where no
+      // network names a security council
       default: "deployer",
+      // the ENS DAO Security Council Safe. Keyed by environment name only: the
+      // local devnet also runs as chain 1, and its deploy must administer the
+      // managed URP itself.
+      mainnet: "0x7101B78638e34444F0a5AdE9e1149fbEeC029931",
       // admin of the long-lived intermediate URP that the top URP already fronts
       sepolia: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
       11155111: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
     },
     urManager: {
       default: "securityCouncil",
+    },
+    nameOwner: {
+      // holds the v2 root registry's `eth` token after the handover; the owner where
+      // no network names one
+      default: "owner",
+      // the ENS DAO name owner, a Safe whose only owner is the DAO timelock and which
+      // accepts ERC-1155 tokens. Keyed by environment name only, as the local devnet
+      // also runs as chain 1.
+      mainnet: "0x5B716D6587d241166bC8914858640F8684F3A2F3",
+    },
+    beneficiary: {
+      // receives the v2 registrar's and the v1 renewer's payments; the owner where
+      // no network names one
+      default: "owner",
+      // the ENS DAO endowment Safe (endowment.ensdao.eth). Keyed by environment name
+      // only, as the local devnet also runs as chain 1.
+      mainnet: "0x4F2083f5fBede34C2714aFfb3105539775f7FE64",
     },
     v1Owner: {
       default: "owner",
