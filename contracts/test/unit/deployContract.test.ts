@@ -374,14 +374,39 @@ describe("deployContract", () => {
     expect(copy!.recordFile).toEndWith("MockERC20Copy.json");
   });
 
-  it("replaces the record when the arguments change", async () => {
+  it("replaces the record when the arguments change and archives the old one", async () => {
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const deploymentsDir = join(tempRoot, "deployments");
     const original = await deploy({});
     const replaced = await deploy({ args: ["NEW", 18] });
     expect(replaced?.newlyDeployed).toBe(true);
-    expect(replaced!.replacedAddress).toBe(original!.address);
+    expect(replaced!.replaced).toEqual({
+      address: original!.address,
+      archive: `local-adhoc-redeploy-${stamp}`,
+    });
     expect(await readToken(replaced!.address)).toEqual({
       symbol: "NEW",
       decimals: 18,
+    });
+
+    const archiveDir = join(deploymentsDir, replaced!.replaced!.archive);
+    const archived = JSON.parse(
+      readFileSync(join(archiveDir, "MockERC20.json"), "utf8"),
+    );
+    expect(archived.address.toLowerCase()).toBe(
+      original!.address.toLowerCase(),
+    );
+    expect(existsSync(join(archiveDir, ".chain"))).toBe(true);
+    expect(
+      existsSync(
+        join(archiveDir, "build-info", `${archived.buildInfoId}.json`),
+      ),
+    ).toBe(true);
+
+    const again = await deploy({});
+    expect(again!.replaced).toEqual({
+      address: replaced!.address,
+      archive: `local-adhoc-redeploy-${stamp}-r2`,
     });
   });
 

@@ -1,5 +1,12 @@
 #!/usr/bin/env bun
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -19,6 +26,10 @@ import { privateKeyToAccount } from "viem/accounts";
 import type { AccountDefinition, UserConfig } from "rocketh/types";
 import { loadEnvironmentFromFilesWithConfig } from "../rocketh/environment.js";
 import { envPrivateKey } from "./migrations/plumbing.js";
+import {
+  CONTRACT_REDEPLOY_KIND,
+  nextArchiveName,
+} from "./migrations/redeploy.js";
 import {
   httpRpcProvider,
   isLocalRpcUrl,
@@ -235,9 +246,39 @@ export type DeployContractResult = {
   newlyDeployed: boolean;
   record: string;
   recordFile: string;
-  /// The address the record named before a deploy replaced it.
-  replacedAddress?: Address;
+  /// The record a deploy replaced: its address, and the archive that keeps it.
+  replaced?: { address: Address; archive: string };
 };
+
+/// Keeps a record that a deploy replaced in a new archive namespace beside the
+/// active one, named the way the migration tool names its redeploy archives. The
+/// archive carries the chain file and the record's build info, so the verify
+/// script can still submit the archived contract.
+function archiveReplacedRecord(
+  deploymentsDir: string,
+  namespace: string,
+  record: string,
+  content: string,
+): string {
+  const archive = nextArchiveName(
+    deploymentsDir,
+    namespace,
+    CONTRACT_REDEPLOY_KIND,
+    new Date(),
+  );
+  const source = join(deploymentsDir, namespace);
+  const target = join(deploymentsDir, archive);
+  mkdirSync(target, { recursive: true });
+  writeFileSync(join(target, `${record}.json`), content);
+  copyFileSync(join(source, ".chain"), join(target, ".chain"));
+  const { buildInfoId } = JSON.parse(content) as { buildInfoId?: string };
+  const buildInfo = buildInfoId && join("build-info", `${buildInfoId}.json`);
+  if (buildInfo && existsSync(join(source, buildInfo))) {
+    mkdirSync(join(target, "build-info"), { recursive: true });
+    copyFileSync(join(source, buildInfo), join(target, buildInfo));
+  }
+  return archive;
+}
 
 export async function deployContract(
   opts: DeployContractOptions,
@@ -250,8 +291,11 @@ export async function deployContract(
   );
   const namespaceDir = join(deploymentsDir, opts.namespace);
   const recordFile = join(namespaceDir, `${record}.json`);
-  const existingAddress = existsSync(recordFile)
-    ? getAddress(JSON.parse(readFileSync(recordFile, "utf8")).address)
+  const existingRecord = existsSync(recordFile)
+    ? readFileSync(recordFile, "utf8")
+    : undefined;
+  const existingAddress = existingRecord
+    ? getAddress(JSON.parse(existingRecord).address)
     : undefined;
 
   const { chain, publicClient } = await createV2Clients({
@@ -321,9 +365,20 @@ export async function deployContract(
     newlyDeployed: deployment.newlyDeployed,
     record,
     recordFile,
-    replacedAddress:
-      deployment.newlyDeployed && existingAddress !== address
-        ? existingAddress
+    replaced:
+      deployment.newlyDeployed &&
+      existingRecord &&
+      existingAddress &&
+      existingAddress !== address
+        ? {
+            address: existingAddress,
+            archive: archiveReplacedRecord(
+              deploymentsDir,
+              opts.namespace,
+              record,
+              existingRecord,
+            ),
+          }
         : undefined,
   };
 }
@@ -390,7 +445,7 @@ async function askToProceed(summary: DeploySummary): Promise<boolean> {
   );
   if (summary.existingAddress) {
     console.log(
-      `record:         "${summary.record}" already names ${summary.existingAddress}; it is reused if the code and arguments match, and replaced otherwise`,
+      `record:         "${summary.record}" already names ${summary.existingAddress}; it is reused if the code and arguments match, and otherwise replaced, with the old record archived`,
     );
   }
   const prompt = createInterface({
@@ -515,8 +570,10 @@ async function main() {
     console.log(
       `Deployed ${contract} at ${result.address} (tx ${result.transactionHash})`,
     );
-    if (result.replacedAddress) {
-      console.log(`The record named ${result.replacedAddress} before.`);
+    if (result.replaced) {
+      console.log(
+        `The record named ${result.replaced.address} before; it is archived in ${result.replaced.archive}.`,
+      );
     }
   } else {
     console.log(
