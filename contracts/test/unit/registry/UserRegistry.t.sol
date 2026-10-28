@@ -315,6 +315,11 @@ contract UserRegistryTest is Test, ERC1155Holder {
     }
 
     // Test for contract upgradeability
+    function test_canUpgradeFrom_rejectsAll() external view {
+        assertFalse(implementation.canUpgradeFrom(address(0)), "zero");
+        assertFalse(implementation.canUpgradeFrom(address(implementation)), "self");
+    }
+
     function test_upgrade() public {
         // Deploy a new implementation
         UserRegistryV2Mock newImplementation =
@@ -452,7 +457,9 @@ contract UserRegistryV2Mock is UserRegistry {
     constructor(ILabelStore labelStore, IRegistryURIRenderer uriRenderer, address namer)
         UserRegistry(labelStore, uriRenderer, namer)
     {}
-
+    function canUpgradeFrom(address) external pure override returns (bool) {
+        return true;
+    }
     function version() public pure returns (uint256) {
         return 2;
     }
