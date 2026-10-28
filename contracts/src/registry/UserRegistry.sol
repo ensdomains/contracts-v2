@@ -86,7 +86,7 @@ contract UserRegistry is
     /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
     ///      upgrade call.
     /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `true` for implementations in this registry family.
+    /// @return allowed Always `false` as this is the first implementation
     function canUpgradeFrom(
         address /* previousImplementation */
     )
@@ -95,9 +95,7 @@ contract UserRegistry is
         virtual
         override
         returns (bool allowed)
-    {
-        return true;
-    }
+    {}
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Override: includes `ROLE_UPGRADE` because implementation is unrestricted.
