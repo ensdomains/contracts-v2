@@ -12,9 +12,9 @@ export default execute(
     const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
     const dnsTLDResolver = get<Abi_DNSTLDResolver>("DNSTLDResolver");
 
-    let tokenHolder = owner;
+    let tokenOwner = owner;
     if (tags.hasDao) {
-      tokenHolder = "0x5B716D6587d241166bC8914858640F8684F3A2F3"; // dao token safe
+      tokenOwner = "0x5B716D6587d241166bC8914858640F8684F3A2F3"; // dao token safe
     }
 
     await deploy("TemporaryDNSRegistrar", {
@@ -23,7 +23,7 @@ export default execute(
       args: [
         owner,
         rootRegistry.address,
-        tokenHolder,
+        tokenOwner,
         publicSuffixList.address,
         dnsTLDResolver.address,
       ],
