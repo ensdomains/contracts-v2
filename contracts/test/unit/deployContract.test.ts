@@ -24,7 +24,7 @@ import {
   deployContract,
   planVerification,
   resolveArtifact,
-} from "../../script/deployAndVerifyContract.js";
+} from "../../script/deployContract.js";
 
 // The first account of anvil's default mnemonic.
 const DEPLOYER_KEY =

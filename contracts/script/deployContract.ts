@@ -29,9 +29,9 @@ import { createV2Clients } from "./scriptUtils.js";
 import { backendsForChain, verifyDeployments, type Backend } from "./verify.js";
 
 // Deploys one contract from the Hardhat build to any chain, outside the migration
-// flow, then verifies its source wherever a verification service can see it. The
-// contract is recorded in the deploy tool's format, build info included, which is
-// what the verify script submits.
+// flow, and on request verifies its source wherever a verification service can see
+// it. The contract is recorded in the deploy tool's format, build info included,
+// which is what the verify script submits.
 
 const contractsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const typedArtifactsDir = join(contractsDir, "generated", "artifacts");
@@ -413,6 +413,7 @@ type CliOptions = {
   name?: string;
   deploymentsDir: string;
   deploymentNetwork?: string;
+  verify: boolean;
   etherscanOnly: boolean;
   sourcifyOnly: boolean;
   yes: boolean;
@@ -420,9 +421,9 @@ type CliOptions = {
 
 async function main() {
   const program = new Command()
-    .name("deploy-and-verify:contract")
+    .name("deploy:contract")
     .description(
-      "Deploy one contract from the Hardhat build to any chain, outside the migration flow, and verify its source",
+      "Deploy one contract from the Hardhat build to any chain, outside the migration flow; deploy-and-verify:contract also verifies its source",
     )
     .argument(
       "<contract>",
@@ -451,6 +452,7 @@ async function main() {
       "--deployment-network <namespace>",
       "namespace for the record (default: <network>-adhoc)",
     )
+    .option("--verify", "verify the source after deploying", false)
     .option("--etherscan-only", "verify on Etherscan only", false)
     .option("--sourcify-only", "verify on Sourcify only", false)
     .option("-y, --yes", "skip the confirmation prompt", false);
@@ -468,21 +470,28 @@ async function main() {
   if (opts.etherscanOnly && opts.sourcifyOnly) {
     throw new Error("pass at most one of --etherscan-only and --sourcify-only");
   }
+  if (!opts.verify && (opts.etherscanOnly || opts.sourcifyOnly)) {
+    throw new Error("--etherscan-only and --sourcify-only need --verify");
+  }
   const namespace = opts.deploymentNetwork ?? `${opts.network}-adhoc`;
 
-  const verification = await planVerification(
-    rpcUrl,
-    opts.etherscanOnly
-      ? ["etherscan"]
-      : opts.sourcifyOnly
-        ? ["sourcify"]
-        : ["etherscan", "sourcify"],
-  );
-  console.log(
-    verification.skipped
-      ? `Verification: skipped, as ${verification.skipped}`
-      : `Verification: ${verification.backends.join(", ")}`,
-  );
+  const verification = opts.verify
+    ? await planVerification(
+        rpcUrl,
+        opts.etherscanOnly
+          ? ["etherscan"]
+          : opts.sourcifyOnly
+            ? ["sourcify"]
+            : ["etherscan", "sourcify"],
+      )
+    : undefined;
+  if (verification) {
+    console.log(
+      verification.skipped
+        ? `Verification: skipped, as ${verification.skipped}`
+        : `Verification: ${verification.backends.join(", ")}`,
+    );
+  }
 
   // The deploy tool copies build info from the build folder, and the verifier
   // runs as a package script, both relative to the working directory.
@@ -515,6 +524,18 @@ async function main() {
     );
   }
   console.log(`record: ${result.recordFile}`);
+  if (!verification) {
+    if (
+      resolve(opts.deploymentsDir) === DEFAULT_DEPLOYMENTS_DIR &&
+      !isLocalRpcUrl(rpcUrl) &&
+      !isTenderlyVirtualRpc(rpcUrl)
+    ) {
+      console.log(
+        `verify with: bun run verify --network ${namespace} --contract ${result.record}`,
+      );
+    }
+    return;
+  }
   if (verification.backends.length === 0) return;
 
   for (let attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt++) {
