@@ -10,6 +10,7 @@ library WrapperRegistryLib {
     /// @param verifiableFactory The `VerifiableFactory`.
     /// @param ethWrapperDeployer Address of "eth" deployer for `WrapperRegistry`.
     /// @param name The DNS-encoded name.
+    /// @param offset The offset into `name` to start computing.
     /// @return addr The address of the `WrapperRegistry` or null if `name` doesn't match `*.eth`.
     /// @return node The namehash of `name`.
     function computeAddress(

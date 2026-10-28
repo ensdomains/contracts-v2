@@ -151,7 +151,7 @@ contract UniversalHelper is DelegatedContractNamer {
         return _findQualifiedRegistry(isEmancipatedRegistry, name, 0);
     }
 
-    /// @notice Determine if every ancestor is emancipated and the token permits safe transfer.
+    /// @notice Determine if every ancestor is emancipated and the token is emancipated.
     /// @param name The DNS-encoded name.
     /// @return parent The parent registry or null if any ancestor was not emancipated.
     /// @return tokenId The token ID or null if not emancipated.
@@ -169,6 +169,7 @@ contract UniversalHelper is DelegatedContractNamer {
                 tokenId = parent.getTokenId(uint256(labelHash));
                 owner = parent.ownerOf(tokenId);
                 if (owner != address(0)) {
+                    /// see: PermissionedRegistry._update()
                     canTransfer = parent.hasRoles(
                         tokenId,
                         RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
@@ -177,7 +178,7 @@ contract UniversalHelper is DelegatedContractNamer {
                     if (
                         !parent.isOnlyAssignee(
                             tokenId,
-                            RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP,  /// see: PermissionedRegistry._update()
+                            RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP,
                             owner
                         )
                     ) {
