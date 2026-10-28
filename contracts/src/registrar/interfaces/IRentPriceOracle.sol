@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 /// @notice Interface for pricing registration and renewals.
 /// @dev Interface selector: `0x480851dc`
 interface IRentPriceOracle {
@@ -16,7 +14,19 @@ interface IRentPriceOracle {
 
     /// @notice `paymentToken` is not supported for payment.
     /// @dev Error selector: `0x02e2ae9e`
-    error PaymentTokenNotSupported(IERC20 paymentToken);
+    error PaymentTokenNotSupported(address paymentToken);
+
+    /// @notice Response from Chainlink Oracle was invalid.
+    /// @dev Error selector: `0xb921f2fc`
+    error InvalidOracleResponse(address paymentToken, int256 answer);
+
+    /// @notice Response from Chainlink Oracle was stale.
+    /// @dev Error selector: `0x53a7d644`
+    error StaleOracleResponse(
+        address paymentToken,
+        uint256 responseTimestamp,
+        uint256 blockTimestamp
+    );
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
@@ -33,7 +43,7 @@ interface IRentPriceOracle {
         string calldata label,
         uint64 available,
         uint64 duration,
-        IERC20 paymentToken
+        address paymentToken
     )
         external
         view
@@ -49,7 +59,7 @@ interface IRentPriceOracle {
         string calldata label,
         uint64 expiry,
         uint64 duration,
-        IERC20 paymentToken
+        address paymentToken
     )
         external
         view
@@ -58,5 +68,5 @@ interface IRentPriceOracle {
     /// @notice Check if `paymentToken` is supported for payment.
     /// @param paymentToken The payment token.
     /// @return Whether the payment token is supported.
-    function isPaymentToken(IERC20 paymentToken) external view returns (bool);
+    function isPaymentToken(address paymentToken) external view returns (bool);
 }

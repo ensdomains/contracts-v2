@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
-import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
+import {NATIVE_ETH} from "../utils/ERC7528.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
-import {IETHRegistrar} from "./interfaces/IETHRegistrar.sol";
+import {IETHRegistrar, CommitData} from "./interfaces/IETHRegistrar.sol";
 import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
@@ -127,47 +126,70 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
         IRegistry subregistry,
         address resolver,
         uint64 duration,
-        IERC20 paymentToken,
+        address paymentToken,
         bytes32 referrer
     )
         external
         returns (uint256 tokenId)
     {
-        if (owner == address(0)) {
-            revert InvalidOwner();
-        }
-        _consumeCommitment(
-            makeCommitment(label, owner, secret, subregistry, resolver, duration, referrer)
-        ); // reverts if no commitment
-        IPermissionedRegistry.State memory state = _requireAvailable(label, duration); // reverts if not
-        (uint256 base, uint256 premium) =
-            rentPriceOracle.getRegisterPrice(
-                label,
-                _availablePeriod(state.expiry),
-                duration,
-                paymentToken
-            ); // reverts if invalid
-        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, base + premium); // reverts if payment failed
-        tokenId = ETH_REGISTRY.register(
-            label,
-            owner,
-            subregistry,
-            resolver,
-            REGISTRATION_ROLE_BITMAP,
-            uint64(block.timestamp) + duration // new expiry
-        ); // should not revert
-        emit NameRegistered(
-            tokenId,
-            label,
-            owner,
-            subregistry,
-            resolver,
-            duration,
-            paymentToken,
-            referrer,
-            base,
-            premium
+        uint256 amount;
+        (amount, tokenId) = _register(
+            CommitData(label, owner, secret, subregistry, resolver, duration, referrer),
+            paymentToken
         );
+        _transferERC20(paymentToken, amount);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function register(CommitData calldata cd, address paymentToken)
+        external
+        returns (uint256 tokenId)
+    {
+        uint256 amount;
+        (amount, tokenId) = _register(cd, paymentToken);
+        _transferERC20(paymentToken, amount);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function registerWithETH(CommitData calldata cd, address refundTo)
+        external
+        payable
+        returns (uint256 tokenId)
+    {
+        uint256 amount;
+        (amount, tokenId) = _register(cd, NATIVE_ETH);
+        _transferETH(amount, refundTo);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function registerBatch(CommitData[] calldata cds, address paymentToken)
+        external
+        returns (uint256[] memory tokenIds)
+    {
+        tokenIds = new uint256[](cds.length);
+        uint256 total;
+        for (uint256 i; i < cds.length; ++i) {
+            uint256 amount;
+            (amount, tokenIds[i]) = _register(cds[i], paymentToken);
+            total += amount;
+        }
+        _transferERC20(paymentToken, total);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function registerBatchWithETH(CommitData[] calldata cds, address refundTo)
+        external
+        payable
+        returns (uint256[] memory tokenIds)
+    {
+        tokenIds = new uint256[](cds.length);
+        uint256 total;
+        for (uint256 i; i < cds.length; ++i) {
+            uint256 amount;
+            (amount, tokenIds[i]) = _register(cds[i], NATIVE_ETH);
+            total += amount;
+        }
+        _transferETH(total, refundTo);
     }
 
     /// @inheritdoc IETHRegistrar
@@ -176,7 +198,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @inheritdoc IETHRegistrar
-    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+    function getRegisterPrice(string calldata label, uint64 duration, address paymentToken)
         external
         view
         returns (uint256 base, uint256 premium)
@@ -203,7 +225,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
 
     /// @inheritdoc IETHRegistrar
     function makeCommitment(
-        string calldata label,
+        string memory label,
         address owner,
         bytes32 secret,
         IRegistry subregistry,
@@ -213,16 +235,69 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     )
         public
         pure
-        override
         returns (bytes32)
     {
         return
             keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
     }
 
+    /// @inheritdoc IETHRegistrar
+    function makeCommitment(CommitData memory cd) public pure override returns (bytes32) {
+        return
+            makeCommitment(
+                cd.label,
+                cd.owner,
+                cd.secret,
+                cd.subregistry,
+                cd.resolver,
+                cd.duration,
+                cd.referrer
+            );
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Register a name and return the amount of `paymentToken` and token ID.
+    function _register(CommitData memory cd, address paymentToken)
+        internal
+        returns (uint256 amount, uint256 tokenId)
+    {
+        if (cd.owner == address(0)) {
+            revert InvalidOwner();
+        }
+        _consumeCommitment(makeCommitment(cd)); // reverts if no commitment
+        IPermissionedRegistry.State memory state = _requireAvailable(cd.label, cd.duration); // reverts if not
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(
+                cd.label,
+                _availablePeriod(state.expiry),
+                cd.duration,
+                paymentToken
+            ); // reverts if invalid
+        amount = base + premium;
+        tokenId = ETH_REGISTRY.register(
+            cd.label,
+            cd.owner,
+            cd.subregistry,
+            cd.resolver,
+            REGISTRATION_ROLE_BITMAP,
+            uint64(block.timestamp) + cd.duration // new expiry
+        ); // should not revert
+        emit NameRegistered(
+            tokenId,
+            cd.label,
+            cd.owner,
+            cd.subregistry,
+            cd.resolver,
+            cd.duration,
+            paymentToken,
+            cd.referrer,
+            base,
+            premium
+        );
+    }
 
     /// @dev Validates that the given `commitment` was recorded within the allowed time window
     ///      (between minimum and maximum commitment age), then deletes it so it cannot be reused.
@@ -242,7 +317,7 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     }
 
     /// @dev Ensure name is registerable.
-    function _requireAvailable(string calldata label, uint64 duration)
+    function _requireAvailable(string memory label, uint64 duration)
         internal
         view
         returns (IPermissionedRegistry.State memory state)
