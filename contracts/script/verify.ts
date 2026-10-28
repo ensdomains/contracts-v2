@@ -57,11 +57,14 @@ type Artifact = {
   transaction?: { hash?: string };
 };
 
-function parseArgs(argv: string[]) {
+type Target = { srcDir: string; envName: string; label: string };
+
+export function parseArgs(argv: string[]) {
   let network: string | undefined;
   let backends: Backend[] = ["etherscan", "sourcify"];
   let skipV1 = false;
   let sourcifyServer = SOURCIFY_SERVER;
+  const contracts: string[] = [];
   const passthrough: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -75,16 +78,18 @@ function parseArgs(argv: string[]) {
       sourcifyServer = argv[++i];
     } else if (arg === "--skip-v1") {
       skipV1 = true;
+    } else if (arg === "--contract") {
+      contracts.push(argv[++i]);
     } else {
       passthrough.push(arg);
     }
   }
   if (!network) {
     throw new Error(
-      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [--sourcify-server <url>] [--skip-v1] [<extra rocketh-verify args>] (do not separate extra args with --; they are forwarded as-is)",
+      "usage: bun ./script/verify.ts --network <name> [--etherscan-only|--sourcify-only] [--sourcify-server <url>] [--skip-v1] [--contract <name> ...] [<extra rocketh-verify args>] (do not separate extra args with --; they are forwarded as-is)",
     );
   }
-  return { network, backends, skipV1, sourcifyServer, passthrough };
+  return { network, backends, skipV1, sourcifyServer, contracts, passthrough };
 }
 
 // The deployed metadata records source paths under solc's source unit prefix
@@ -101,6 +106,40 @@ function sleep(ms: number) {
 function artifactFiles(dir: string) {
   return readdirSync(dir).filter(
     (file) => file.endsWith(".json") && !file.startsWith("."),
+  );
+}
+
+/// The record files of a deployment set, narrowed to the named contracts when
+/// any are named.
+export function recordFiles(dir: string, contracts: readonly string[]) {
+  const files = artifactFiles(dir);
+  if (contracts.length === 0) return files;
+  return files.filter((file) =>
+    contracts.includes(file.replace(/\.json$/, "")),
+  );
+}
+
+/// The deployment sets that hold any of the named contracts, or every set when
+/// none is named. A name that no set holds is refused, so a misspelt name fails
+/// instead of verifying nothing.
+export function selectTargets(
+  targets: Target[],
+  contracts: readonly string[],
+): Target[] {
+  if (contracts.length === 0) return targets;
+  const missing = contracts.filter(
+    (name) =>
+      !targets.some((target) =>
+        existsSync(join(target.srcDir, `${name}.json`)),
+      ),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `no record named ${missing.join(", ")} in ${targets.map((target) => target.srcDir).join(" or ")}`,
+    );
+  }
+  return targets.filter(
+    (target) => recordFiles(target.srcDir, contracts).length > 0,
   );
 }
 
@@ -336,15 +375,17 @@ async function verifyOnSourcify({
   srcDir,
   label,
   server,
+  contracts,
 }: {
   srcDir: string;
   label: string;
   server: string;
+  contracts: readonly string[];
 }) {
   const chainId = readChainId(srcDir);
   const failures: string[] = [];
 
-  for (const file of artifactFiles(srcDir)) {
+  for (const file of recordFiles(srcDir, contracts)) {
     const name = file.replace(/\.json$/, "");
     const artifact: Artifact = JSON.parse(
       readFileSync(join(srcDir, file), "utf8"),
@@ -445,16 +486,22 @@ async function verifyOnEtherscan({
   srcDir,
   envName,
   label,
+  contracts,
   passthrough,
 }: {
   srcDir: string;
   envName: string;
   label: string;
+  contracts: readonly string[];
   passthrough: string[];
 }) {
   const stagingRoot = mkdtempSync(join(tmpdir(), "rocketh-verify-"));
   const stagingDir = join(stagingRoot, envName);
   cpSync(srcDir, stagingDir, { recursive: true });
+  const selected = new Set(recordFiles(stagingDir, contracts));
+  for (const file of artifactFiles(stagingDir)) {
+    if (!selected.has(file)) rmSync(join(stagingDir, file));
+  }
 
   try {
     let backfilled = 0;
@@ -501,9 +548,8 @@ async function verifyOnEtherscan({
 }
 
 async function main() {
-  const { network, backends, skipV1, sourcifyServer, passthrough } = parseArgs(
-    process.argv.slice(2),
-  );
+  const { network, backends, skipV1, sourcifyServer, contracts, passthrough } =
+    parseArgs(process.argv.slice(2));
 
   const srcDir = join(contractsDir, "deployments", network);
   if (!existsSync(srcDir)) {
@@ -512,7 +558,7 @@ async function main() {
     );
   }
 
-  const targets = [{ srcDir, envName: network, label: network }];
+  const targets: Target[] = [{ srcDir, envName: network, label: network }];
 
   // A clean testnet deploys its own ENSv1 stack into `deployments/v1/<ns>`, and
   // those contracts need verifying as much as the v2 ones. Nothing distinguishes
@@ -528,21 +574,26 @@ async function main() {
     });
   }
 
+  const selected = selectTargets(targets, contracts);
   console.log(
-    `verifying ${targets.length} deployment set(s): ${targets
+    `verifying ${selected.length} deployment set(s): ${selected
       .map((t) => t.label)
-      .join(", ")}`,
+      .join(
+        ", ",
+      )}${contracts.length > 0 ? ` (only ${contracts.join(", ")})` : ""}`,
   );
 
   let failures = 0;
-  for (const target of targets) {
+  for (const target of selected) {
     if (backends.includes("etherscan")) {
-      failures += (await verifyOnEtherscan({ ...target, passthrough })).length;
+      failures += (
+        await verifyOnEtherscan({ ...target, contracts, passthrough })
+      ).length;
     }
     if (backends.includes("sourcify")) {
       console.log(`\n=== verifying ${target.label} on sourcify ===`);
       failures += (
-        await verifyOnSourcify({ ...target, server: sourcifyServer })
+        await verifyOnSourcify({ ...target, server: sourcifyServer, contracts })
       ).length;
     }
   }

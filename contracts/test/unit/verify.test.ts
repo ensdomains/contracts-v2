@@ -7,6 +7,9 @@ import { keccak256, toBytes } from "viem";
 import {
   backfillSourceContent,
   etherscanRefusals,
+  parseArgs,
+  recordFiles,
+  selectTargets,
 } from "../../script/verify.js";
 
 describe("etherscanRefusals", () => {
@@ -80,6 +83,60 @@ describe("backfillSourceContent", () => {
   it("ignores build input that does not hash to the recorded source", () => {
     expect(() => backfillSourceContent(record(`${built} `))).toThrow(
       "not found",
+    );
+  });
+});
+
+describe("--contract", () => {
+  const deploymentSet = (...names: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), "verify-select-"));
+    writeFileSync(join(dir, ".chain"), JSON.stringify({ chainId: "1" }));
+    for (const name of names) writeFileSync(join(dir, `${name}.json`), "{}");
+    return dir;
+  };
+  const target = (srcDir: string) => ({
+    srcDir,
+    envName: "net",
+    label: srcDir,
+  });
+
+  it("collects each named contract", () => {
+    const { contracts, passthrough } = parseArgs([
+      "--network",
+      "mainnet-adhoc",
+      "--contract",
+      "DNSTLDResolver",
+      "--contract",
+      "ENSV2Resolver",
+      "--min-interval",
+      "1000",
+    ]);
+    expect(contracts).toEqual(["DNSTLDResolver", "ENSV2Resolver"]);
+    expect(passthrough).toEqual(["--min-interval", "1000"]);
+  });
+
+  it("keeps every record when no contract is named", () => {
+    const dir = deploymentSet("A", "B");
+    expect(recordFiles(dir, []).sort()).toEqual(["A.json", "B.json"]);
+  });
+
+  it("keeps only the named records", () => {
+    const dir = deploymentSet("A", "B", "B_Implementation");
+    expect(recordFiles(dir, ["B"])).toEqual(["B.json"]);
+  });
+
+  it("drops the sets that hold none of the named contracts", () => {
+    const v2 = deploymentSet("A");
+    const v1 = deploymentSet("B");
+    expect(selectTargets([target(v2), target(v1)], ["B"])).toEqual([
+      target(v1),
+    ]);
+  });
+
+  it("refuses a name that no set holds", () => {
+    const dir = deploymentSet("A");
+    expect(() => selectTargets([target(dir)], ["Missing"])).toThrow(
+      "no record named Missing",
     );
   });
 });
