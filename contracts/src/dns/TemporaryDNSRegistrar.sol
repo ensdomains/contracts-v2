@@ -40,10 +40,11 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The suffix is 
+    /// @notice TLD not in `PublicSuffixList`.
     /// @dev Error selector: `0x0afb8b28`
     error TLDNotPublic(string label);
 
+    /// @notice TLD not owned by `TOKEN_OWNER`.
     /// @dev Error selector: `0x6128680d`
     error TLDNotOwned(string label, address owner);
 
@@ -82,7 +83,7 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
     }
 
     /// @notice Ensure multiple TLDs are enabled and using the latest resolver.
-    /// @param labels  List of TLDs to sync.
+    /// @param labels List of TLDs to sync.
     function syncTLDs(string[] calldata labels) external {
         for (uint256 i; i < labels.length; ++i) {
             syncTLD(labels[i]);
@@ -102,7 +103,8 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
             }
             // check if resolver needs updated
             if (ROOT_REGISTRY.getResolver(label) != defaultResolver) {
-                ROOT_REGISTRY.setResolver(state.tokenId, defaultResolver); // assumes: TOKEN_OWNER.setApprovalForAll(this, true)
+                // this contract must have SET_RESOLVER role or approval
+                ROOT_REGISTRY.setResolver(state.tokenId, defaultResolver);
             }
         } else {
             // on v2 launch, dns domains were reserved
