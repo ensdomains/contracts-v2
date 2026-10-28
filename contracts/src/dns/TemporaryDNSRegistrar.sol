@@ -11,6 +11,9 @@ import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistr
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
+/// @dev Roles granted to registered tokens.
+uint256 constant TLD_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES; // MUST have ROLE_REGISTER
+
 /// @notice Temporary `DNSRegistrar` for managing public suffixes.
 contract TemporaryDNSRegistrar is ERC165, Ownable {
     ////////////////////////////////////////////////////////////////////////
@@ -38,11 +41,11 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice The suffix is 
-    /// @dev Error selector: `0xe061c9ea`
-    error InvalidSuffix(bytes name);
+    /// @dev Error selector: `0x0afb8b28`
+    error TLDNotPublic(string label);
 
-    /// @dev Error selector: `0x0b647277`
-    error SuffixOwned(bytes name, address owner);
+    /// @dev Error selector: `0x6128680d`
+    error TLDNotOwned(string label, address owner);
 
     ////////////////////////////////////////////////////////////////////////
     // Initialization
@@ -78,25 +81,24 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
         defaultResolver = resolver;
     }
 
-    /// @notice Ensure every public suffix is enabled and using the latest resolver.
-    /// @param names List of suffixes to sync.
-    function syncSuffixes(bytes[] calldata names) external {
-        for (uint256 i; i < names.length; ++i) {
-            syncSuffix(names[i]);
+    /// @notice Ensure multiple TLDs are enabled and using the latest resolver.
+    /// @param labels  List of TLDs to sync.
+    function syncTLDs(string[] calldata labels) external {
+        for (uint256 i; i < labels.length; ++i) {
+            syncTLD(labels[i]);
         }
     }
 
-    /// @notice Ensure public suffix is enabled and using the latest resolver.
-    /// @param name DNS-encoded name.
-    function syncSuffix(bytes calldata name) public {
-        if (!PUBLIC_SUFFIX_LIST.isPublicSuffix(name) || NameCoder.countLabels(name, 0) != 1) {
-            revert InvalidSuffix(name);
+    /// @notice Ensure TLD is enabled and using the latest resolver.
+    /// @param label TLD to sync.
+    function syncTLD(string calldata label) public {
+        if (!PUBLIC_SUFFIX_LIST.isPublicSuffix(NameCoder.encode(label))) {
+            revert TLDNotPublic(label);
         }
-        string memory label = NameCoder.firstLabel(name);
         IPermissionedRegistry.State memory state = ROOT_REGISTRY.getState(LibLabel.id(label));
         if (state.status == IPermissionedRegistry.Status.REGISTERED) {
             if (state.latestOwner != TOKEN_OWNER) {
-                revert SuffixOwned(name, state.latestOwner);
+                revert TLDNotOwned(label, state.latestOwner);
             }
             // check if resolver needs updated
             if (ROOT_REGISTRY.getResolver(label) != defaultResolver) {
@@ -109,7 +111,7 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
                 TOKEN_OWNER,
                 IRegistry(address(0)),
                 defaultResolver,
-                EACBaseRolesLib.ALL_ROLES, // MUST have ROLE_REGISTER
+                TLD_ROLE_BITMAP,
                 type(uint64).max
             );
         }
