@@ -1,5 +1,5 @@
 import { execute } from "@rocketh";
-import { Abi_DNSTLDResolver } from "generated/abis/DNSTLDResolver.ts";
+import type { Abi_DNSTLDResolver } from "generated/abis/DNSTLDResolver.js";
 import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
 import type { Abi_PublicSuffixList } from "generated/abis/PublicSuffixList.js";
 import { Artifact_TemporaryDNSRegistrar } from "generated/artifacts/TemporaryDNSRegistrar.js";
@@ -30,7 +30,7 @@ export default execute(
     });
   },
   {
-    tags: ["TemporaryDNSRegistrar", "v2"],
+    tags: ["TemporaryDNSRegistrar", "v2", "migration:phase1:deploy-v2"],
     dependencies: ["RootRegistry", "SimplePublicSuffixList", "DNSTLDResolver"],
   },
 );
