@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -22,8 +22,9 @@ import {
 import {
   coerceConstructorArgs,
   deployContract,
+  planVerification,
   resolveArtifact,
-} from "../../script/deployContract.js";
+} from "../../script/deployAndVerifyContract.js";
 
 // The first account of anvil's default mnemonic.
 const DEPLOYER_KEY =
@@ -183,6 +184,114 @@ describe("resolveArtifact", () => {
   });
 });
 
+describe("planVerification", () => {
+  const RPC_URL = "https://rpc.example";
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.ETHERSCAN_API_KEY;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.ETHERSCAN_API_KEY;
+    else process.env.ETHERSCAN_API_KEY = originalKey;
+  });
+
+  /// Answers the RPC and both services' chain lists without the network.
+  function fakeNetwork({
+    chainId = 1,
+    clientVersion = "Geth/v1.16.0",
+    etherscanChains = [1],
+    sourcifyChains = [1],
+  }: {
+    chainId?: number;
+    clientVersion?: string;
+    etherscanChains?: number[];
+    sourcifyChains?: number[];
+  }) {
+    globalThis.fetch = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const reply = (body: unknown) =>
+        new Response(JSON.stringify(body), {
+          headers: { "content-type": "application/json" },
+        });
+      if (url.includes("etherscan.io/v2/chainlist")) {
+        return reply({
+          result: etherscanChains.map((id) => ({
+            chainid: String(id),
+            status: 1,
+          })),
+        });
+      }
+      if (url.endsWith("/chains")) {
+        return reply(
+          sourcifyChains.map((id) => ({ chainId: id, supported: true })),
+        );
+      }
+      const { id, method } = JSON.parse(String(init?.body));
+      const result =
+        method === "eth_chainId" ? `0x${chainId.toString(16)}` : clientVersion;
+      return reply({ jsonrpc: "2.0", id, result });
+    }) as typeof fetch;
+  }
+
+  it("skips a node on this machine without asking it anything", async () => {
+    globalThis.fetch = (() => {
+      throw new Error("unexpected request");
+    }) as unknown as typeof fetch;
+    const plan = await planVerification("http://127.0.0.1:8545", [
+      "etherscan",
+      "sourcify",
+    ]);
+    expect(plan.backends).toEqual([]);
+    expect(plan.skipped).toContain("local node");
+  });
+
+  it("skips a development node", async () => {
+    fakeNetwork({ clientVersion: "anvil/v1.5.1" });
+    const plan = await planVerification(RPC_URL, ["etherscan", "sourcify"]);
+    expect(plan.backends).toEqual([]);
+    expect(plan.skipped).toContain("anvil/v1.5.1");
+  });
+
+  it("uses every service that supports the chain", async () => {
+    fakeNetwork({});
+    process.env.ETHERSCAN_API_KEY = "key";
+    const plan = await planVerification(RPC_URL, ["etherscan", "sourcify"]);
+    expect(plan).toEqual({ backends: ["etherscan", "sourcify"] });
+  });
+
+  it("drops a service that does not support the chain", async () => {
+    fakeNetwork({ chainId: 42, etherscanChains: [1], sourcifyChains: [42] });
+    delete process.env.ETHERSCAN_API_KEY;
+    const plan = await planVerification(RPC_URL, ["etherscan", "sourcify"]);
+    expect(plan).toEqual({ backends: ["sourcify"] });
+  });
+
+  it("skips a chain that no service supports", async () => {
+    fakeNetwork({ chainId: 42, etherscanChains: [1], sourcifyChains: [1] });
+    const plan = await planVerification(RPC_URL, ["etherscan", "sourcify"]);
+    expect(plan.backends).toEqual([]);
+    expect(plan.skipped).toContain("chain 42");
+  });
+
+  it("refuses Etherscan verification without an API key", async () => {
+    fakeNetwork({});
+    delete process.env.ETHERSCAN_API_KEY;
+    await expect(
+      planVerification(RPC_URL, ["etherscan", "sourcify"]),
+    ).rejects.toThrow("ETHERSCAN_API_KEY");
+  });
+
+  it("needs no API key for Sourcify alone", async () => {
+    fakeNetwork({});
+    delete process.env.ETHERSCAN_API_KEY;
+    const plan = await planVerification(RPC_URL, ["sourcify"]);
+    expect(plan).toEqual({ backends: ["sourcify"] });
+  });
+});
+
 describe("deployContract", () => {
   let anvil: ReturnType<typeof createAnvil>;
   let rpcUrl: string;
@@ -240,7 +349,7 @@ describe("deployContract", () => {
 
     const namespaceDir = join(tempRoot, "deployments", "local-adhoc");
     expect(result!.recordFile).toBe(join(namespaceDir, "MockERC20.json"));
-    const record = JSON.parse(readFileSync(result!.recordFile!, "utf8"));
+    const record = JSON.parse(readFileSync(result!.recordFile, "utf8"));
     expect(record.address.toLowerCase()).toBe(result!.address.toLowerCase());
     expect(existsSync(join(namespaceDir, ".chain"))).toBe(true);
     expect(
@@ -274,14 +383,6 @@ describe("deployContract", () => {
       symbol: "NEW",
       decimals: 18,
     });
-  });
-
-  it("writes no files without saving", async () => {
-    const deploymentsDir = join(tempRoot, "unsaved");
-    const result = await deploy({ deploymentsDir, save: false });
-    expect(result?.newlyDeployed).toBe(true);
-    expect(result!.recordFile).toBeUndefined();
-    expect(existsSync(deploymentsDir)).toBe(false);
   });
 
   it("sends nothing when the confirmation is declined", async () => {

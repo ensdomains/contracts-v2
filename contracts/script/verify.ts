@@ -33,6 +33,8 @@ import { keccak256, toBytes } from "viem";
 const contractsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SOURCIFY_SERVER = "https://sourcify.dev/server";
+// Etherscan's list of the chains its multichain API serves.
+const ETHERSCAN_CHAINLIST = "https://api.etherscan.io/v2/chainlist";
 // A submission is queued server-side; the job is polled until it reports
 // completion, then bounded so a stuck job fails the run instead of hanging.
 const SOURCIFY_POLL_INTERVAL_MS = 2_000;
@@ -47,7 +49,7 @@ const SOURCIFY_THROTTLE_RETRIES = 3;
 // unless the caller passes its own `--min-interval`.
 const ETHERSCAN_MIN_INTERVAL_MS = 500;
 
-type Backend = "etherscan" | "sourcify";
+export type Backend = "etherscan" | "sourcify";
 
 type Artifact = {
   address: string;
@@ -462,17 +464,22 @@ async function runEchoed(command: string, args: string[]): Promise<string> {
   return output;
 }
 
-/// The contracts `rocketh-verify` reports Etherscan refused, other than for being
-/// verified already. It exits 0 either way, so the refusals are read from its output.
+/// The contracts `rocketh-verify` reports Etherscan refused or failed to verify,
+/// other than for being verified already. It exits 0 either way, so the failures
+/// are read from its output.
 export function etherscanRefusals(output: string): string[] {
   return output
     .split("\n")
-    .map((line) => line.match(/contract (\S+) failed to submit\b(.*)/))
+    .map((line) =>
+      line.match(
+        /(?:contract (\S+) failed to submit\b|Failed to verify contract (\S+?):)(.*)/,
+      ),
+    )
     .filter(
       (match): match is RegExpMatchArray =>
-        match !== null && !/already verified/i.test(match[2]),
+        match !== null && !/already verified/i.test(match[3]),
     )
-    .map((match) => match[1]);
+    .map((match) => match[1] ?? match[2]);
 }
 
 /// Verifies one deployment set on Etherscan through `rocketh-verify`, and returns
@@ -547,11 +554,57 @@ async function verifyOnEtherscan({
   }
 }
 
-async function main() {
-  const { network, backends, skipV1, sourcifyServer, contracts, passthrough } =
-    parseArgs(process.argv.slice(2));
+/// The backends whose service lists the chain as supported.
+export async function backendsForChain(
+  chainId: number,
+  backends: readonly Backend[],
+  sourcifyServer = SOURCIFY_SERVER,
+): Promise<Backend[]> {
+  const supported = await Promise.all(
+    backends.map(async (backend) => {
+      if (backend === "etherscan") {
+        const { result } = (await (
+          await fetch(ETHERSCAN_CHAINLIST)
+        ).json()) as {
+          result: { chainid: string; status: number }[];
+        };
+        return result.some(
+          (chain) => chain.chainid === String(chainId) && chain.status === 1,
+        );
+      }
+      const chains = (await sourcifyJson(
+        await fetch(`${sourcifyServer}/chains`),
+      )) as { chainId: number; supported: boolean }[];
+      return chains.some(
+        (chain) => chain.chainId === chainId && chain.supported,
+      );
+    }),
+  );
+  return backends.filter((_, i) => supported[i]);
+}
 
-  const srcDir = join(contractsDir, "deployments", network);
+export type VerifyOptions = {
+  network: string;
+  deploymentsDir?: string;
+  backends: readonly Backend[];
+  skipV1?: boolean;
+  sourcifyServer?: string;
+  contracts?: readonly string[];
+  passthrough?: string[];
+};
+
+/// Verifies the deployment sets of a namespace, and returns how many contracts
+/// failed.
+export async function verifyDeployments({
+  network,
+  deploymentsDir = join(contractsDir, "deployments"),
+  backends,
+  skipV1 = false,
+  sourcifyServer = SOURCIFY_SERVER,
+  contracts = [],
+  passthrough = [],
+}: VerifyOptions): Promise<number> {
+  const srcDir = join(deploymentsDir, network);
   if (!existsSync(srcDir)) {
     throw new Error(
       `no deployments found for network "${network}" (${srcDir})`,
@@ -565,7 +618,7 @@ async function main() {
   // that tree from a network's real v1 by inspection, so both are offered and
   // `--skip-v1` opts out; already-verified contracts are skipped by the backend
   // regardless.
-  const v1Dir = join(contractsDir, "deployments", "v1", network);
+  const v1Dir = join(deploymentsDir, "v1", network);
   if (!skipV1 && existsSync(v1Dir)) {
     targets.push({
       srcDir: v1Dir,
@@ -597,7 +650,11 @@ async function main() {
       ).length;
     }
   }
+  return failures;
+}
 
+async function main() {
+  const failures = await verifyDeployments(parseArgs(process.argv.slice(2)));
   if (failures > 0) process.exitCode = 1;
 }
 

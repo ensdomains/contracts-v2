@@ -24,6 +24,16 @@ describe("etherscanRefusals", () => {
     expect(etherscanRefusals(output)).toEqual(["BatchRegistrar", "LabelStore"]);
   });
 
+  it("names each contract Etherscan accepted but failed to verify", () => {
+    const output = [
+      "waiting for result...",
+      "Failed to verify contract DNSTLDResolver: NOTOK, Fail - Unable to verify",
+      "Etherscan failed to verify the source provided",
+    ].join("\n");
+
+    expect(etherscanRefusals(output)).toEqual(["DNSTLDResolver"]);
+  });
+
   // Etherscan reports an already-verified contract as a failed submission; it
   // needs nothing more, so it is not a refusal.
   it("ignores a contract that is verified already", () => {

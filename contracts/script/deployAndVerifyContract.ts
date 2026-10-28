@@ -2,6 +2,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import {
@@ -21,18 +22,28 @@ import { envPrivateKey } from "./migrations/plumbing.js";
 import {
   httpRpcProvider,
   isLocalRpcUrl,
+  isTenderlyVirtualRpc,
   privateKeySignerProtocol,
 } from "./migrations/rpc.js";
 import { createV2Clients } from "./scriptUtils.js";
+import { backendsForChain, verifyDeployments, type Backend } from "./verify.js";
 
 // Deploys one contract from the Hardhat build to any chain, outside the migration
-// flow. The contract is recorded in the deploy tool's format, build info included,
-// so the verify script can submit it like any other deployment.
+// flow, then verifies its source wherever a verification service can see it. The
+// contract is recorded in the deploy tool's format, build info included, which is
+// what the verify script submits.
 
 const contractsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const typedArtifactsDir = join(contractsDir, "generated", "artifacts");
 const buildArtifactsDir = join(contractsDir, "artifacts");
 export const DEFAULT_DEPLOYMENTS_DIR = join(contractsDir, "deployments");
+
+// Client names of nodes that hold development or fork state.
+const DEV_NODE_CLIENTS = /anvil|hardhat|ganache|tenderly/i;
+// Verification attempts after a deploy, and the wait between them. An explorer
+// can take a while to index a new contract, and refuses it until it has.
+const VERIFY_ATTEMPTS = 5;
+const VERIFY_RETRY_DELAY_MS = 20_000;
 
 type DeployableArtifact = { abi: Abi; bytecode: Hex; sourceName?: string };
 
@@ -201,7 +212,7 @@ export type DeploySummary = {
   deployer: Address;
   balance: bigint;
   estimatedCost: bigint;
-  record?: string;
+  record: string;
   existingAddress?: Address;
 };
 
@@ -214,8 +225,6 @@ export type DeployContractOptions = {
   deploymentsDir?: string;
   /// Record name; the contract name when absent.
   name?: string;
-  /// Writes no record and always deploys a new copy when false.
-  save?: boolean;
   /// Called before anything is sent; the deploy stops unless it resolves true.
   confirm?: (summary: DeploySummary) => Promise<boolean>;
 };
@@ -224,9 +233,10 @@ export type DeployContractResult = {
   address: Address;
   transactionHash?: Hex;
   newlyDeployed: boolean;
+  record: string;
+  recordFile: string;
   /// The address the record named before a deploy replaced it.
   replacedAddress?: Address;
-  recordFile?: string;
 };
 
 export async function deployContract(
@@ -234,19 +244,15 @@ export async function deployContract(
 ): Promise<DeployContractResult | undefined> {
   const artifact = await resolveArtifact(opts.contract);
   const args = coerceConstructorArgs(artifact.abi, opts.args ?? []);
-  const save = opts.save ?? true;
-  const record = save
-    ? (opts.name ?? splitContract(opts.contract).name)
-    : undefined;
+  const record = opts.name ?? splitContract(opts.contract).name;
   const deploymentsDir = resolve(
     opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
   );
   const namespaceDir = join(deploymentsDir, opts.namespace);
-  const recordFile = record ? join(namespaceDir, `${record}.json`) : undefined;
-  const existingAddress =
-    recordFile && existsSync(recordFile)
-      ? getAddress(JSON.parse(readFileSync(recordFile, "utf8")).address)
-      : undefined;
+  const recordFile = join(namespaceDir, `${record}.json`);
+  const existingAddress = existsSync(recordFile)
+    ? getAddress(JSON.parse(readFileSync(recordFile, "utf8")).address)
+    : undefined;
 
   const { chain, publicClient } = await createV2Clients({
     rpcUrl: opts.rpcUrl,
@@ -297,13 +303,12 @@ export async function deployContract(
     {
       environment: opts.namespace,
       askBeforeProceeding: false,
-      saveDeployments: save,
+      saveDeployments: true,
       provider: httpRpcProvider(opts.rpcUrl) as any,
     },
     config,
   );
-  // An empty name keeps the deploy tool from looking up or writing a record.
-  const deployment = await env.deploy(record ?? "", {
+  const deployment = await env.deploy(record, {
     account: env.namedAccounts.deployer,
     artifact,
     args,
@@ -314,12 +319,57 @@ export async function deployContract(
     address,
     transactionHash: deployment.transaction?.hash,
     newlyDeployed: deployment.newlyDeployed,
+    record,
+    recordFile,
     replacedAddress:
       deployment.newlyDeployed && existingAddress !== address
         ? existingAddress
         : undefined,
-    recordFile,
   };
+}
+
+export type VerificationPlan = { backends: Backend[]; skipped?: string };
+
+/// Works out which services can verify a contract deployed through the RPC. A node
+/// on this machine, a virtual testnet or a development node holds state that no
+/// public explorer can see, so nothing verifies there; otherwise each service's
+/// list of supported chains decides. A missing Etherscan key stops the run here,
+/// before anything is deployed.
+export async function planVerification(
+  rpcUrl: string,
+  requested: readonly Backend[],
+): Promise<VerificationPlan> {
+  if (isLocalRpcUrl(rpcUrl) || isTenderlyVirtualRpc(rpcUrl)) {
+    return {
+      backends: [],
+      skipped:
+        "the RPC is a local node or a virtual testnet, which no explorer can see",
+    };
+  }
+  const { chain, publicClient } = await createV2Clients({ rpcUrl });
+  const clientVersion = await publicClient
+    .request({ method: "web3_clientVersion" })
+    .catch(() => "");
+  if (DEV_NODE_CLIENTS.test(clientVersion)) {
+    return {
+      backends: [],
+      skipped: `the RPC is a development node (${clientVersion}), which no explorer can see`,
+    };
+  }
+  const backends = await backendsForChain(chain.id, requested);
+  if (backends.length === 0) {
+    return {
+      backends,
+      skipped: `no verification service supports chain ${chain.id}`,
+    };
+  }
+  // The Etherscan verifier reads its key from this variable.
+  if (backends.includes("etherscan") && !process.env.ETHERSCAN_API_KEY) {
+    throw new Error(
+      "Etherscan verification needs ETHERSCAN_API_KEY; set it, or pass --sourcify-only",
+    );
+  }
+  return { backends };
 }
 
 function jsonWithBigints(value: unknown): string {
@@ -363,15 +413,16 @@ type CliOptions = {
   name?: string;
   deploymentsDir: string;
   deploymentNetwork?: string;
-  save: boolean;
+  etherscanOnly: boolean;
+  sourcifyOnly: boolean;
   yes: boolean;
 };
 
 async function main() {
   const program = new Command()
-    .name("deploy:contract")
+    .name("deploy-and-verify:contract")
     .description(
-      "Deploy one contract from the Hardhat build to any chain, outside the migration flow",
+      "Deploy one contract from the Hardhat build to any chain, outside the migration flow, and verify its source",
     )
     .argument(
       "<contract>",
@@ -400,7 +451,8 @@ async function main() {
       "--deployment-network <namespace>",
       "namespace for the record (default: <network>-adhoc)",
     )
-    .option("--no-save", "deploy a new copy without writing a record")
+    .option("--etherscan-only", "verify on Etherscan only", false)
+    .option("--sourcify-only", "verify on Sourcify only", false)
     .option("-y, --yes", "skip the confirmation prompt", false);
   program.parse();
   const contract = program.args[0];
@@ -413,10 +465,27 @@ async function main() {
   if (!privateKey) throw new Error("pass --private-key or set DEPLOYER_KEY");
   const args = JSON.parse(opts.args);
   if (!Array.isArray(args)) throw new Error("--args must be a JSON array");
+  if (opts.etherscanOnly && opts.sourcifyOnly) {
+    throw new Error("pass at most one of --etherscan-only and --sourcify-only");
+  }
   const namespace = opts.deploymentNetwork ?? `${opts.network}-adhoc`;
 
-  // The deploy tool copies build info from the build folder relative to the
-  // working directory.
+  const verification = await planVerification(
+    rpcUrl,
+    opts.etherscanOnly
+      ? ["etherscan"]
+      : opts.sourcifyOnly
+        ? ["sourcify"]
+        : ["etherscan", "sourcify"],
+  );
+  console.log(
+    verification.skipped
+      ? `Verification: skipped, as ${verification.skipped}`
+      : `Verification: ${verification.backends.join(", ")}`,
+  );
+
+  // The deploy tool copies build info from the build folder, and the verifier
+  // runs as a package script, both relative to the working directory.
   process.chdir(contractsDir);
   const result = await deployContract({
     contract,
@@ -426,7 +495,6 @@ async function main() {
     namespace,
     deploymentsDir: opts.deploymentsDir,
     name: opts.name,
-    save: opts.save,
     confirm: opts.yes || isLocalRpcUrl(rpcUrl) ? undefined : askToProceed,
   });
   if (!result) {
@@ -446,12 +514,28 @@ async function main() {
       `${contract} is already deployed at ${result.address} with this code and these arguments; nothing sent. Pass --name to deploy another copy.`,
     );
   }
-  if (result.recordFile) {
-    console.log(`record: ${result.recordFile}`);
-    if (resolve(opts.deploymentsDir) === DEFAULT_DEPLOYMENTS_DIR) {
-      console.log(`verify with: bun run verify --network ${namespace}`);
+  console.log(`record: ${result.recordFile}`);
+  if (verification.backends.length === 0) return;
+
+  for (let attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt++) {
+    const failures = await verifyDeployments({
+      network: namespace,
+      deploymentsDir: opts.deploymentsDir,
+      backends: verification.backends,
+      skipV1: true,
+      contracts: [result.record],
+    });
+    if (failures === 0) return;
+    if (attempt < VERIFY_ATTEMPTS) {
+      console.log(
+        `\nRetrying verification in ${VERIFY_RETRY_DELAY_MS / 1000}s, as an explorer can take a while to see a new contract.`,
+      );
+      await sleep(VERIFY_RETRY_DELAY_MS);
     }
   }
+  throw new Error(
+    `verification failed ${VERIFY_ATTEMPTS} times; rerun the same command to retry it, which does not deploy again`,
+  );
 }
 
 if (import.meta.main) {
