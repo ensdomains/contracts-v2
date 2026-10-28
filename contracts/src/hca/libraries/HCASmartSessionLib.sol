@@ -2,6 +2,7 @@
 pragma solidity 0.8.27;
 
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 import {HCASignatureLib} from "./HCASignatureLib.sol";
 
@@ -67,12 +68,14 @@ library HCASmartSessionLib {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Validates the selected chain session and its multi-chain owner signature.
-    /// @dev Reconstructs the Smart Session digest before recovering the authorizing signer.
+    /// @dev Reconstructs the Smart Session digest before verifying the authorizing signer. ECDSA
+    ///      recovery is tried first; an owner with code may instead authorize through ERC-1271.
     /// @param expectedOwner The owner that authorized the session set.
     /// @param expectedSessionDigest The session digest authorized for the current chain.
     /// @param selectedIndex The current chain's index in `hashesAndChainIds`.
     /// @param packedSessions Packed chain identifiers and session digests covered by the signature.
-    /// @param ownerSignature The owner's ECDSA signature over the multi-chain authorization.
+    /// @param ownerSignature The owner's ECDSA or ERC-1271 signature over the multi-chain
+    ///                       authorization.
     /// @return status Whether selection and signer validation succeeded.
     function validateMultiChainAuthorization(
         address expectedOwner,
@@ -111,10 +114,16 @@ library HCASmartSessionLib {
                 bytes32(packedSessions[offset + 8:offset + AUTHORIZATION_ENTRY_LENGTH])
             );
         }
-        address signer =
-            HCASignatureLib.recover(multiChainDigest(chainSessionHashes), ownerSignature);
+        bytes32 digest = multiChainDigest(chainSessionHashes);
+        if (HCASignatureLib.recover(digest, ownerSignature) == expectedOwner) {
+            return AuthorizationStatus.Valid;
+        }
+        // Contract owners (e.g. a Safe) authorize through ERC-1271.
         return
-            signer == expectedOwner ? AuthorizationStatus.Valid : AuthorizationStatus.InvalidSigner;
+            expectedOwner.code.length != 0 &&
+            SignatureChecker.isValidERC1271SignatureNow(expectedOwner, digest, ownerSignature)
+            ? AuthorizationStatus.Valid
+            : AuthorizationStatus.InvalidSigner;
     }
 
     /// @notice Derives the hashes that bind a one-of-one key to an account and policy.
