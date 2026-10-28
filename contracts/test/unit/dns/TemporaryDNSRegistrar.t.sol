@@ -91,6 +91,12 @@ contract TemporaryDNSRegistrarTest is V2Fixture {
         assertEq(registrar.defaultResolver(), dnsTLDResolver, "defaultResolver");
     }
 
+    function test_TLD_ROLE_BITMAP_hasRequiredRoles() external pure {
+        uint256 requiredRoleBitmap =
+            RegistryRolesLib.ROLE_UNREGISTER | RegistryRolesLib.ROLE_UNREGISTER_ADMIN;
+        assertEq(TLD_ROLE_BITMAP & requiredRoleBitmap, requiredRoleBitmap);
+    }
+
     function test_setDefaultResolver(address resolver) external {
         registrar.setDefaultResolver(resolver);
         assertEq(registrar.defaultResolver(), resolver, "defaultResolver");
@@ -116,8 +122,13 @@ contract TemporaryDNSRegistrarTest is V2Fixture {
         }
     }
 
+    function test_syncTLD_empty() external {
+        vm.expectRevert(abi.encodeWithSelector(NameCoder.LabelIsEmpty.selector));
+        registrar.syncTLD("");
+    }
+
     function test_syncTLD_notPublic() external {
-        string[4] memory tlds = ["eth", "reverse", "__dne", ""];
+        string[4] memory tlds = ["eth", "reverse", "__dne", "co.uk"];
         for (uint256 i; i < tlds.length; ++i) {
             assertFalse(publicSuffixList.isPublicSuffix(NameCoder.encode(tlds[i])));
             vm.expectRevert(
@@ -169,6 +180,7 @@ contract TemporaryDNSRegistrarTest is V2Fixture {
         IPermissionedRegistry.State memory state = rootRegistry.getState(LibLabel.id(label));
         assertEq(uint8(state.status), uint8(IPermissionedRegistry.Status.REGISTERED), "status");
         assertEq(state.latestOwner, tokenOwner, "owner");
+        assertEq(state.expiry, type(uint64).max, "expiry");
         assertEq(rootRegistry.getResolver(label), dnsTLDResolver, "resolver");
         assertEq(rootRegistry.roles(state.tokenId, tokenOwner), TLD_ROLE_BITMAP, "roles");
     }

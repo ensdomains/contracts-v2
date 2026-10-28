@@ -92,7 +92,7 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
     /// @notice Ensure TLD is enabled and using the latest resolver.
     /// @param label TLD to sync.
     function syncTLD(string calldata label) public {
-        if (!PUBLIC_SUFFIX_LIST.isPublicSuffix(NameCoder.encode(label))) {
+        if (!PUBLIC_SUFFIX_LIST.isPublicSuffix(NameCoder.addLabel(hex"00", label))) {
             revert TLDNotPublic(label);
         }
         IPermissionedRegistry.State memory state = ROOT_REGISTRY.getState(LibLabel.id(label));
