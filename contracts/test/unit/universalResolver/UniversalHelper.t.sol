@@ -12,6 +12,7 @@ import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {WrapperRegistryLib} from "~src/registry/libraries/WrapperRegistryLib.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
@@ -241,7 +242,12 @@ contract UniversalHelperTest is V2Fixture {
         assertFalse(r.isEmancipated(), "self:before");
         assertFalse(universalHelper.isEmancipatedRegistry(r), "helper:before");
 
-        r.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this));
+        r.revokeRootRoles(
+            RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN,
+            address(this)
+        );
         assertTrue(r.isEmancipated(), "self");
         assertTrue(universalHelper.isEmancipatedRegistry(r), "helper");
     }
@@ -286,7 +292,12 @@ contract UniversalHelperTest is V2Fixture {
         assertFalse(valid.isEmancipated(), "valid:!emancipated");
         assertEq(address(universalHelper.findEmancipatedRegistry(parentName)), address(0), "valid");
 
-        valid.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this));
+        valid.revokeRootRoles(
+            RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN,
+            address(this)
+        );
         assertTrue(valid.isEmancipated(), "valid:emancipated");
         assertEq(
             address(universalHelper.findEmancipatedRegistry(parentName)),
@@ -301,6 +312,34 @@ contract UniversalHelperTest is V2Fixture {
         assertTrue(adhoc.isEmancipated(), "adhoc:emancipated");
         ethRegistry.setSubregistry(LibLabel.id(label), adhoc);
         assertEq(address(universalHelper.findEmancipatedRegistry(parentName)), address(0), "adhoc");
+    }
+
+    function test_findEmancipatedToken_eth2LD() external {
+        string memory label = "test"; // arbitrary
+
+        ethRegistry.register(
+            label,
+            address(this),
+            IRegistry(address(0)),
+            address(0),
+            EACBaseRolesLib.ALL_ROLES,
+            type(uint64).max
+        );
+        bytes memory name = NameCoder.ethName(label);
+
+        (IPermissionedRegistry parent, uint256 tokenId, address owner, bool canTransfer) =
+            universalHelper.findEmancipatedToken(name);
+        assertEq(address(parent), address(ethRegistry), "parent");
+        assertEq(tokenId, ethRegistry.findTokenId(label), "tokenId");
+        assertEq(owner, ethRegistry.findOwner(label), "owner");
+        assertTrue(canTransfer, "canTransfer");
+
+        ethRegistry.revokeRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, address(this));
+        (parent, tokenId, owner, canTransfer) = universalHelper.findEmancipatedToken(name);
+        assertEq(address(parent), address(ethRegistry), "parent2");
+        assertEq(tokenId, ethRegistry.findTokenId(label), "tokenId2");
+        assertEq(owner, ethRegistry.findOwner(label), "owner2");
+        assertFalse(canTransfer, "canTransfer2");
     }
 
     ////////////////////////////////////////////////////////////////////////

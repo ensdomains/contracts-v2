@@ -643,11 +643,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(universalHelper.findEmancipatedRegistry(name)),
             "findEmancipatedRegistry"
         );
-        (IPermissionedRegistry parent, address owner_, uint256 tokenId_) =
-            universalHelper.findEmancipatedToken(name);
-        assertEq(address(parent), address(ethRegistry), "findEmancipatedToken:parent");
-        assertEq(owner_, md.owner, "findEmancipatedToken:owner");
-        assertEq(tokenId_, tokenId, "findEmancipatedToken:tokenId");
+        _checkTokenEmancipated(name, ethRegistry, tokenId, md.owner);
         assertTrue(
             subregistry.hasRootRoles(RegistryRolesLib.ROLE_REGISTRAR, address(ethRegistry)),
             "ROLE_REGISTRAR"
@@ -1245,11 +1241,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(universalHelper.findEmancipatedRegistry(name3)),
             "findEmancipatedRegistry"
         );
-        (IPermissionedRegistry parent, address owner_, uint256 tokenId_) =
-            universalHelper.findEmancipatedToken(name3);
-        assertEq(address(parent), address(registry2), "findEmancipatedToken:parent");
-        assertEq(owner_, data3.owner, "findEmancipatedToken:owner");
-        assertEq(tokenId_, tokenId3, "findEmancipatedToken:tokenId");
+        _checkTokenEmancipated(name3, registry2, tokenId3, data3.owner);
 
         // check migrated 3LD child
         vm.expectRevert(
@@ -1518,6 +1510,23 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////
+
+    function _checkTokenEmancipated(
+        bytes memory name,
+        IRegistry parent,
+        uint256 tokenId,
+        address owner
+    )
+        internal
+        view
+    {
+        (IPermissionedRegistry parent_, uint256 tokenId_, address owner_, bool canTransfer) =
+            universalHelper.findEmancipatedToken(name);
+        assertEq(address(parent_), address(parent), "findEmancipatedToken:parent");
+        assertEq(tokenId_, tokenId, "findEmancipatedToken:tokenId");
+        assertEq(owner_, owner, "findEmancipatedToken:owner");
+        assertTrue(canTransfer, "findEmancipatedToken:canTransfer");
+    }
 
     function _migrateAndGetWrapperRegistry() internal returns (WrapperRegistry) {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);

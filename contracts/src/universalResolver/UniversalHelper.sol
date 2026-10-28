@@ -154,12 +154,13 @@ contract UniversalHelper is DelegatedContractNamer {
     /// @notice Determine if every ancestor is emancipated and the token permits safe transfer.
     /// @param name The DNS-encoded name.
     /// @return parent The parent registry or null if any ancestor was not emancipated.
-    /// @return owner The token owner.
-    /// @return tokenId The token ID.
+    /// @return tokenId The token ID or null if not emancipated.
+    /// @return owner The token owner or null if doesn't exist.
+    /// @return canTransfer `true` if the token can be transferred.
     function findEmancipatedToken(bytes calldata name)
         external
         view
-        returns (IPermissionedRegistry parent, address owner, uint256 tokenId)
+        returns (IPermissionedRegistry parent, uint256 tokenId, address owner, bool canTransfer)
     {
         (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, 0);
         if (labelHash != bytes32(0)) {
@@ -167,17 +168,21 @@ contract UniversalHelper is DelegatedContractNamer {
             if (address(parent) != address(0)) {
                 tokenId = parent.getTokenId(uint256(labelHash));
                 owner = parent.ownerOf(tokenId);
-                if (
-                    !parent.isOnlyAssignee(
+                if (owner != address(0)) {
+                    canTransfer = parent.hasRoles(
                         tokenId,
-                        RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP,
+                        RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN,
                         owner
-                    )
-                ) {
-                    /// see: PermissionedRegistry._update()
-                    delete parent;
-                    delete tokenId;
-                    delete owner;
+                    );
+                    if (
+                        !parent.isOnlyAssignee(
+                            tokenId,
+                            RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP,  /// see: PermissionedRegistry._update()
+                            owner
+                        )
+                    ) {
+                        delete tokenId;
+                    }
                 }
             }
         }
