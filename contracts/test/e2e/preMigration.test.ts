@@ -10,9 +10,11 @@ import {
   createWalletClient,
   getAddress,
   http,
+  keccak256,
   namehash,
   parseGwei,
   publicActions,
+  toHex,
   zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -992,6 +994,47 @@ describe("PreMigration", () => {
     ]);
   });
 
+  it("skips a Dune row whose label is unknown but whose labelhash names it", async () => {
+    const label = "dunelabelled";
+    const { user } = env.namedAccounts;
+
+    await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+
+    const unknown = keccak256(toHex("nobodyknowsme"));
+    const csvContent = [
+      "name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status",
+      `${label},${label}.eth,${keccak256(toHex(label))},,,,,active`,
+      `,,${unknown},,,,,active`,
+      `<nil>,<nil>,${unknown},,,,,active`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    expect((await verifyV2State(env, label)).status).toBe(STATUS.RESERVED);
+    expect((await verifyV2State(env, "<nil>")).status).toBe(STATUS.AVAILABLE);
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.invalidLabelCount).toBe(2);
+    expect(checkpoint!.failedLines).toEqual([]);
+  });
+
+  it("fails fast on an empty label whose labelhash cell is empty too", async () => {
+    const csvContent = [
+      "name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status",
+      `validfirst,validfirst.eth,,,,,,active`,
+      `,,,,,,,active`,
+    ].join("\n");
+    writeFileSync(csvFilePath, csvContent);
+
+    const args = buildMainArgs(env, csvFilePath);
+    await expectMainToExitWithCsvError(args, [
+      `${csvFilePath}:3`,
+      `empty "labelName"`,
+    ]);
+  });
+
   it("accepts the 6-column exporter header (label alias)", async () => {
     const label = "exporterfmt";
     const { user } = env.namedAccounts;
@@ -1195,6 +1238,39 @@ describe("PreMigration", () => {
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(1);
     expect(checkpoint!.invalidLabelCount).toBe(2);
+  });
+
+  it("reserves a name registered with [labelhash]-shaped text", async () => {
+    const { user } = env.namedAccounts;
+
+    // Some live mainnet names were registered by typing ENS's placeholder text. v1
+    // knows such a name under the hash of that text, while a placeholder's own hash is
+    // never registered, so only the placeholder counts as an invalid label.
+    const bracketed = `[${"c0de".repeat(16)}]`;
+    const bracketedId = BigInt(keccak256(toHex(bracketed)));
+    await env.v1.BaseRegistrar.write.register([
+      bracketedId,
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const v1Expiry = await env.v1.BaseRegistrar.read.nameExpires([bracketedId]);
+    const placeholder = `[${"b".repeat(64)}]`;
+
+    createCSVFile(csvFilePath, [bracketed, placeholder]);
+    const bonusPeriodDays = 62;
+    await main(buildMainArgs(env, csvFilePath, { bonusPeriodDays }));
+
+    const state = await verifyV2State(env, bracketed);
+    expect(state.status).toBe(STATUS.RESERVED);
+    expect(state.expiry).toBe(v1Expiry + BigInt(bonusPeriodDays) * 86400n);
+    expect((await verifyV2State(env, placeholder)).status).toBe(
+      STATUS.AVAILABLE,
+    );
+    const checkpoint = readTestCheckpoint();
+    expect(checkpoint!.successCount).toBe(1);
+    expect(checkpoint!.invalidLabelCount).toBe(1);
+    expect(checkpoint!.skippedNeverRegisteredCount).toBe(0);
+    expect(checkpoint!.failedLines).toEqual([]);
   });
 
   // ─── Edge cases ────────────────────────────────────────────────────
@@ -1942,13 +2018,7 @@ describe("PreMigration - Live Mainnet v1 Verification", () => {
     }
   });
 
-  it("throws InvalidLabelNameError for encoded labelhash", async () => {
-    const encodedLabel = `[${"a".repeat(64)}]`;
-    try {
-      await verifyNameOnV1(encodedLabel, mainnetClient);
-      expect.unreachable("should have thrown");
-    } catch (e) {
-      expect(e).toBeInstanceOf(InvalidLabelNameError);
-    }
+  it("accepts an encoded labelhash as a label for v1 to judge", () => {
+    expect(isValidLabel(`[${"a".repeat(64)}]`)).toBe(true);
   });
 });

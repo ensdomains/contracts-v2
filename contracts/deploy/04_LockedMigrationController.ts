@@ -18,6 +18,7 @@ export default execute(
     getV1,
     read,
     namedAccounts: { deployer, owner },
+    tags,
   }) => {
     const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
     const graveyard = get<Abi_Graveyard>("Graveyard");
@@ -51,27 +52,32 @@ export default execute(
       },
     );
 
-    const controllerRoles = DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT;
-    const proxyHasGrant = await read(ethRegistry, {
-      functionName: "hasRootRoles",
-      args: [controllerRoles, lmc.address],
-    });
-    if (!proxyHasGrant) {
-      const adminRoles = (controllerRoles | (controllerRoles >> 128n)) << 128n;
-      const deployerCanGrant = await read(ethRegistry, {
+    // The phased deploy holds migration closed until go-live, when the v2
+    // registrar opens too.
+    if (!tags.deferMigration) {
+      const controllerRoles = DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT;
+      const proxyHasGrant = await read(ethRegistry, {
         functionName: "hasRootRoles",
-        args: [adminRoles, deployer],
+        args: [controllerRoles, lmc.address],
       });
-      if (deployerCanGrant) {
-        await write(ethRegistry, {
-          account: deployer,
-          functionName: "grantRootRoles",
-          args: [controllerRoles, lmc.address],
+      if (!proxyHasGrant) {
+        const adminRoles =
+          (controllerRoles | (controllerRoles >> 128n)) << 128n;
+        const deployerCanGrant = await read(ethRegistry, {
+          functionName: "hasRootRoles",
+          args: [adminRoles, deployer],
         });
-      } else {
-        console.warn(
-          `  -- Warn: LockedMigrationController requires root roles`,
-        );
+        if (deployerCanGrant) {
+          await write(ethRegistry, {
+            account: deployer,
+            functionName: "grantRootRoles",
+            args: [controllerRoles, lmc.address],
+          });
+        } else {
+          console.warn(
+            `  -- Warn: LockedMigrationController requires root roles`,
+          );
+        }
       }
     }
   },

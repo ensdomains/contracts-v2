@@ -13,6 +13,7 @@
 /// `logSpanRefusal.ts` describes.
 
 import { setTimeout as sleep } from "node:timers/promises";
+import { BaseError } from "viem";
 
 /// Failed queries in a row after which a read gives up.
 export const FAILED_QUERY_LIMIT = 8;
@@ -40,4 +41,37 @@ export class QueryRetry {
     this.#failures++;
     await sleep(this.#delayMs * this.#failures);
   }
+}
+
+/// Reads until `read` returns a complete result, asking again as `retry` allows
+/// while `incomplete` gives a reason it is not. Past the limit, throws that reason.
+export async function readUntilComplete<T>(
+  read: () => Promise<T>,
+  incomplete: (value: T) => string | undefined,
+  retry: QueryRetry = new QueryRetry(),
+): Promise<T> {
+  for (;;) {
+    try {
+      const value = await read();
+      const reason = incomplete(value);
+      if (reason === undefined) {
+        retry.served();
+        return value;
+      }
+      throw new Error(reason);
+    } catch (error) {
+      await retry.failed(error);
+    }
+  }
+}
+
+/// The multicall option that sends a batch as one call. Split into many small calls
+/// sent at once, as viem does by default, a large batch bursts past a provider's
+/// rate limit, which then fails parts of it.
+export const ONE_CALL_PER_BATCH = { batchSize: 0 } as const;
+
+/// An error's one-line summary. A viem error's full text repeats the request that
+/// failed, and kept once per name across a large read it runs to gigabytes.
+export function briefError(error: unknown): string {
+  return error instanceof BaseError ? error.shortMessage : String(error);
 }
