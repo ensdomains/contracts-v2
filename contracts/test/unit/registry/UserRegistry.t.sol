@@ -21,6 +21,7 @@ import {
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
+import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
@@ -387,6 +388,61 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         // Verify new registration
         assertEq(proxy.ownerOf(newTokenId), user2, "Domain should be owned by user2");
+    }
+
+    function test_isEmancipated_registry() external {
+        assertFalse(proxy.isEmancipated(), "1");
+        vm.prank(admin);
+        proxy.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, admin);
+        assertFalse(proxy.isEmancipated(), "2");
+        vm.prank(admin);
+        proxy.revokeRootRoles(
+            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN,
+            admin
+        );
+        assertTrue(proxy.isEmancipated(), "3");
+    }
+
+    function test_isEmancipated_token() external {
+        vm.prank(admin);
+        proxy.revokeRootRoles(
+            RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP |
+            RegistryRolesLib.ROLE_UPGRADE |
+            RegistryRolesLib.ROLE_UPGRADE_ADMIN,
+            admin
+        );
+        assertTrue(proxy.isEmancipated());
+        vm.prank(admin);
+        uint256 tokenId =
+            proxy.register(
+                "test",
+                user1,
+                IRegistry(address(0)),
+                address(0),
+                EACBaseRolesLib.ALL_ROLES,
+                uint64(block.timestamp + 1 days)
+            );
+
+        for (uint256 i; i < 32; ++i) {
+            uint256 bit = 1 << (i << 2);
+            vm.prank(user1);
+            proxy.revokeRoles(tokenId, EACBaseRolesLib.ALL_ROLES, user2);
+            vm.prank(user1);
+            proxy.grantRoles(tokenId, bit, user2);
+
+            tokenId = proxy.getTokenId(tokenId);
+            if ((RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP & bit) != 0) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(
+                        IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,
+                        tokenId,
+                        user1
+                    )
+                );
+            }
+            vm.prank(user1);
+            proxy.safeTransferFrom(user1, user1, tokenId, 1, "");
+        }
     }
 }
 

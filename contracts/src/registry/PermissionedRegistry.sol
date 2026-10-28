@@ -537,7 +537,10 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
                 // ROLE_CAN_TRANSFER_ADMIN is a property of the token (not grantable, ignored on root)
                 if ((_getRoles(resource, from) & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
                     revert TransferDisallowed(tokenId, from);
-                } else if (safe && !isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, from)) {
+                } else if (
+                    safe &&
+                    !isOnlyAssignee(tokenId, RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, from)
+                ) {
                     revert TransferUnsafeWithMultipleAssignees(tokenId, from);
                 } else if (amounts[i] > 0) {
                     _transferRoles(resource, from, to, false);
