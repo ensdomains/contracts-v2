@@ -92,7 +92,6 @@ contract GraveyardRepairer {
 
     /// @notice Determine if a name is held by the `Graveyard` with a resolver set and its
     ///         registration has lapsed past the grace period.
-    /// @dev A name that was never registered is skipped, as `Graveyard.clear()` refuses it.
     /// @param tokenId The `BaseRegistrar` token ID (labelhash) of the name.
     /// @return True if `repair()` would repair the name.
     function isRepairable(uint256 tokenId) public view returns (bool) {
@@ -100,7 +99,6 @@ contract GraveyardRepairer {
         return
             _REGISTRY_V1.owner(node) == GRAVEYARD &&
             _REGISTRY_V1.resolver(node) != address(0) &&
-            _BASE_REGISTRAR.nameExpires(tokenId) != 0 &&
             _BASE_REGISTRAR.available(tokenId);
     }
 }

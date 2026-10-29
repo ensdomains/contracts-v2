@@ -120,23 +120,6 @@ contract GraveyardRepairerTest is MigrationControllerFixture {
         assertEq(registryV1.resolver(node), address(0), "resolver");
     }
 
-    function test_repair_neverRegistered_skipped() external {
-        bytes32 labelHash = keccak256(bytes(testLabel));
-        bytes32 node = NameCoder.namehash(NameCoder.ETH_NODE, labelHash);
-        vm.prank(address(baseRegistrar));
-        registryV1.setSubnodeRecord(
-            NameCoder.ETH_NODE,
-            labelHash,
-            address(graveyard),
-            evilResolver,
-            0
-        );
-
-        assertFalse(repairer.isRepairable(uint256(labelHash)), "repairable");
-        assertEq(repairer.repair(_oneId(uint256(labelHash))), 0, "repaired");
-        assertEq(registryV1.resolver(node), evilResolver, "untouched");
-    }
-
     function test_repair_mixed() external {
         (bytes memory poisoned, uint256 poisonedId) = registerUnwrapped(_label(0));
         (bytes memory migrated, uint256 migratedId) = registerUnwrapped(_label(1));
