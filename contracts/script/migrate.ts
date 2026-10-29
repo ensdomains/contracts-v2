@@ -2243,6 +2243,7 @@ const V1_HANDOFF_CONTROLLERS: Record<
   BaseRegistrarImplementation: [
     "ETHRenewerV1",
     "Graveyard",
+    "GraveyardRepairer",
     "TestnetV1PremigrationRegistrar",
   ],
   ReverseRegistrar: [
@@ -3209,6 +3210,7 @@ export async function activateV1HandoffControllers(opts: {
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
   graveyard?: Address;
+  graveyardRepairer?: Address;
   testnetV1PremigrationRegistrar?: Address;
   privateKey?: `0x${string}`;
   impersonateOwner?: boolean;
@@ -3216,25 +3218,26 @@ export async function activateV1HandoffControllers(opts: {
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const testnetV1PremigrationRegistrar =
-    opts.testnetV1PremigrationRegistrar ??
-    maybeLoadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "TestnetV1PremigrationRegistrar",
-    )?.address;
 
-  if (testnetV1PremigrationRegistrar) {
-    await setV1RegistrarController({
-      ...opts,
-      controller: testnetV1PremigrationRegistrar,
-      label: "TestnetV1PremigrationRegistrar",
-      enabled: true,
-    });
-  } else {
-    console.log(
-      "no TestnetV1PremigrationRegistrar deployment found; skipping testnet helper authorization",
-    );
+  // Handoff contracts a namespace may not deploy are authorized only where it does.
+  const optionalControllers = [
+    ["TestnetV1PremigrationRegistrar", opts.testnetV1PremigrationRegistrar],
+    ["GraveyardRepairer", opts.graveyardRepairer],
+  ] as const;
+  for (const [label, address] of optionalControllers) {
+    const controller =
+      address ??
+      maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, label)?.address;
+    if (controller) {
+      await setV1RegistrarController({
+        ...opts,
+        controller,
+        label,
+        enabled: true,
+      });
+    } else {
+      console.log(`no ${label} deployment found; skipping its authorization`);
+    }
   }
 
   await activateV1Graveyard(opts);
@@ -11604,9 +11607,13 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("activate-v1-handoff-controllers")
               .description(
-                "Phase 4: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
+                "Phase 4: authorize Graveyard, GraveyardRepairer and the testnet premigration helper as v1 BaseRegistrar controllers",
               )
               .option("--graveyard <address>", "Graveyard address")
+              .option(
+                "--graveyard-repairer <address>",
+                "GraveyardRepairer address",
+              )
               .option(
                 "--testnet-v1-premigration-registrar <address>",
                 "TestnetV1PremigrationRegistrar address",
@@ -11621,6 +11628,7 @@ export async function main(argv = process.argv): Promise<void> {
           V1DeploymentOptions &
           V1OwnerWriteCliOptions & {
             graveyard?: Address;
+            graveyardRepairer?: Address;
             testnetV1PremigrationRegistrar?: Address;
           },
       ) => {

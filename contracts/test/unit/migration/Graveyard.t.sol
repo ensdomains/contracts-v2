@@ -3,7 +3,6 @@ pragma solidity >=0.8.13;
 
 import {
     CAN_DO_EVERYTHING,
-    CANNOT_SET_RESOLVER,
     CANNOT_UNWRAP,
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
@@ -447,55 +446,6 @@ contract GraveyardTest is MigrationControllerFixture {
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Clear resolver if possible and transfer to graveyard.
-    function _simulateMigration(bytes memory name) internal {
-        bytes32 node = NameCoder.namehash(name, 0);
-        (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
-        bytes32 parentNode = NameCoder.namehash(name, offset);
-        address owner = registryV1.owner(node);
-        if (owner == address(nameWrapper)) {
-            uint32 fuses;
-            (owner, fuses, ) = nameWrapper.getData(uint256(node));
-            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
-                vm.prank(owner);
-                nameWrapper.setResolver(node, address(0));
-            }
-            if ((fuses & CANNOT_UNWRAP) == 0) {
-                vm.prank(owner);
-                nameWrapper.unwrap(parentNode, labelHash, address(graveyard));
-            } else {
-                vm.prank(owner);
-                nameWrapper.safeTransferFrom(owner, address(graveyard), uint256(node), 1, "");
-            }
-        } else if (parentNode == NameCoder.ETH_NODE) {
-            vm.prank(owner);
-            registryV1.setRecord(
-                node,
-                address(graveyard), // owner
-                address(0), // resolver
-                0 // ttl
-            );
-            vm.prank(owner);
-            baseRegistrar.safeTransferFrom(owner, address(graveyard), uint256(labelHash));
-        } else {
-            revert("migrated failed");
-        }
-    }
-
-    /// @dev Warp past expiry + grace.
-    function _simulateExpiry(bytes memory name) internal {
-        (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
-        if (NameCoder.namehash(name, offset) == NameCoder.ETH_NODE) {
-            vm.warp(baseRegistrar.nameExpires(uint256(labelHash)) + gracePeriodV1);
-        } else {
-            (address owner, , uint64 expiry) =
-                nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
-            if (owner != address(0)) {
-                vm.warp(expiry + 1); // see: gracePeriodV1 definition
-            }
-        }
-    }
 
     /// @dev Create random .eth name with known 2LD.
     function _randomEthName() internal returns (bytes memory name) {
