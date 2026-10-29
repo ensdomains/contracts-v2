@@ -1,7 +1,9 @@
 import { execute } from "@rocketh";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
-import { Artifact_MockERC20Capped } from "generated/artifacts/MockERC20Capped.js";
-import { MOCK_USDC_DEPLOY_ARGS } from "../script/deploy-constants.js";
+import {
+  isPinnedMockBuild,
+  PINNED_MOCK_USDC,
+} from "../script/pinnedMockTokens.js";
 
 export default execute(
   async ({ deploy, getOrNull, namedAccounts: { deployer }, tags }) => {
@@ -9,16 +11,14 @@ export default execute(
     // oracle wires real tokens there instead.
     if (tags.hasDao) return;
 
-    // The USDC mock is faucet-minted by anyone, so it carries a total supply
-    // ceiling and a per-call mint limit. A fresh deploy carries the previous
-    // namespace's instance forward (see reusePinnedMockTokens in script/migrate.ts),
-    // and a carried-over record is kept as-is rather than compared against the
-    // current build, so its pinned address stays stable.
-    if (!getOrNull("MockUSDC")) {
-      await deploy("MockUSDC", {
+    // Keep an existing capped mock so its pinned address survives metadata-only
+    // changes; replace anything else, e.g. an uncapped one.
+    const existing = getOrNull(PINNED_MOCK_USDC.name);
+    if (!existing || !isPinnedMockBuild(existing, PINNED_MOCK_USDC)) {
+      await deploy(PINNED_MOCK_USDC.name, {
         account: deployer,
-        artifact: Artifact_MockERC20Capped,
-        args: [...MOCK_USDC_DEPLOY_ARGS],
+        artifact: PINNED_MOCK_USDC.artifact,
+        args: [...PINNED_MOCK_USDC.args],
       });
     }
 
