@@ -142,8 +142,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
         } else if (parentState == State.ETH) {
             address owner = _REGISTRY_V1.owner(node);
             if (owner == address(this)) {
-                // migration clears the resolver, but any registry owner can hand a node over
-                // with a resolver of their choice
+                // a holder can hand the node over with a resolver set
                 _clearResolver(node);
                 return (node, State.OWNED);
             }
@@ -153,7 +152,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 if (owner != address(this)) {
                     revert NameNotClearable();
                 }
-                // migration clears the resolver unless its fuses froze it
+                // resolver is cleared by migration
                 return (node, State.LOCKED);
             }
             if (_BASE_REGISTRAR.nameExpires(uint256(labelHash)) == 0) {
@@ -164,6 +163,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 address(this),
                 type(uint64).max - block.timestamp - _GRACE_PERIOD // max duration?
             );
+            // lock expired? so clear it
             _clearResolver(node);
             return (node, State.OWNED);
         } else if (parentState == State.OWNED) {
@@ -175,7 +175,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 if (owner != address(this)) {
                     revert NameNotClearable();
                 }
-                // migration clears the resolver unless its fuses froze it
+                // resolver is cleared by migration
                 return (node, State.LOCKED);
             } else if (LibMigration.isEmancipatedChild(fuses)) {
                 if (owner != address(0) || _REGISTRY_V1.owner(node) != address(this)) {
