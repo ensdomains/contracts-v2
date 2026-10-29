@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
@@ -57,6 +58,11 @@ contract TrustedRegistryUpgradeAuthorityTest is Test {
                 abi.encodeCall(IEACGrantInitializable.initialize, (grants))
             )
         );
+    }
+
+    function test_constructor() external view {
+        assertEq(authority.owner(), address(this), "owner");
+        assertEq(authority.signer(), signer, "signer");
     }
 
     function test_upgrade() external {
@@ -132,6 +138,17 @@ contract TrustedRegistryUpgradeAuthorityTest is Test {
             "",
             _sign(keccak256(abi.encode(address(0), address(0), address(0), "1")))
         );
+    }
+
+    function test_setSigner() external {
+        authority.setSigner(admin);
+        assertEq(authority.signer(), admin);
+    }
+
+    function test_setSigner_notAuthorized() external {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, admin));
+        vm.prank(admin);
+        authority.setSigner(address(0));
     }
 
     ////////////////////////////////////////////////////////////////////////
