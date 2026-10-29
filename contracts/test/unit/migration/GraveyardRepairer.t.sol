@@ -40,8 +40,6 @@ contract GraveyardRepairerTest is MigrationControllerFixture {
         _poison(name);
 
         _simulateExpiry(name);
-        graveyard.clear(_oneName(name));
-        assertEq(registryV1.resolver(node), evilResolver, "graveyard skips");
         assertTrue(repairer.isRepairable(tokenId), "repairable");
 
         vm.recordLogs();

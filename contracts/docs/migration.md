@@ -337,22 +337,28 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
 - **Env / args:** v1 owner key (`SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY`, read from env).
   `--calldata-only` for a multisig — with a DAO the three writes combine into one Safe/multisend
   transaction. On testnets `TestnetV1PremigrationRegistrar` is re-authorized alongside the
-  `Graveyard`, and so is `GraveyardRepairer` wherever the namespace deploys one (the individual steps are also available as `activate-v1-graveyard` and
+  `Graveyard` (the individual steps are also available as `activate-v1-graveyard` and
   `authorize-testnet-v1-premigration-registrar`).
 - **Expected outcome:** `ETHRenewerV1` authorized as a v1 `BaseRegistrar` controller; `Graveyard` (+
-  `GraveyardRepairer`, + testnet helper) authorized; v1 `BaseRegistrar` ownership transferred to `ETHRenewerV1`. Unmigrated
+  testnet helper) authorized; v1 `BaseRegistrar` ownership transferred to `ETHRenewerV1`. Unmigrated
   names are renewable from here, each renewal extending the v1 registration, the v2 reservation, and —
   for a wrapped name — the `NameWrapper`'s own copy of the expiry, all in one transaction, leaving the
   v2 entry `RESERVED`. This does **not** reopen the phase 3 registration freeze. `verify-v1-renewer`
   confirms both halves of the state a renewal needs.
-- **`GraveyardRepairer`.** `Graveyard.clear` never writes a .eth node the `Graveyard` already owns,
-  since a migration hands it over with the resolver cleared. Any registry owner can hand a node to the
-  `Graveyard` with a resolver of their choice instead. Once such a registration lapses,
-  `GraveyardRepairer.repair` registers the name to itself, clears the resolver and hands the node and
-  the token to the `Graveyard`, leaving it as a `Graveyard` clear of an expired name would. It needs the
-  controller role. On a chain whose registrar `ETHRenewerV1` already owns, the grant is one owner
-  transaction: `ETHRenewerV1.transferRegistrarOwnership` to the owner, `addController`, and the
-  ownership transfer back, in one execution so renewals keep working.
+- **`GraveyardRepairer` (mainnet only).** The `Graveyard` deployed on mainnet never writes a .eth
+  node it already owns, since a migration hands it over with the resolver cleared, so a registry owner
+  who hands it a node with a resolver set keeps that resolver live. It cannot be upgraded. Once such a
+  registration lapses, `GraveyardRepairer.repair` registers the name to itself, clears the resolver and
+  hands the node and the token to the `Graveyard`. Deploy it into the active namespace, so phase 3
+  keeps its grant:
+  ```bash
+  bun run deploy-and-verify:contract GraveyardRepairer --network mainnet \
+    --deployment-network mainnet --args '["<Graveyard address>"]'
+  ```
+  It needs the `BaseRegistrar` controller role. With the registrar owned by `ETHRenewerV1`, the DAO
+  grants it in one execution: `ETHRenewerV1.transferRegistrarOwnership` to the DAO,
+  `addController`, and the ownership transfer back, so renewals keep working.
+  `test/fork/GraveyardRepairer.fork.t.sol` runs both against mainnet.
 
 > **The controller grant alone does not make a name renewable.** `ETHRenewerV1.renew` calls
 > `syncWrapper`, which calls `addController` on the v1 `BaseRegistrar` so `NameWrapper` can update a
@@ -1528,7 +1534,7 @@ and idempotency rules.
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
 | `phase verify-batch-registrar-disabled` | Verify `BatchRegistrar` no longer has registrar/renew roles |
 | `phase batch-registrar-owner` | Print and optionally verify the `BatchRegistrar` owner |
-| `phase activate-v1-handoff-controllers` | Phase 4: authorize `Graveyard`, `GraveyardRepairer` + testnet helper as v1 controllers |
+| `phase activate-v1-handoff-controllers` | Phase 4: authorize `Graveyard` + testnet helper as v1 controllers |
 | `phase activate-v1-graveyard` | Phase 4 (individual): authorize `Graveyard` only |
 | `phase authorize-testnet-v1-premigration-registrar` | Phase 4 (individual, testnet): authorize the testnet premigration helper |
 | `phase activate-v1-renewer` | Phase 4: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1`, which is what makes renewals work (final v1 lock-down) |

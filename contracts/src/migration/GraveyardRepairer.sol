@@ -12,9 +12,10 @@ import {Graveyard} from "./Graveyard.sol";
 
 /// @notice Repairs .eth names that were handed to a `Graveyard` with a resolver set.
 ///
-/// A migration hands a node to the `Graveyard` with its resolver cleared, and `Graveyard.clear()`
-/// trusts that and never writes a .eth node the `Graveyard` already owns. Any registry owner can
-/// hand a node over with a resolver of their choice, which then outlives the registration.
+/// A migration hands a node to the `Graveyard` with its resolver cleared. The `Graveyard` deployed
+/// on mainnet trusts that and never writes a .eth node it already owns, and it cannot be upgraded.
+/// Any registry owner can hand a node over with a resolver of their choice, which then outlives
+/// the registration.
 ///
 /// Once such a registration lapses, this contract registers the name to itself, clears the
 /// resolver, and hands the node and the token to the `Graveyard`. The name is then left as
