@@ -103,6 +103,17 @@ This works identically for `--network mainnet` (the namespace defaults to the
 network name). Manually moving or clearing the namespace directory first is
 equivalent; the default archive just automates it with a dated name.
 
+On Sepolia the archived namespace's `MockUSDC` is carried into the new one so the
+faucet token keeps the address consumers pin outside this repository (the
+Rhinestone orchestrator whitelists it). The record is copied only while its
+executable code (ignoring the compiler's metadata trailer) and constructor
+arguments still match the current build; a changed mock — a different supply
+ceiling, say — is deployed once at a new address and pinned from then on. The
+deploy step applies the same check to whatever `MockUSDC` record the namespace
+already holds, fresh or `--resume`: a capped build is kept as-is, while anything
+else, including an uncapped mock from an earlier deploy, is replaced. Every other
+contract, including `MockDAI`, is redeployed.
+
 Phase 1 sends many transactions and can be interrupted partway. Re-run with
 `--resume` to continue into the **existing** namespace instead of archiving:
 

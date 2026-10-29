@@ -23,16 +23,71 @@ contract MockERC20 is ERC20Permit {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    function mint(address to, uint256 amount) external {
+    /// @notice Creates `amount` tokens for `to`.
+    function mint(address to, uint256 amount) external virtual {
         _mint(to, amount);
     }
 
+    /// @notice Burns the whole balance of `owner`.
     function nuke(address owner) external {
         _burn(owner, balanceOf(owner));
     }
 
     function decimals() public view virtual override returns (uint8) {
         return _decimals;
+    }
+}
+
+
+/// @notice Mock ERC-20 whose issuance is bounded by a total supply ceiling and a
+/// per-call mint limit.
+/// @dev Faucet payment token for public testnets.
+contract MockERC20Capped is MockERC20 {
+    ////////////////////////////////////////////////////////////////////////
+    // Storage
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Maximum total supply the token can ever reach.
+    uint256 public immutable MAX_SUPPLY;
+
+    /// @notice Maximum amount a single mint call can create.
+    uint256 public immutable MINT_LIMIT;
+
+    ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice A mint asked for more than the per-call limit.
+    error MintLimitExceeded(uint256 amount, uint256 limit);
+
+    /// @notice A mint would take the total supply past {MAX_SUPPLY}.
+    error MaxSupplyExceeded(uint256 amount, uint256 remainingSupply);
+
+    ////////////////////////////////////////////////////////////////////////
+    // Initialization
+    ////////////////////////////////////////////////////////////////////////
+
+    constructor(string memory symbol, uint8 decimals_, uint256 maxSupply_, uint256 mintLimit_)
+        MockERC20(symbol, decimals_)
+    {
+        MAX_SUPPLY = maxSupply_;
+        MINT_LIMIT = mintLimit_;
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Creates `amount` tokens for `to` within {MINT_LIMIT} and {MAX_SUPPLY}.
+    function mint(address to, uint256 amount) external override {
+        if (amount > MINT_LIMIT) {
+            revert MintLimitExceeded(amount, MINT_LIMIT);
+        }
+        uint256 remainingSupply = MAX_SUPPLY - totalSupply();
+        if (amount > remainingSupply) {
+            revert MaxSupplyExceeded(amount, remainingSupply);
+        }
+        _mint(to, amount);
     }
 }
 

@@ -747,7 +747,7 @@ adjusts automatically.
 
 | Phase | What changes on a repeat deploy |
 | --- | --- |
-| 1 | Archives the existing `deployments/<network>/` namespace and deploys a brand-new v2 set with new addresses. `--resume` is for continuing an *interrupted* deploy into the same namespace, **not** for a fresh redeploy. Needs the `reclaim-v1-registrar-ownership` step above first. |
+| 1 | Archives the existing `deployments/<network>/` namespace and deploys a brand-new v2 set with new addresses; on Sepolia the mock USDC carries over unchanged (see [Deployment artifacts](#deployment-artifacts)). `--resume` is for continuing an *interrupted* deploy into the same namespace, **not** for a fresh redeploy. Needs the `reclaim-v1-registrar-ownership` step above first. |
 | 2 | The new v2 registry is empty, so this seeds from scratch exactly like a first run — reservations from the prior deployment lived on the now-archived registry. Names the prior deployment's `Graveyard` reclaimed or received are left unreserved: the Graveyard set includes the archived namespace's. Use a fresh `--work-dir` so no stale `preMigration-checkpoint.json` is picked up. |
 | 3 | **Must be run — not a no-op.** The v1 registration controllers stay frozen from the prior deployment, but *its* handoff contracts are still authorized. `TestnetV1PremigrationRegistrar` among them is a permissionless free registrar: leaving it enabled silently reopens `.eth` registration on v1, and the names it mints reserve into the **archived** v2 registry (they are also invisible to the TheGraph-based CSV export, so a later pre-migration will not pick them up). Follow with `verify-v1-registrars-disabled`. |
 | 4 | Re-points v1 at the new set: authorizes the **newly-deployed** `ETHRenewerV1` and `Graveyard` (new addresses), then transfers v1 `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership reclaimed above). The prior deployment's `Graveyard`/`ETHRenewerV1`/`TestnetV1PremigrationRegistrar` are removed by phase 3 in the same run, so run the phases in order rather than skipping ahead. |
@@ -1477,6 +1477,15 @@ transactions and can be interrupted, re-run with `--resume` to continue into the
 instead (rocketh is idempotent, sending only the not-yet-deployed contracts). See
 [`deployments/README.md`](../deployments/README.md) for the namespace layout, archiving, git-tracking,
 and idempotency rules.
+
+Sepolia's mock USDC survives the archive: its record is copied into the new namespace while its
+executable code and constructor arguments are unchanged, because external consumers pin that faucet
+token's address. Only the compiler's metadata trailer is ignored, so a compiler-only change keeps the
+token. The mock is supply-capped and its per-call mint limit bounds faucet use, so a record from an
+older unrestricted build does not match and the current mock is deployed once at a new address. The
+deploy step runs the same check against any `MockUSDC` record already in the namespace, including on
+`--resume`: only the capped build is kept, and an uncapped one is replaced. Every other contract in
+the archived namespace is left behind.
 
 ### CLI commands
 
