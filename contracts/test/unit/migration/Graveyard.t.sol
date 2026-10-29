@@ -35,9 +35,10 @@ contract GraveyardTest is MigrationControllerFixture {
     uint256 constant GAS_PER_NAME_MAX = 70_000;
 
     /// @dev Band for clearing a migrated 2LD, which only reads the registry.
-    ///      The measured figure sits around five thousand.
+    ///      Wide enough to hold for an optimised build and for a coverage
+    ///      build, which measure around five and around thirteen thousand.
     uint256 constant GAS_PER_MIGRATED_NAME_MIN = 2_000;
-    uint256 constant GAS_PER_MIGRATED_NAME_MAX = 10_000;
+    uint256 constant GAS_PER_MIGRATED_NAME_MAX = 20_000;
 
     address evilResolver = makeAddr("evilResolver");
 
