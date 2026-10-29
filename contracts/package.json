@@ -50,6 +50,8 @@
     "compile:hardhat": "hardhat compile --no-tests",
     "compile": "bun run compile:forge && bun run compile:hardhat",
     "test:forge": "forge test",
+    "test:formal:hca": "python3 script/formal/run_hca.py",
+    "test:formal:hca:mutations": "python3 script/formal/check_mutations.py",
     "test:hardhat": "bun run compile:hardhat && vitest run",
     "test:unit": "bun run compile --quiet && bun test ./test/unit/",
     "test:e2e": "bun run compile --quiet && bun test --max-concurrency=1 ./test/e2e/",

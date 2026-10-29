@@ -643,6 +643,265 @@ Frontend feature code must use the Rhinestone SDK. It must not call port `3007` 
 
 ## Verification
 
+### Halmos verification of `post-audit-2`
+
+The formal suite in [`contracts/test/formal/hca`](../contracts/test/formal/hca) targets the HCA
+sources from `post-audit-2`, starting at commit
+`62778d80038e50cb23514eab1b7d66ceb8a41e1c`. It checks the compiled production account, factory,
+authorizer, owner/session validator, funding validator, and their policy and encoding libraries.
+The account and factory fixtures execute the real VerifiableFactory clone and UUPSProxyLogic.
+The IntentExecutor integration groups execute separately captured mainnet and Sepolia proxy and
+implementation runtimes through their actual standalone-intent entry point.
+
+The suite contains both permitted-operation witnesses and rejected-operation properties. A
+successful low-level call must return the expected result and produce the expected state change;
+an unauthorized call must fail and preserve the relevant state. Properties inspect the resulting
+owner, session nonce, implementation, certificate, execution target, or validator result as
+appropriate. Reverting before an assertion does not establish that an operation is permitted.
+
+#### Run the suite
+
+Use Foundry **1.8.5**, Python **3.12**, and the pinned Python packages. From the repository root:
+
+```sh
+git submodule update --init --recursive
+cd contracts
+python3 -m venv .venv-hca
+. .venv-hca/bin/activate
+python -m pip install -r script/formal/requirements.txt
+python3 script/formal/run_hca.py
+```
+
+The `hca-formal` Foundry profile selects Solidity **0.8.27**, Cancun, optimizer runs **200**, and
+`via_ir = false`. It isolates HCA sources, formal tests, artifacts, and cache from the repository's
+other compiler versions. Dynamic test linking is disabled because Halmos must execute contract
+creation bytecode directly. The Python requirements pin Halmos **0.3.3**, Yices **2.6.4.post23**,
+and Z3 **4.12.6.0**. An already installed compiler may be selected with `FOUNDRY_SOLC`; the runner
+still checks the version recorded in every compiled artifact.
+
+Focused runs use the same acceptance rules:
+
+```sh
+python3 script/formal/run_hca.py --match-contract 'HCAAccount.*Test'
+python3 script/formal/run_hca.py --match-contract 'HCAOwnerSession.*'
+python3 script/formal/run_hca.py --match-contract 'HCAFunding.*'
+python3 script/formal/run_hca.py --match-contract 'HCAIntentExecutor.*Test'
+python3 script/formal/run_hca.py --match-test 'check_.*[Nn]once.*'
+python3 script/formal/check_mutations.py
+FOUNDRY_PROFILE=hca-formal forge test --match-test '^test_'
+```
+
+`bun run test:formal:hca` and `bun run test:formal:hca:mutations` are package-script aliases.
+Running a filtered selection establishes only that selection. The CI job runs the full suite.
+It also runs the concrete Foundry controls and the mutation controls with the pinned toolchain.
+
+Each run writes `manifest.json`, `halmos.json`, build and execution logs, and `summary.json` under
+`contracts/out/hca-formal-reports/`. The manifest records the exact property signatures, tool
+versions, Git revision, configuration, and SHA-256 hashes of compiled artifacts and their inputs.
+The runner checks that those inputs and artifacts remain unchanged until the run finishes. CI
+uploads the reports even when verification fails.
+
+The runner rejects missing, duplicate, or unexpected property results; counterexamples; solver
+errors; timeouts; blocked execution paths; properties with no successful path; and any reached
+loop bound. It also rejects an empty selection and engine warnings about unsupported behavior.
+Halmos's `unknown deployed bytecode` warning is retained as a diagnostic: for an executed clone or
+captured external runtime this means the engine could not attach a source label, and does not
+mean that it replaced the bytecode with a mock.
+
+#### Actual mainnet and Sepolia IntentExecutor
+
+[`DeployedIntentExecutor.sol`](../contracts/test/formal/hca/executor/DeployedIntentExecutor.sol)
+installs the exact captured runtime at the configured Rhinestone IntentExecutor address,
+`0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF`. This is an upgradeable proxy. The fixture installs
+both the proxy and its implementation, restores the implementation and proxy-owner slots, and
+asserts both code hashes. It does not use `MockRegistrationIntentExecutor`.
+
+The snapshots were captured on 2026-10-09 and checked again with historical, read-only RPC calls:
+
+| Network | Chain ID | Pinned block | Implementation runtime Keccak-256 |
+| --- | --- | --- | --- |
+| Ethereum mainnet | 1 | 26154140 | `0xbc3eef7e70cf5eb058a1e9eb21ac725b3c95511f878b8329217ef6f8424c5a5a` |
+| Sepolia | 11155111 | 11876635 | `0x50f5509a0b2fa8a667bedbc5d1e4432755082617213fb63ddead0e911f97d7c4` |
+
+Both snapshots point to implementation `0x194DE341d4791e9b8922eE1bC018DFd1fD1b115A`.
+The proxy runtime is identical, with Keccak-256
+`0xd23247796c75f502bb7b872631c55da669b2b167d874930f7d98bce2b1d615ba`.
+The fixture preserves these proxy control values on both networks:
+
+| Slot | Captured value |
+| --- | --- |
+| Implementation: `0x911c5a209f08d5ec5e` | `0x194DE341d4791e9b8922eE1bC018DFd1fD1b115A` |
+| Owner: `0x4343a0dc92ed22dbfc` | `0x61e8AC0a758AfEEFBD556f713ecF0A8cbd00288f` |
+
+The machine-readable [snapshot](../contracts/test/formal/hca/executor/fixtures/intent-executor.json)
+contains block hashes, runtime bytes, SHA-256 and Keccak-256 hashes, ABI, source-verification
+references, immutable offsets, and compiler metadata. Source-verification records identify
+Solidity **0.8.30**, Prague, optimizer runs **10000**, and `viaIR = true` for the deployed external
+code. The suite executes those captured bytes directly; it does not recompile that dependency or
+change the HCA compiler profile. Mainnet and Sepolia implementation bytes match outside the
+recorded immutable regions; three immutable fields differ between the chains.
+The attestation reports its source-matching boundary explicitly: it relies on the recorded
+Sourcify verification and immutable-reference metadata, and does not recompile upstream sources
+or repeat source verification. The optional RPC checks independently verify deployed state.
+
+The dedicated integration suites submit signed `executeSinglechainOps` calls through this real
+proxy into a production `StandaloneHCAFactory`-certified HCA and the production
+`HCAOwnerAndSessionValidator`. The executor receives its ABI-encoded execution array, while the
+validator receives the separately signed compact encoding required by the HCA protocol. The
+registrar role response and commitment-recording target define the external ENS boundary.
+
+The account component fixtures also load the real mainnet executor. Their direct
+`executeFromExecutor` properties isolate the account's caller and execution gates by choosing the
+executor as caller. Owner/session and funding component properties bind to the real configured
+proxy address but do not, by themselves, prove an executor transaction. The dedicated integration
+groups supply that transaction-level composition.
+
+The integration classes select Halmos's **generic storage layout** for setup and every property.
+The executor computes custom Yul nonce slots that do not follow Solidity mapping-slot conventions;
+the generic model executes those accesses without interpreting them as Solidity mappings. Other
+component groups retain the default storage model.
+
+These are local executions of pinned deployed code with fresh account-specific executor state,
+not complete mainnet or Sepolia forks. The full-stack assertions cover the standalone ERC-1271
+intent route and the finite operation shapes in the properties. Compact/router settlement,
+trusted execution, emissary paths, positive gas-refund settlement, and arbitrary historical
+executor storage are outside that composition. The external proxy owner can upgrade the executor;
+the captured identity and results must be refreshed for a different deployed version.
+
+The callback property checks that the active nonce is already consumed when the target executes,
+and that attempting that same nonce through the real executor fails while the outer operation
+succeeds once. It does not establish a blanket prohibition on callbacks with other valid nonces.
+The chain-binding property changes `CHAINID` and then restores it while retaining the originally
+loaded runtime and local state; each actual network runtime has its own separate suite.
+
+One captured executor behavior is deliberately recorded: its consumed-nonce guard returns the
+four bytes `0x00000000`, although its source declares `NonceAlreadyUsed()`. The assembly stores
+the selector right-aligned in a memory word and returns the first four bytes. Concrete EVM
+controls and the callback property check this actual return data. Replay still reverts; this is
+an error-encoding discrepancy, not a replay bypass.
+
+Every strict run checks fixture consistency offline and includes the attestation and its inputs
+in the manifest. Historical deployment checks can also be reproduced explicitly:
+
+```sh
+python3 script/formal/check_intent_executor.py
+python3 script/formal/check_intent_executor.py --rpc --json-output out/intent-executor-rpc.json
+```
+
+The RPC mode verifies chain IDs, pinned block identities, code at both layers, and both control
+slots. It sends no transactions. CI uses the checked-in snapshot and offline checks, so network
+availability does not substitute for or prevent the symbolic verification itself.
+
+#### Property map
+
+The executable assertions are the detailed specification. This table identifies the obligation
+families and their environment boundaries.
+
+| Surface | Obligations | Environment and scope |
+| --- | --- | --- |
+| Account initialization and ownership | Nonzero owner, one-time legacy initialization, registry initialization caller, canonical registry owner over legacy storage, owner isolation | Actual account bytecode; registry-response properties are separate from actual factory certification properties |
+| Session revocation | Caller is the current owner, exact nonce increment, preservation on rejection, repeated revocations, wraparound | Every nonzero symbolic owner and every `uint96` nonce; initialized proxy and module storage |
+| Account dispatch | Frozen module mutation methods, exact execution-mode support, default-validator nonce and signature prefixes, original sender/hash/signature forwarding, validation return and revert behavior | A fixed-validator response double makes forwarding independently observable; validator authorization is checked against production validators in separate groups |
+| Owner and executor execution | Owner-only batches, executor and EntryPoint gates, call order, value transfer, atomic failure, try-mode behavior, callback caller identity, rejected self-call escalation, NFT receiver rejection | Explicit success, failure, and callback contracts; batches of up to two calls in the account execution group |
+| Delegatecall | Rejection at the executor entry, direct and wrapped UserOperation filtering, double-wrapper rejection, handling of truncated mode data | EntryPoint is trusted to perform the ERC-4337 validation/execution protocol; arbitrary malicious EntryPoint behavior is outside this guarantee |
+| Upgrades | Owner plus outgoing target approval plus incoming predecessor approval, directional approvals, removal of approvals, direct-implementation rejection, state preservation, initializer rollback, prohibition of hidden upgrades inside ordinary proxy execution | Both real proxy layers; successful targets are compatible production HCA implementations with matching ownership configuration |
+| Factory | Governance-only approval changes, governance transfer and renunciation, owner/implementation/salt binding, symbolic CREATE2 deployment, separate owner namespaces, implementation and owner checks, rollback of failed certificates | Actual HCA factory, VerifiableFactory, clone, and implementation bytecode |
+| Factory reuse | Stable certified owner, idempotence across relayers, reuse after approval removal, preservation of upgraded implementation and session nonce | Existing production registry-mode HCA deployed by the actual factory |
+| HCAAuthorizer | Nonzero factory certificate for `msg.sender`, exact claimed-owner equality, caller and origin isolation, rejection of an uncertified account reporting the same owner | Arbitrary certificate-response proofs plus owner-transaction → real HCA → actual factory certificate → authorizer integration |
+| Owner/session authorization | Owner signatures, ERC-4337 sender binding, executor sender gate, reusable owner proof, session key, account and chain binding, permission ID, session nonce, expiry, operation target/data/nonce/domain binding | Actual owner/session validator and signature/hash libraries; canonical cryptographic model described below |
+| Owner/session actions | Registrar role and one-registrar constraints, registration owner/subregistry/resolver fields, resolver verification and deployment, initialization grants, resolver selector restrictions and nested calls, reverse records, wallet funding pairs, refund constraints | Registrar roles, oracle results, resolver verification, and external token behavior have explicitly defined response fixtures |
+| Funding lifecycle | Complete installation, required fields, expiry, duplicate installation, account isolation, complete uninstall/reinstall, rejected UserOperation and direct-execution paths | Actual funding validator and its stored session configuration |
+| Funding authorization and claims | Owner/session signer separation, permission and policy binding, selected account/chain proof, nonce and destination commitments, Permit2 domain, active claim adapter, single source/output token, recipient, chain, amount and deadline limits | Actual funding validator and libraries; router response and canonical signatures are explicit boundaries |
+| Funding operations | Transfer source/destination/token, aggregate transfer amount, optional approval and permit constraints, duplicate/unknown/truncated operation rejection, encoded operation commitment, supported modes | Explicit finite packed operation shapes, including multiple pulls and permutations of permit/approval/pull order |
+| Deployed IntentExecutor composition | Actual owner/session execution, nonce consumption and sequential/callback replay rejection, session revocation, invalid signature and policy rollback, account and nonce isolation, atomic target failure and retry, signed-field binding | Separate mainnet and Sepolia runtimes; real executor proxy, factory-certified account, and owner/session validator; finite standalone-intent traces |
+
+The component fixtures permit symbolic aliases where the contract's decision depends on address
+equality. Tests that require two distinct actors state that precondition with `vm.assume`. Helpers
+which expose internal constants or codecs are separate from the production contracts used as
+verification subjects.
+
+#### State, bounds, and cryptographic assumptions
+
+Scalar parameters range over their full Solidity type unless a property states an assumption.
+The account state tests explicitly write the packed legacy-owner/session-nonce word and assert
+both getters before exercising the transition. This generalizes that state beyond the concrete
+deployment fixture and checks the storage-layout assumption. It does not make all inherited Nexus
+storage arbitrary. Factory governance properties similarly verify the owner getter after seeding
+the governance slot.
+
+Single-step preservation properties support inductive reasoning for the state fields and actions
+they cover. The suite also includes finite lifecycle traces such as revoke/reject/revoke,
+install/uninstall/reinstall, upgrade/reuse, and execute/replay. It does not automatically establish
+an invariant for arbitrary sequences of every inherited entry point or arbitrary approved upgrade
+code. Dynamic data and nested calls follow the shapes constructed in each property. The global
+loop limit is a resource bound; reaching it fails the strict run rather than extending the claim
+to omitted iterations.
+
+The principal constructed shape bounds are:
+
+| Surface | Shapes exercised |
+| --- | --- |
+| Account and actual-executor batches | Up to two executions, including aliased targets, sequential replay, and failure/retry traces |
+| Owner/session action policy and source funding operations | Up to three executions, with explicit order and duplicate cases |
+| Resolver deployment | Up to two outer executions; grant counts from zero through three |
+| Resolver multicall | Up to two children and two nesting levels |
+| Owner authorization | One-chain envelopes and a dedicated two-chain selection proof |
+| Dynamic decoder payload | Lengths 0, 1, 31, 32, 33, and 65 bytes; two-action round trips with symbolic 32-byte payloads |
+| Malformed declared decoder lengths | Underlength cases 0, 1, and 31; every `uint24` overlength greater than 32 for the constructed payload |
+
+These shape bounds complement the full-range symbolic scalar parameters. Passing a two- or
+three-operation shape does not assert a result for every longer batch.
+
+Halmos symbolically executes EVM bytecode and models cryptographic operations. Its Keccak
+abstraction supplies the collision assumptions used for commitments and CREATE2 addresses. Its
+`vm.sign`, `vm.addr`, and `ecrecover` behavior uses a signing oracle; the suite does not verify
+secp256k1 arithmetic or cryptographic unforgeability.
+
+Generated signatures explicitly satisfy canonical recovery identifiers, nonzero curve-range
+`r`, low-s `s`, and recovery of the generated digest to the corresponding modeled key address.
+The fixtures restate these signing guarantees on each path because Halmos 0.3.3's signature cache
+can otherwise reuse a signature on a sibling path without attaching its signing constraints.
+These assumptions are confined to generated valid signatures. Invalid recovery identifiers,
+high-s inputs, malformed envelopes, wrong signers, and policy mutations have their own rejection
+properties. No assumption asserts that the validator accepts a signature or that a policy passes.
+
+Where digest-separation tests need both hash inputs tracked, the original chain identifier is
+symbolic. This avoids a Halmos 0.3.3 limitation in tracking long fully concrete Keccak inputs.
+The fixture does not assume the validator's expected rejection to solve that limitation. Reported
+signature-model counterexamples are also replayed with concrete Foundry signing when diagnosing
+the distinction between a model limitation and a contract failure.
+
+The HCA session nonce is an unchecked `uint96`: after its maximum value it wraps to zero. The
+suite proves that behavior explicitly. It does not claim that a nonce value can never recur over
+an unbounded lifetime.
+
+Funding amount limits apply to each validated claim. Validation does not maintain a cumulative
+lifetime spending counter or consume the external Permit2 nonce. The funding policy accepts
+multiple `transferFrom` calls with the required aggregate and allows the supported permit,
+approval, and pull orderings; execution success still depends on the token's allowance and permit
+semantics. Destination HCA wallet-funding pairs have their own adjacency and amount rules.
+Equivalent funding-validator deployments accept the same capability when the account, installed
+configuration, chain, and Permit2 domain match; the funding validator's own deployment address
+is not an additional signed domain.
+
+External registration, resolver, token, bridge, router, Permit2, bundler, and EntryPoint systems
+are not universally verified by these component assertions. End-to-end liveness, bridge finality,
+front-running resistance of the wider registration protocol, real gas pricing, and arbitrary
+malicious external implementations need their own specifications and verification.
+
+#### Mutation controls
+
+The mutation command creates an isolated copy and first proves the selected unmodified
+properties. It then removes one security behavior at a time: the owner gate for revocation, the
+nonce increment, the outgoing upgrade-target approval, and the initial factory-implementation
+approval. Each mutation must compile and produce an actual Halmos assertion counterexample.
+A compiler failure, timeout, or unsupported execution does not count as detecting a mutation.
+The original production source tree is never edited. These controls check that the selected
+assertions can detect material regressions; they do not establish completeness of the entire
+specification.
+
+### Live integration
+
 The checked-in Sepolia HCA implementation, destination validator, and Base Sepolia funding validator
 are legacy deployments. They do not match the stateless sources in this branch. Do not run the live
 proof against the default deployment records.
