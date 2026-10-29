@@ -108,10 +108,11 @@ faucet token keeps the address consumers pin outside this repository (the
 Rhinestone orchestrator whitelists it). The record is copied only while its
 executable code (ignoring the compiler's metadata trailer) and constructor
 arguments still match the current build; a changed mock — a different supply
-ceiling, say — is deployed once at a new address and pinned from then on. A
-carried-over record is never compared again, so changing the mock requires a fresh
-deploy whose archive no longer matches. Every other contract, including `MockDAI`,
-is redeployed.
+ceiling, say — is deployed once at a new address and pinned from then on. The
+deploy step applies the same check to whatever `MockUSDC` record the namespace
+already holds, fresh or `--resume`: a capped build is kept as-is, while anything
+else, including an uncapped mock from an earlier deploy, is replaced. Every other
+contract, including `MockDAI`, is redeployed.
 
 Phase 1 sends many transactions and can be interrupted partway. Re-run with
 `--resume` to continue into the **existing** namespace instead of archiving:

@@ -1481,10 +1481,11 @@ and idempotency rules.
 Sepolia's mock USDC survives the archive: its record is copied into the new namespace while its
 executable code and constructor arguments are unchanged, because external consumers pin that faucet
 token's address. Only the compiler's metadata trailer is ignored, so a compiler-only change keeps the
-token; the copy is never re-checked afterwards, and replacing the mock needs a fresh deploy whose
-archived code no longer matches. The mock is now supply-capped and its per-call mint limit bounds
-faucet use, so a record from an older unrestricted build does not match and the current mock is
-deployed once at a new address. Every other contract in the archived namespace is left behind.
+token. The mock is supply-capped and its per-call mint limit bounds faucet use, so a record from an
+older unrestricted build does not match and the current mock is deployed once at a new address. The
+deploy step runs the same check against any `MockUSDC` record already in the namespace, including on
+`--resume`: only the capped build is kept, and an uncapped one is replaced. Every other contract in
+the archived namespace is left behind.
 
 ### CLI commands
 

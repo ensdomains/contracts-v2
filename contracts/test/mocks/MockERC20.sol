@@ -41,8 +41,7 @@ contract MockERC20 is ERC20Permit {
 
 /// @notice Mock ERC-20 whose issuance is bounded by a total supply ceiling and a
 /// per-call mint limit.
-/// @dev Used for the mock payment token on public testnets, where anyone may mint
-/// from a faucet but the token must not be infinitely inflatable.
+/// @dev Faucet payment token for public testnets.
 contract MockERC20Capped is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
     // Storage

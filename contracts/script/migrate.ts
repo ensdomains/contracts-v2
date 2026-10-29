@@ -55,7 +55,6 @@ import { mainnet, sepolia } from "viem/chains";
 import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
-import { Artifact_MockERC20Capped } from "generated/artifacts/MockERC20Capped.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
@@ -82,7 +81,6 @@ import {
   LOCAL_BATCH_GATEWAY_URL,
   MAINNET_DAI,
   MAINNET_USDC,
-  MOCK_USDC_DEPLOY_ARGS,
   ROLES,
   SEC_PER_DAY,
   STATUS,
@@ -98,6 +96,7 @@ import {
 } from "./migrations/fixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
 import { isLogSpanRefusal } from "./migrations/logSpanRefusal.js";
+import { isPinnedMockBuild, PINNED_MOCK_TOKENS } from "./pinnedMockTokens.js";
 import {
   briefError,
   ONE_CALL_PER_BATCH,
@@ -10024,32 +10023,8 @@ function archiveExistingDeploymentNamespace(
   return archive;
 }
 
-// Mock payment tokens are faucet contracts whose address consumers pin outside the
-// repository (the Rhinestone orchestrator whitelists Sepolia's mock USDC), so a fresh
-// deploy carries the previous namespace's token forward instead of orphaning it.
-// The copy only happens while the archived build's code and constructor arguments
-// still match, so a changed mock is deployed once and pinned from then on.
-const PINNED_MOCK_TOKENS = [
-  {
-    name: "MockUSDC",
-    artifact: Artifact_MockERC20Capped,
-    args: MOCK_USDC_DEPLOY_ARGS,
-  },
-] as const;
-
-/// Removes the CBOR metadata trailer — the payload plus the two-byte length suffix
-/// that follows it — from creation bytecode.
-function stripMetadataTrailer(bytecode: string): string {
-  const cborLength = parseInt(bytecode.slice(-4), 16);
-  const trailerLength = (cborLength + 2) * 2;
-  if (!Number.isFinite(cborLength) || bytecode.length < trailerLength) {
-    return bytecode;
-  }
-  return bytecode.slice(0, -trailerLength);
-}
-
-/// Copies an archived namespace's pinned mock tokens into the namespace replacing it.
-/// Returns the names that were carried over.
+/// Copies an archived namespace's pinned mocks that still match the current build
+/// into its replacement. Returns the names copied.
 export function reusePinnedMockTokens(
   root: string,
   environment: string,
@@ -10058,7 +10033,8 @@ export function reusePinnedMockTokens(
 ): string[] {
   const target = join(root, environment);
   const reused: string[] = [];
-  for (const { name, artifact, args } of PINNED_MOCK_TOKENS) {
+  for (const token of PINNED_MOCK_TOKENS) {
+    const { name } = token;
     const source = join(root, archive, `${name}.json`);
     if (!existsSync(source)) continue;
     const contents = readFileSync(source, "utf-8");
@@ -10074,30 +10050,14 @@ export function reusePinnedMockTokens(
       continue;
     }
     if (!previous.address) continue;
-    const constructor = artifact.abi.find(
-      (item) => item.type === "constructor",
-    );
-    const argsData = constructor
-      ? encodeAbiParameters(constructor.inputs, args)
-      : "0x";
-    // The metadata trailer records build provenance, not behavior: ignore it along
-    // with the length suffix so a compiler-only change keeps the pin, while any
-    // change to the executable code or the constructor arguments deploys a new mock.
-    const sameBytecode =
-      stripMetadataTrailer(previous.bytecode?.toLowerCase() ?? "") ===
-      stripMetadataTrailer(artifact.bytecode.toLowerCase());
-    if (
-      !sameBytecode ||
-      previous.argsData?.toLowerCase() !== argsData.toLowerCase()
-    ) {
+    if (!isPinnedMockBuild(previous, token)) {
       console.log(
         `${name} changed since ${archive}; deploying a new one instead of reusing ${previous.address}`,
       );
       continue;
     }
     mkdirSync(target, { recursive: true });
-    // rocketh refuses to load a populated namespace without chain metadata, so the
-    // carried-over artifact needs the archived chain record beside it.
+    // rocketh won't load a populated namespace without `.chain`.
     const chainFile = join(target, ".chain");
     if (!existsSync(chainFile)) {
       const archivedChainFile = join(root, archive, ".chain");
