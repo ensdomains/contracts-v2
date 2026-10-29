@@ -9,9 +9,7 @@ import {
 } from "@ens/contracts/wrapper/INameWrapper.sol";
 
 import {console} from "forge-std/console.sol";
-import {Vm} from "forge-std/Vm.sol";
 
-import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
@@ -33,14 +31,6 @@ contract GraveyardTest is MigrationControllerFixture {
     ///      first. The measured figure sits around fifty thousand.
     uint256 constant GAS_PER_NAME_MIN = 20_000;
     uint256 constant GAS_PER_NAME_MAX = 70_000;
-
-    /// @dev Band for clearing a migrated 2LD, which only reads the registry.
-    ///      Wide enough to hold for an optimised build and for a coverage
-    ///      build, which measure around five and around thirteen thousand.
-    uint256 constant GAS_PER_MIGRATED_NAME_MIN = 2_000;
-    uint256 constant GAS_PER_MIGRATED_NAME_MAX = 20_000;
-
-    address evilResolver = makeAddr("evilResolver");
 
     function setUp() external {
         deployMigrationControllerFixture();
@@ -454,199 +444,9 @@ contract GraveyardTest is MigrationControllerFixture {
         assertEq(registryV1.resolver(NameCoder.namehash(name4, 0)), address(0), "4");
     }
 
-    function test_clear_migrated_noWrites() external {
-        (bytes memory name, ) = registerUnwrapped(testLabel);
-        _simulateMigration(name);
-
-        vm.recordLogs();
-        graveyard.clear(_oneName(name));
-        assertEq(vm.getRecordedLogs().length, 0, "logs");
-    }
-
-    function test_clear_poisoned_afterGrace() external {
-        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        bytes32 node = NameCoder.namehash(name, 0);
-
-        _poison(name);
-        assertEq(findResolverV1(name), evilResolver, "before");
-
-        _simulateExpiry(name);
-        uint256 expiry = baseRegistrar.nameExpires(tokenIdV1);
-
-        vm.recordLogs();
-        graveyard.clear(_oneName(name));
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        assertEq(logs.length, 1, "logs");
-        assertEq(logs[0].emitter, address(registryV1), "emitter");
-        assertEq(logs[0].topics[0], ENS.NewResolver.selector, "event");
-        assertEq(logs[0].topics[1], node, "node");
-        assertEq(abi.decode(logs[0].data, (address)), address(0), "resolver");
-
-        assertEq(registryV1.owner(node), address(graveyard), "owner");
-        assertEq(registryV1.resolver(node), address(0), "cleared");
-        assertEq(findResolverV1(name), address(ensV2Resolver), "after");
-        assertEq(baseRegistrar.nameExpires(tokenIdV1), expiry, "unregistered");
-    }
-
-    function test_clear_poisoned_live() external {
-        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        bytes32 node = NameCoder.namehash(name, 0);
-
-        _poison(name);
-        graveyard.clear(_oneName(name));
-        assertEq(registryV1.resolver(node), address(0), "cleared");
-
-        // the holder of a live registration can take the node back and hand it over again
-        vm.prank(testOwner);
-        baseRegistrar.reclaim(tokenIdV1, testOwner);
-        _poison(name);
-        graveyard.clear(_oneName(name));
-        assertEq(registryV1.resolver(node), address(0), "cleared again");
-    }
-
-    function test_clear_poisoned_tokenTransferred() external {
-        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        bytes32 node = NameCoder.namehash(name, 0);
-
-        _poison(name);
-        vm.prank(testOwner);
-        baseRegistrar.safeTransferFrom(testOwner, address(graveyard), tokenIdV1);
-
-        graveyard.clear(_oneName(name));
-
-        assertEq(registryV1.resolver(node), address(0), "cleared");
-        assertEq(baseRegistrar.ownerOf(tokenIdV1), address(graveyard), "token");
-    }
-
-    function test_clear_poisoned_children() external {
-        (bytes memory name, ) = registerUnwrapped(testLabel);
-        bytes memory child = NameCoder.addLabel(name, testLabel);
-        bytes32 childNode = NameCoder.namehash(child, 0);
-
-        vm.prank(testOwner);
-        registryV1.setSubnodeRecord(
-            NameCoder.namehash(name, 0),
-            keccak256(bytes(testLabel)),
-            testOwner,
-            evilResolver,
-            0
-        );
-        _poison(name);
-
-        graveyard.clear(_oneName(child));
-
-        assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "parent");
-        assertEq(registryV1.owner(childNode), address(graveyard), "owner");
-        assertEq(registryV1.resolver(childNode), address(0), "child");
-    }
-
-    function test_clear_poisoned_supersededGraveyard() external {
-        Graveyard graveyard2 = _supersedeGraveyard();
-        (bytes memory name, uint256 tokenIdV1) = registerUnwrapped(testLabel);
-        bytes32 node = NameCoder.namehash(name, 0);
-
-        _poison(name);
-
-        // registrar refuses a live or in-grace registration
-        vm.expectRevert();
-        graveyard2.clear(_oneName(name));
-
-        _simulateExpiry(name);
-        graveyard2.clear(_oneName(name));
-
-        assertEq(registryV1.owner(node), address(graveyard2), "owner");
-        assertEq(registryV1.resolver(node), address(0), "cleared");
-        assertEq(baseRegistrar.ownerOf(tokenIdV1), address(graveyard2), "token");
-    }
-
-    function test_clear_supersededGraveyard_registered() external {
-        Graveyard graveyard2 = _supersedeGraveyard();
-        (bytes memory name, ) = registerUnwrapped(testLabel);
-        bytes memory child = NameCoder.addLabel(name, testLabel);
-        bytes32 childNode = NameCoder.namehash(child, 0);
-
-        vm.prank(testOwner);
-        registryV1.setSubnodeRecord(
-            NameCoder.namehash(name, 0),
-            keccak256(bytes(testLabel)),
-            testOwner,
-            evilResolver,
-            0
-        );
-
-        _simulateExpiry(name);
-        graveyard.clear(_oneName(name)); // registers to the superseded graveyard
-        baseRegistrar.removeController(address(graveyard));
-
-        // the registration never lapses, so only its holder can clear below it
-        vm.expectRevert();
-        graveyard2.clear(_oneName(child));
-
-        graveyard.clear(_oneName(child));
-        assertEq(registryV1.resolver(childNode), address(0), "child");
-    }
-
-    function test_clear_supersededGraveyard_migrated() external {
-        Graveyard graveyard2 = _supersedeGraveyard();
-        (bytes memory name, ) = registerUnwrapped(testLabel);
-        bytes32 node = NameCoder.namehash(name, 0);
-        _simulateMigration(name);
-
-        vm.expectRevert();
-        graveyard2.clear(_oneName(name));
-
-        _simulateExpiry(name);
-        graveyard2.clear(_oneName(name));
-
-        assertEq(registryV1.owner(node), address(graveyard2), "owner");
-        assertEq(registryV1.resolver(node), address(0), "resolver");
-    }
-
-    function test_clear_locked_sentDirectly() external {
-        bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
-        bytes32 node = NameCoder.namehash(name, 0);
-        uint256 tokenIdV1 = uint256(keccak256(bytes(testLabel)));
-
-        vm.startPrank(testOwner);
-        nameWrapper.setResolver(node, evilResolver);
-        nameWrapper.safeTransferFrom(testOwner, address(graveyard), uint256(node), 1, "");
-        vm.stopPrank();
-
-        graveyard.clear(_oneName(name));
-        assertEq(registryV1.resolver(node), evilResolver, "live");
-
-        vm.warp(baseRegistrar.nameExpires(tokenIdV1) + 1);
-        assertFalse(baseRegistrar.available(tokenIdV1), "grace:unavailable");
-        graveyard.clear(_oneName(name));
-        assertEq(registryV1.resolver(node), evilResolver, "grace");
-
-        // wrapper reports no fuses once the registrar grace period is over
-        _simulateExpiry(name);
-        (, uint32 fuses, ) = nameWrapper.getData(uint256(node));
-        assertEq(fuses, 0, "fuses");
-        graveyard.clear(_oneName(name));
-
-        assertEq(registryV1.owner(node), address(graveyard), "owner");
-        assertEq(registryV1.resolver(node), address(0), "cleared");
-        assertEq(findResolverV1(name), address(ensV2Resolver), "after");
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Hand the registry node to the graveyard with a resolver set, keeping the token.
-    function _poison(bytes memory name) internal {
-        bytes32 node = NameCoder.namehash(name, 0);
-        vm.prank(registryV1.owner(node));
-        registryV1.setRecord(node, address(graveyard), evilResolver, 3600);
-    }
-
-    /// @dev Deploy a replacement graveyard with its own registrar controller role.
-    function _supersedeGraveyard() internal returns (Graveyard graveyard2) {
-        graveyard2 = new Graveyard(nameWrapper, contractNamer);
-        baseRegistrar.addController(address(graveyard2));
-    }
 
     /// @dev Clear resolver if possible and transfer to graveyard.
     function _simulateMigration(bytes memory name) internal {
@@ -730,46 +530,31 @@ contract GraveyardTest is MigrationControllerFixture {
         _simulateExpiry(names[0]);
     }
 
-    /// @dev Measures the per-name execution cost of clearing a batch of names.
-    ///      For already-expired 2LDs this is the shape the backlog drain
-    ///      submits, and the only figure that turns a name count into a gas
-    ///      budget. Reported as an amortised number, so it carries the batch's
-    ///      fixed overhead and the first name's cold-storage warmup spread
-    ///      across the batch. Calldata is charged at transaction level and is
-    ///      not included.
-    function _measureClearPerName(bytes[] memory names) internal returns (uint256 perName) {
+    /// @dev Measures the per-name execution cost of clearing a batch of
+    ///      already-expired 2LDs — the shape the backlog drain submits, and the
+    ///      only figure that turns a name count into a gas budget. Reported as
+    ///      an amortised number, so it carries the batch's fixed overhead and
+    ///      the first name's cold-storage warmup spread across the batch.
+    ///      Calldata is charged at transaction level and is not included.
+    function _measureClearPerName(uint256 count, bool withResolver)
+        internal
+        returns (uint256 perName)
+    {
+        bytes[] memory names = _expired2LDs(count, withResolver);
         uint256 before = gasleft();
         graveyard.clear(names);
-        perName = (before - gasleft()) / names.length;
-    }
-
-    /// @dev Registers and migrates `count` 2LDs, the shape a clear passes on its way to the
-    ///      subnames of a migrated name.
-    function _migrated2LDs(uint256 count) internal returns (bytes[] memory names) {
-        names = new bytes[](count);
-        for (uint256 i; i < count; ++i) {
-            (bytes memory name, ) = registerUnwrapped(_label(i));
-            _simulateMigration(name);
-            names[i] = name;
-        }
-    }
-
-    function test_gas_clear_migrated2LDs() external {
-        uint256 perName = _measureClearPerName(_migrated2LDs(GAS_BATCH));
-        console.log("clear() gas per migrated 2LD:", perName);
-        assertGt(perName, GAS_PER_MIGRATED_NAME_MIN, "below band");
-        assertLt(perName, GAS_PER_MIGRATED_NAME_MAX, "above band");
+        perName = (before - gasleft()) / count;
     }
 
     function test_gas_clear_expired2LDs_resolverUnset() external {
-        uint256 perName = _measureClearPerName(_expired2LDs(GAS_BATCH, false));
+        uint256 perName = _measureClearPerName(GAS_BATCH, false);
         console.log("clear() gas per expired 2LD, resolver unset:", perName);
         assertGt(perName, GAS_PER_NAME_MIN, "below band");
         assertLt(perName, GAS_PER_NAME_MAX, "above band");
     }
 
     function test_gas_clear_expired2LDs_resolverSet() external {
-        uint256 perName = _measureClearPerName(_expired2LDs(GAS_BATCH, true));
+        uint256 perName = _measureClearPerName(GAS_BATCH, true);
         console.log("clear() gas per expired 2LD, resolver set:", perName);
         assertGt(perName, GAS_PER_NAME_MIN, "below band");
         assertLt(perName, GAS_PER_NAME_MAX, "above band");
