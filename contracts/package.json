@@ -69,6 +69,8 @@
     "premigration:cost": "bun ./script/preMigrationCost.ts",
     "docs:addresses": "bun ./script/generateAddressDocs.ts",
     "aakit": "bun ./script/deployAAkit.ts",
+    "deploy:contract": "bun ./script/deployContract.ts",
+    "deploy-and-verify:contract": "bun ./script/deployContract.ts --verify",
     "verify": "bun ./script/verify.ts",
     "verify:sepolia": "bun ./script/verify.ts --network sepolia",
     "verify:mainnet": "bun ./script/verify.ts --network mainnet"

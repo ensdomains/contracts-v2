@@ -853,8 +853,9 @@ bun run verify -- --network sepolia-clean-<timestamp>
 ```
 
 Re-running is safe: contracts already verified on a backend are skipped. `--etherscan-only`,
-`--sourcify-only` and `--sourcify-server <url>` narrow or redirect the run; any other flag passes
-through to `rocketh-verify`. A failure is reported by name and exits non-zero only after the rest of
+`--sourcify-only` and `--sourcify-server <url>` narrow or redirect the run, and `--contract <name>`
+verifies only that record (repeat it to name more; a name no set holds stops the run). Any other flag
+passes through to `rocketh-verify`. A failure is reported by name and exits non-zero only after the rest of
 the set has been attempted, so one failure does not hide the others.
 
 Etherscan answers only a few calls per second per API key, and its "already verified" lookups count

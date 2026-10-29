@@ -362,6 +362,26 @@ export function findRedeployArchives(
     .sort();
 }
 
+/// The name of a new archive namespace of `kind` beside `namespace`: the kind and
+/// the date, with a revision suffix when that name is taken.
+export function nextArchiveName(
+  deploymentsDir: string,
+  namespace: string,
+  kind: string,
+  date: Date,
+): string {
+  const stamp = date.toISOString().slice(0, 10).replace(/-/g, "");
+  let archive = `${namespace}-${kind}-${stamp}`;
+  for (
+    let revision = 2;
+    existsSync(join(deploymentsDir, archive));
+    revision++
+  ) {
+    archive = `${namespace}-${kind}-${stamp}-r${revision}`;
+  }
+  return archive;
+}
+
 /// Moves the records `set` replaces into a new archive namespace beside the active
 /// one, and forgets the once-only deploy scripts that built any of them, so a
 /// resumed deploy rebuilds them. The archive is a sibling namespace, so the
@@ -373,15 +393,7 @@ export function archiveReplacedRecords(
   date: Date,
   set: RedeploySet,
 ): string {
-  const stamp = date.toISOString().slice(0, 10).replace(/-/g, "");
-  let archive = `${namespace}-${set.kind}-${stamp}`;
-  for (
-    let revision = 2;
-    existsSync(join(deploymentsDir, archive));
-    revision++
-  ) {
-    archive = `${namespace}-${set.kind}-${stamp}-r${revision}`;
-  }
+  const archive = nextArchiveName(deploymentsDir, namespace, set.kind, date);
   const source = join(deploymentsDir, namespace);
   const target = join(deploymentsDir, archive);
   mkdirSync(target, { recursive: true });
