@@ -10,10 +10,19 @@ import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 
 import {IAddressSet} from "./interfaces/IAddressSet.sol";
 
-/// @dev Roles required for upgrade role transfer.
-uint256 constant UPGRADE_ROLE_BITMAP = RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN;
+/// @dev Roles required to restore original account.
+uint256 constant UPGRADE_ROLE_BITMAP =
+    RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN;
 
-/// @notice Registry Authority which permits upgrades via signature.
+/// @notice Authority which permits upgrades via signature.
+///
+/// Requires auditor to verify the current requested proxy is upgradeable.
+///
+/// Auditor must ensure `UPGRADE_ROLE_BITMAP` roles are held only by the authority
+/// to prevent upgrades between the audit (signature) and the upgrade (transaction).
+///
+/// After upgrading, transfers `UPGRADE_ROLE_BITMAP` to the original account.
+///
 contract TrustedRegistryUpgradeAuthority is Ownable, IAddressSet {
     ////////////////////////////////////////////////////////////////////////
     // Storage
@@ -55,13 +64,13 @@ contract TrustedRegistryUpgradeAuthority is Ownable, IAddressSet {
 
     /// @notice Upgrade an UUPS proxy with an trusted signature.
     /// @param proxy Proxy to upgrade.
-    /// @param rootAccount Account to restore upgrade roles to.
+    /// @param admin Account to restore upgrade roles to.
     /// @param impl New proxy implementation.
     /// @param data Upgrade calldata.
     /// @param sig Trusted signature.
     function upgrade(
         address proxy,
-        address rootAccount,
+        address admin,
         address impl,
         bytes calldata data,
         bytes calldata sig
@@ -71,7 +80,7 @@ contract TrustedRegistryUpgradeAuthority is Ownable, IAddressSet {
         if (
             !SignatureChecker.isValidSignatureNow(
                 signer,
-                keccak256(abi.encode(proxy, rootAccount, impl, data)),
+                keccak256(abi.encode(proxy, admin, impl, data)),
                 sig
             )
         ) {
@@ -80,14 +89,8 @@ contract TrustedRegistryUpgradeAuthority is Ownable, IAddressSet {
         _allowed = proxy;
         UUPSUpgradeable(proxy).upgradeToAndCall(impl, data);
         delete _allowed;
-        IEnhancedAccessControl(proxy).grantRootRoles(
-            UPGRADE_ROLE_BITMAP,
-            rootAccount
-        );
-        IEnhancedAccessControl(proxy).revokeRootRoles(
-            UPGRADE_ROLE_BITMAP,
-            address(this)
-        );
+        IEnhancedAccessControl(proxy).grantRootRoles(UPGRADE_ROLE_BITMAP, admin);
+        IEnhancedAccessControl(proxy).revokeRootRoles(UPGRADE_ROLE_BITMAP, address(this));
     }
 
     /// @inheritdoc IAddressSet

@@ -14,7 +14,6 @@ import {UserRegistryWithUpgradeAuthority} from "~src/registry/UserRegistryWithUp
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
 import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
-import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {
     TrustedRegistryUpgradeAuthority,
     UPGRADE_ROLE_BITMAP
