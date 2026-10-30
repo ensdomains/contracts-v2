@@ -233,7 +233,16 @@ contract WrapperRegistry is
         override
         returns (uint256 tokenId)
     {
-        return _register(label, owner, subregistry, resolver, roleBitmap, expiry, false);
+        return
+            _register(
+                label,
+                owner,
+                subregistry,
+                resolver,
+                roleBitmap | RegistryRolesLib.ROLE_WAS_RESERVED,
+                expiry,
+                false
+            );
     }
 
     /// @inheritdoc PermissionedRegistry
@@ -259,7 +268,12 @@ contract WrapperRegistry is
     ///
     /// * if root and account is token owner or approved, remap to virtual owner.
     ///
-    function _getRoles(uint256 resource, address account) internal view override returns (uint256) {
+    function _getRoles(uint256 resource, address account)
+        internal
+        view
+        override
+        returns (uint256 roleBitmap)
+    {
         if (resource == ROOT_RESOURCE) {
             address parent = address(_parentRegistry); // virtual owner
             if (parent != address(0)) {
@@ -268,11 +282,16 @@ contract WrapperRegistry is
                     account == owner ||
                     PermissionedRegistry(parent).isApprovedForAll(owner, account)
                 ) {
-                    return super._getRoles(resource, parent); // replace, instead of OR
+                    account = parent; // replace, instead of OR
                 }
             }
         }
-        return super._getRoles(resource, account);
+        roleBitmap = super._getRoles(resource, account);
+        // if the name was migrated (locked), prevent unregister
+        if ((roleBitmap & RegistryRolesLib.ROLE_WAS_RESERVED) != 0) {
+            roleBitmap &= ~(RegistryRolesLib.ROLE_UNREGISTER |
+                RegistryRolesLib.ROLE_UNREGISTER_ADMIN);
+        }
     }
 
     /// @dev Override to prevent revive if `CANNOT_CREATE_SUBDOMAIN` fuse was burned.
