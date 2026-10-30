@@ -14,6 +14,12 @@ import type {
   UserConfig,
 } from "rocketh/types";
 import { encodeFunctionData, getAddress, type Address } from "viem";
+import {
+  DAO_WALLET,
+  DAO_TOKEN_SAFE,
+  DAO_ENDOWMENT_SAFE,
+  DAO_SECURITY_COUNCIL_SAFE,
+} from "../script/deploy-constants.js";
 
 export const config = {
   accounts: {
@@ -23,8 +29,8 @@ export const config = {
     owner: {
       default: 0,
       // admin is DAO on mainnet
-      mainnet: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
-      1: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+      mainnet: DAO_WALLET,
+      1: DAO_WALLET,
     },
     securityCouncil: {
       // admin of ManagedUniversalResolverProxy; the deployer where no
@@ -33,7 +39,7 @@ export const config = {
       // the ENS DAO Security Council Safe. Keyed by environment name only: the
       // local devnet also runs as chain 1, and its deploy must administer the
       // managed URP itself.
-      mainnet: "0x7101B78638e34444F0a5AdE9e1149fbEeC029931",
+      mainnet: DAO_SECURITY_COUNCIL_SAFE,
       // admin of the long-lived intermediate URP that the top URP already fronts
       sepolia: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
       11155111: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
@@ -48,7 +54,7 @@ export const config = {
       // the ENS DAO name owner, a Safe whose only owner is the DAO timelock and which
       // accepts ERC-1155 tokens. Keyed by environment name only, as the local devnet
       // also runs as chain 1.
-      mainnet: "0x5B716D6587d241166bC8914858640F8684F3A2F3",
+      mainnet: DAO_TOKEN_SAFE,
     },
     beneficiary: {
       // receives the v2 registrar's and the v1 renewer's payments; the owner where
@@ -56,7 +62,7 @@ export const config = {
       default: "owner",
       // the ENS DAO endowment Safe (endowment.ensdao.eth). Keyed by environment name
       // only, as the local devnet also runs as chain 1.
-      mainnet: "0x4F2083f5fBede34C2714aFfb3105539775f7FE64",
+      mainnet: DAO_ENDOWMENT_SAFE,
     },
     v1Owner: {
       default: "owner",
