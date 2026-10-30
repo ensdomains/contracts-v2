@@ -1,9 +1,13 @@
-import { artifacts, execute } from "@rocketh";
-import { isAddressEqual, labelhash, zeroAddress } from "viem";
+import { execute } from "@rocketh";
+import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import type { Abi_IRegistryURIRenderer } from "generated/abis/IRegistryURIRenderer.js";
+import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
+import { isAddressEqual, zeroAddress } from "viem";
+import { idFromLabel } from "../test/utils/utils.js";
 import {
   MAX_EXPIRY,
   DEPLOYMENT_ROLES,
-  ROLES,
+  STATUS,
 } from "../script/deploy-constants.js";
 
 export default execute(
@@ -13,25 +17,36 @@ export default execute(
     get,
     read,
     namedAccounts: { deployer, owner },
+    tags,
   }) => {
     const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+      get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
+    const labelStore = get<Abi_ILabelStore>("LabelStore");
+    const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
 
     console.log("Deploying ETHRegistry");
-    const ethRegistry = await deploy("ETHRegistry", {
-      account: deployer,
-      artifact: artifacts.PermissionedRegistry,
-      args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
-    });
+    // The registry cannot be upgraded and holds every reservation and registration,
+    // so a recorded one is kept even when the build has changed.
+    const ethRegistry = await deploy(
+      "ETHRegistry",
+      {
+        account: deployer,
+        artifact: Artifact_PermissionedRegistry,
+        args: [
+          labelStore.address,
+          deployer,
+          DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
+        ],
+      },
+      { skipIfAlreadyDeployed: true },
+    );
 
     const currentStatus = await read(rootRegistry, {
       functionName: "getStatus",
-      args: [BigInt(labelhash("eth"))],
+      args: [idFromLabel("eth")],
     });
 
-    if (currentStatus === 0) {
+    if (currentStatus === STATUS.AVAILABLE) {
       console.log("  - Registering in parent");
       await write(rootRegistry, {
         account: deployer,
@@ -41,17 +56,29 @@ export default execute(
           deployer,
           ethRegistry.address,
           zeroAddress,
-          DEPLOYMENT_ROLES.ETH_TOKEN,
+          DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
           MAX_EXPIRY,
         ],
       });
     }
 
-    const [currentParent, currentLabel] = await read(ethRegistry, {
-      functionName: "getParent",
-    });
+    const [[currentParent, currentLabel], [currentURI, currentRenderer]] =
+      await Promise.all([
+        read(ethRegistry, { functionName: "getParent" }),
+        read(ethRegistry, { functionName: "getURI" }),
+      ]);
 
+    // A root registry redeployed over a live namespace leaves the parent alone until
+    // the redeploy has been checked; `phase set-eth-parent` sets it then.
     if (
+      (!isAddressEqual(currentParent, rootRegistry.address) ||
+        currentLabel !== "eth") &&
+      tags.deferEthParent
+    ) {
+      console.log(
+        `  - Canonical parent held back: still ${currentParent} (${currentLabel})`,
+      );
+    } else if (
       !isAddressEqual(currentParent, rootRegistry.address) ||
       currentLabel !== "eth"
     ) {
@@ -63,15 +90,30 @@ export default execute(
       });
     }
 
-    console.log("  - Granting CAN_NAME to owner");
-    await write(ethRegistry, {
-      functionName: "grantRootRoles",
-      args: [ROLES.REGISTRY.CAN_NAME, owner],
-      account: deployer,
+    if (!currentURI && currentRenderer === zeroAddress) {
+      console.log("  - Setting initial URI");
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "setURI",
+        args: ["", uriRenderer.address],
+      });
+    }
+
+    const ownerIsManager = await read(ethRegistry, {
+      functionName: "hasRootRoles",
+      args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
     });
+    if (!ownerIsManager) {
+      console.log("  - Granting manager roles");
+      await write(ethRegistry, {
+        account: deployer,
+        functionName: "grantRootRoles",
+        args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
+      });
+    }
   },
   {
     tags: ["ETHRegistry", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["RootRegistry", "LabelStore"],
+    dependencies: ["RootRegistry", "LabelStore", "ENSURIRenderer"],
   },
 );

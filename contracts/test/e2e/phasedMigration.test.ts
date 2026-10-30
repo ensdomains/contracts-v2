@@ -20,8 +20,13 @@ import {
   zeroHash,
 } from "viem";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
-import { ROLES, STATUS } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migration.js";
+import {
+  DEPLOYMENT_ROLES,
+  FUSES,
+  ROLES,
+  STATUS,
+} from "../../script/deploy-constants.js";
+import { migrationDataComponents } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
   buildMainArgs,
@@ -35,7 +40,7 @@ const MIN_V2_REGISTRATION_SECONDS = 28n * 24n * 60n * 60n;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 
 describe("Phased migration rehearsal", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
   const csvFilePath = join(process.cwd(), "test-phased-migration.csv");
   const cleanupFiles = [
     csvFilePath,
@@ -60,6 +65,13 @@ describe("Phased migration rehearsal", () => {
           env.v2.ETHRegistrar.address,
         ]);
       }
+      // The phased deploy leaves migration closed until go-live.
+      for (const controller of migrationControllers()) {
+        await env.v2.ETHRegistry.write.revokeRootRoles([
+          DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+          controller,
+        ]);
+      }
     },
   });
 
@@ -78,17 +90,26 @@ describe("Phased migration rehearsal", () => {
     const initialLabel = "phaseoldok";
     const firstMigrationLabel = "phasemigrateone";
     const remainingMigrationLabel = "phasemigratetwo";
+    const lockedMigrationLabel = "phasemigratelocked";
 
     await registerViaV1Controller(initialLabel, user);
     await registerViaV1Controller(firstMigrationLabel, user);
     await registerViaV1Controller(remainingMigrationLabel, user);
+    await registerViaV1Controller(lockedMigrationLabel, user);
+    // Wrap and lock before phase 3 freezes v1, so the locked route has a name
+    // to carry through the phases.
+    await wrapLockedV1Name(lockedMigrationLabel, user);
 
     const initialOwner = await env.v1.BaseRegistrar.read.ownerOf([
       idFromLabel(initialLabel),
     ]);
     expect(initialOwner.toLowerCase()).toBe(user.address.toLowerCase());
 
-    createCSVFile(csvFilePath, [firstMigrationLabel, remainingMigrationLabel]);
+    createCSVFile(csvFilePath, [
+      firstMigrationLabel,
+      remainingMigrationLabel,
+      lockedMigrationLabel,
+    ]);
     await preMigrationMain(
       buildMainArgs(env, csvFilePath, {
         limit: 1,
@@ -127,13 +148,11 @@ describe("Phased migration rehearsal", () => {
     expect(firstState.status).toBe(STATUS.RESERVED);
     expect(remainingState.status).toBe(STATUS.RESERVED);
 
-    await migrateUnwrappedV1Name(firstMigrationLabel, user);
-
-    const migratedState = await verifyV2State(env, firstMigrationLabel);
-    expect(migratedState.status).toBe(STATUS.REGISTERED);
-    expect(migratedState.latestOwner.toLowerCase()).toBe(
-      user.address.toLowerCase(),
-    );
+    // Migration stays closed until go-live: the controller lacks the role the
+    // registry needs to promote a reserved name.
+    await expect(
+      migrateUnwrappedV1Name(firstMigrationLabel, user),
+    ).rejects.toThrow(/EACUnauthorizedAccountRoles|0x4b27a133/);
 
     const registrarEnabledBefore = await env.v2.ETHRegistry.read.hasRootRoles([
       REGISTRAR_ROLES,
@@ -153,12 +172,36 @@ describe("Phased migration rehearsal", () => {
       REGISTRAR_ROLES,
       env.v2.ETHRegistrar.address,
     ]);
+    for (const controller of migrationControllers()) {
+      await env.v2.ETHRegistry.write.grantRootRoles([
+        DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+        controller,
+      ]);
+    }
 
     const registrarEnabledAfter = await env.v2.ETHRegistry.read.hasRootRoles([
       REGISTRAR_ROLES,
       env.v2.ETHRegistrar.address,
     ]);
     expect(registrarEnabledAfter).toBe(true);
+
+    await migrateUnwrappedV1Name(firstMigrationLabel, user);
+
+    const migratedState = await verifyV2State(env, firstMigrationLabel);
+    expect(migratedState.status).toBe(STATUS.REGISTERED);
+    expect(migratedState.latestOwner.toLowerCase()).toBe(
+      user.address.toLowerCase(),
+    );
+
+    // The locked route reaches v2 through a different controller and receiver
+    // than the unwrapped one, so the phases have to wire both.
+    await migrateLockedV1Name(lockedMigrationLabel, user);
+
+    const lockedState = await verifyV2State(env, lockedMigrationLabel);
+    expect(lockedState.status).toBe(STATUS.REGISTERED);
+    expect(lockedState.latestOwner.toLowerCase()).toBe(
+      user.address.toLowerCase(),
+    );
 
     // The name is RESERVED from premigration, so the registrar refuses it.
     await expect(
@@ -172,6 +215,13 @@ describe("Phased migration rehearsal", () => {
       user.address.toLowerCase(),
     );
   }, 30_000);
+
+  function migrationControllers(): Address[] {
+    return [
+      env.v2.UnlockedMigrationController.address,
+      env.v2.LockedMigrationController.address,
+    ];
+  }
 
   function ethRegistrarControllerAddress(): Address {
     return env.rocketh.deployments["ETHRegistrarController"].address;
@@ -229,10 +279,67 @@ describe("Phased migration rehearsal", () => {
     await env.sync({ warpSec: Number(minCommitmentAge) + 1 });
 
     const price = await controller.read.rentPrice([label, ONE_YEAR_SECONDS]);
+    const value = price.base + price.premium;
+    // The price oracle works its premium out bit by bit from the time elapsed, so a
+    // registration's gas moves with the timestamp of the block it lands in; headroom
+    // over the estimate keeps a later block from running it out of gas.
+    const gas = await controller.estimateGas.register([registration], {
+      account,
+      value,
+    });
     await controller.write.register([registration], {
       account,
-      value: price.base + price.premium,
+      value,
+      gas: (gas * 5n) / 4n,
     });
+  }
+
+  /// Wraps a v1 name and burns CANNOT_UNWRAP, giving the locked migration route
+  /// a name in the form it requires.
+  async function wrapLockedV1Name(label: string, account: Account) {
+    await env.v1.BaseRegistrar.write.safeTransferFrom(
+      [
+        account.address,
+        env.v1.NameWrapper.address,
+        idFromLabel(label),
+        encodeAbiParameters(
+          [
+            { name: "label", type: "string" },
+            { name: "owner", type: "address" },
+            { name: "fuses", type: "uint16" },
+            { name: "resolver", type: "address" },
+          ],
+          [label, account.address, FUSES.CANNOT_UNWRAP, zeroAddress],
+        ),
+      ],
+      { account },
+    );
+  }
+
+  async function migrateLockedV1Name(label: string, account: Account) {
+    const node = namehash(`${label}.eth`);
+    const resolver = await env.v1.ENSRegistry.read.resolver([node]);
+    const data = encodeAbiParameters(
+      [{ type: "tuple", components: migrationDataComponents }],
+      [
+        {
+          label,
+          owner: account.address,
+          subregistry: zeroAddress,
+          resolver,
+        },
+      ],
+    );
+    await env.v1.NameWrapper.write.safeTransferFrom(
+      [
+        account.address,
+        env.v2.LockedMigrationController.address,
+        BigInt(node),
+        1n,
+        data,
+      ],
+      { account },
+    );
   }
 
   async function migrateUnwrappedV1Name(label: string, account: Account) {
@@ -328,7 +435,7 @@ describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
       const proc = Bun.spawn(
         [
           "bun",
-          "script/migration.ts",
+          "script/migrate.ts",
           "fork",
           "full",
           "--network",
@@ -385,6 +492,13 @@ describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
         "v2 registrar rejected pre-migrated reserved name after enablement",
       );
       expect(output).toContain("v2 registrar registered");
+
+      // The rehearsal must say what it covered. A pristine fork runs every smoke,
+      // so anything less than full coverage here means the run silently degraded.
+      expect(output).toContain(
+        "pristine chain: v1 registration controllers still authorized",
+      );
+      expect(output).toContain("coverage: all smoke checks ran");
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }

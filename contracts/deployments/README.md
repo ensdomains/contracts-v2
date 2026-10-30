@@ -1,7 +1,7 @@
 # Deployments
 
 Deployment artifacts written and read by [rocketh](https://github.com/wighawag/rocketh)
-through the migration tooling ([`script/migration.ts`](../script/migration.ts),
+through the migration tooling ([`script/migrate.ts`](../script/migrate.ts),
 [`docs/migration.md`](../docs/migration.md)). Each contract a deploy script
 produces is recorded here as JSON so later runs and the phase commands can resolve
 on-chain addresses without re-deploying.
@@ -17,19 +17,39 @@ deployments/
     .chain                # { chainId, genesisHash } the set was deployed against
     .migrations.json      # rocketh's record of completed deploy scripts (id → unix-epoch-seconds)
     .deployment.json      # { environment, chainId, deployedAt } — when this set was first deployed
-    <Contract>.json       # one file per deployed contract (address, abi, bytecode, receipt, …)
+    .premigration.json    # pre-migration counts sidecar (names reserved/renewed/skipped/…), no label strings
+    <Contract>.json       # one file per deployed contract (address, abi, bytecode, receipt, buildInfoId, …)
+    build-info/
+      <buildInfoId>.json  # exact compiler input shared by every contract from that build
   v1/
     <network>/            # local v1-reference overrides (searched before the bundled set)
       .chainId            # chain id of the referenced v1 set
       <Contract>.json
 ```
 
-The `.chain`, `.migrations.json`, and `.deployment.json` dotfiles are metadata;
-rocketh loads only `.migrations.json` and the `<Contract>.json` artifacts and
-ignores every other dotfile, so `.deployment.json` is never mistaken for a
-contract. `.deployment.json` is written once, on the first deploy into a
-namespace, so its `deployedAt` records the original deployment time and survives
-idempotent re-runs.
+The `.chain`, `.migrations.json`, `.deployment.json`, and `.premigration.json`
+dotfiles are metadata; rocketh loads only `.migrations.json` and the
+`<Contract>.json` artifacts and ignores every other dotfile, so none of them are
+mistaken for a contract. `.deployment.json` is written once, on the first deploy
+into a namespace, so its `deployedAt` records the original deployment time and
+survives idempotent re-runs.
+
+Compiled deployment artifacts record a `buildInfoId`. The matching file under
+`build-info/` preserves the exact compiler version, settings, remappings, and
+source text used to produce the deployed bytecode. It is copied once per build,
+so contracts compiled together share one file. The much larger compiler output
+is not committed because it can be regenerated from this input. Vendored
+artifacts that were not produced by this Hardhat build may omit `buildInfoId`.
+
+`.premigration.json` is the durable record of the v1→v2 pre-migration run(s) that
+targeted this namespace. It holds counts only — never the reserved label strings
+(the corpus is large) — with one entry per logical run (`initial`, `final-sync`,
+or a standalone `run`, upserted by label) plus a `resolved` roll-up of the final
+numbers: names pre-migrated, expiry re-syncs, names skipped because they were
+never registered on v1 or lapsed past the v1 grace period, invalid labels, names
+already on v2, and failures. It is written by the pre-migration command whenever
+the target namespace persists (so `fork full` rehearsals without
+`--save-deployments` leave it untouched).
 
 A namespace is addressed by two inputs on every migration command:
 
@@ -104,10 +124,16 @@ is cut over.
 
 ## Saving artifacts
 
-The rehearsal (`fork full`) does not persist artifacts unless `--save-deployments`
-is passed, so a fork run leaves `deployments/` untouched by default. `phase
-deploy-v2` always persists its deployment into the chosen `--deployment-network`
-(both a fresh run and a `--resume`).
+The rehearsal (`fork full`) deploys into its own `<network>-fork` namespace unless
+`--deployment-network` names another, and persists there. It has to: phase 3's
+controller audit reads the active deployment's handoff contracts off disk to tell
+them apart from a superseded deployment's. That namespace is gitignored and
+re-created by the next run, so a rehearsal still leaves the committed sets
+untouched. Deploying a rehearsal into the live namespace instead would make phase 1
+try to adopt and upgrade the real chain's proxies, which fails on a fork.
+
+`phase deploy-v2` always persists its deployment into the chosen
+`--deployment-network` (both a fresh run and a `--resume`).
 
 ## Git tracking
 
@@ -120,6 +146,7 @@ deployments/*-fork/        # fork full --save-deployments rehearsal namespaces
 deployments/*-clean-*/      # clean-testnet runtime namespaces
 deployments/v1/*            # v1 references are ignored …
 !deployments/v1/sepolia/    # … except the tracked sepolia v1 references
+!deployments/v1/mainnet/    # … and the tracked mainnet v1 references
 ```
 
 A live namespace (`deployments/sepolia/`) and dated archives

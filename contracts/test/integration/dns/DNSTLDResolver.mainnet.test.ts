@@ -1,11 +1,12 @@
 import hre from "hardhat";
-import { namehash } from "viem";
 import { describe, it } from "vitest";
 import { expectVar } from "../../utils/expectVar.js";
 import { bundleCalls, makeResolutions } from "../../utils/resolutions.js";
-import { dnsEncodeName, getLabelAt } from "../../utils/utils.js";
+import { dnsEncodeName, getLabelAt, namehash } from "../../utils/utils.js";
 import { deployV2Fixture } from "../fixtures/deployV2Fixture.js";
 import { KNOWN_DNS } from "./mainnet.js";
+
+// MAINNET_RPC_URL=https://eth.drpc.org bun run test:hardhat test/integration/dns/DNSTLDResolver.mainnet.test.ts
 
 const url = await (async (config) => {
   return config.type === "http" && config.url.get();
@@ -41,7 +42,6 @@ if (url) {
     );
     const dnsTLDResolver = await chain.viem.deployContract("DNSTLDResolver", [
       ensRegistry.address,
-      dnsTLDResolverV1.address,
       v2.rootRegistry.address,
       DNSSEC.address,
       oracleGatewayProvider.address,

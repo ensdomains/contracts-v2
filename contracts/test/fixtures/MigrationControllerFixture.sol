@@ -4,16 +4,20 @@ pragma solidity >=0.8.13;
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {CANNOT_SET_RESOLVER, CANNOT_UNWRAP} from "@ens/contracts/wrapper/INameWrapper.sol";
 
 import {Graveyard} from "~src/migration/Graveyard.sol";
 import {ENSV1Resolver} from "~src/resolver/ENSV1Resolver.sol";
 import {ENSV2Resolver} from "~src/resolver/ENSV2Resolver.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {BoxedURIRenderer} from "~src/registry/BoxedURIRenderer.sol";
 import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
+import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
 
 // forge test test/unit/migration/UnlockedMigrationController.t.sol -vv
 // forge test test/unit/migration/LockedMigrationController.t.sol -vv
@@ -35,9 +39,12 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     Graveyard graveyard;
     MockERC721 dummy721;
     MockERC1155 dummy1155;
+    BoxedURIRenderer boxedRenderer;
+    PermissionedAddressSet registryUpgradeSet;
+    PermissionedAddressSet publicResolverSet;
 
     string testLabel = "test";
-    address testResolver = makeAddr("resolver");
+    address testResolver;
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
     uint64 premigrationBonusPeriod = StandardRegistrar.BONUS_PERIOD;
@@ -64,11 +71,17 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
         graveyard = new Graveyard(nameWrapper, contractNamer);
 
+        boxedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));
+
+        registryUpgradeSet = new PermissionedAddressSet(address(this));
+        publicResolverSet = new PermissionedAddressSet(address(this));
+
         baseRegistrar.setResolver(address(ensV2Resolver));
         baseRegistrar.addController(address(graveyard));
 
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
+        testResolver = address(new MockResolver());
     }
 
     /// @dev Ensure premigration has occurred.
@@ -102,6 +115,55 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
             (address r, ) = ensV2Resolver.getResolver(name);
             assertEq(r, resolverV2, "compositeV2");
             assertEq(registryV1.resolver(NameCoder.namehash(name, 0)), address(0), "resolverV1");
+        }
+    }
+
+    /// @dev Clear resolver if possible and transfer to graveyard.
+    function _simulateMigration(bytes memory name) internal {
+        bytes32 node = NameCoder.namehash(name, 0);
+        (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
+        bytes32 parentNode = NameCoder.namehash(name, offset);
+        address owner = registryV1.owner(node);
+        if (owner == address(nameWrapper)) {
+            uint32 fuses;
+            (owner, fuses, ) = nameWrapper.getData(uint256(node));
+            if ((fuses & CANNOT_SET_RESOLVER) == 0) {
+                vm.prank(owner);
+                nameWrapper.setResolver(node, address(0));
+            }
+            if ((fuses & CANNOT_UNWRAP) == 0) {
+                vm.prank(owner);
+                nameWrapper.unwrap(parentNode, labelHash, address(graveyard));
+            } else {
+                vm.prank(owner);
+                nameWrapper.safeTransferFrom(owner, address(graveyard), uint256(node), 1, "");
+            }
+        } else if (parentNode == NameCoder.ETH_NODE) {
+            vm.prank(owner);
+            registryV1.setRecord(
+                node,
+                address(graveyard), // owner
+                address(0), // resolver
+                0 // ttl
+            );
+            vm.prank(owner);
+            baseRegistrar.safeTransferFrom(owner, address(graveyard), uint256(labelHash));
+        } else {
+            revert("migrated failed");
+        }
+    }
+
+    /// @dev Warp past expiry + grace.
+    function _simulateExpiry(bytes memory name) internal {
+        (bytes32 labelHash, uint256 offset) = NameCoder.readLabel(name, 0);
+        if (NameCoder.namehash(name, offset) == NameCoder.ETH_NODE) {
+            vm.warp(baseRegistrar.nameExpires(uint256(labelHash)) + gracePeriodV1);
+        } else {
+            (address owner, , uint64 expiry) =
+                nameWrapper.getData(uint256(NameCoder.namehash(name, 0)));
+            if (owner != address(0)) {
+                vm.warp(expiry + 1); // see: gracePeriodV1 definition
+            }
         }
     }
 
@@ -148,3 +210,6 @@ contract MockERC1155 is ERC1155 {
         return _id++;
     }
 }
+
+
+contract MockResolver {}

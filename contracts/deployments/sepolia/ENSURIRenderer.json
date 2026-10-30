@@ -1,0 +1,341 @@
+{
+  "address": "0x4d7f0349dffb8e7bed9ffba1b9e45f7ecbd4f0f8",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "prefix",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "afterRegistry",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "afterToken",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "AFTER_REGISTRY",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "AFTER_TOKEN",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "PREFIX",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "contract IRegistry",
+          "name": "registry",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        }
+      ],
+      "name": "renderURI",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
+        }
+      ],
+      "name": "supportsInterface",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "contractName": "StaticURIRenderer",
+  "sourceName": "src/registry/StaticURIRenderer.sol",
+  "bytecode": "0x608060405234801561000f575f80fd5b50604051610a41380380610a4183398101604081905261002e91610181565b836001600160a01b03811661005c57604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b61006581610096565b50600161007284826102a5565b50600261007f83826102a5565b50600361008c82826102a5565b5050505050610364565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b634e487b7160e01b5f52604160045260245ffd5b5f82601f830112610108575f80fd5b81516001600160401b0380821115610122576101226100e5565b604051601f8301601f19908116603f0116810190828211818310171561014a5761014a6100e5565b81604052838152866020858801011115610162575f80fd5b8360208701602083015e5f602085830101528094505050505092915050565b5f805f8060808587031215610194575f80fd5b84516001600160a01b03811681146101aa575f80fd5b60208601519094506001600160401b03808211156101c6575f80fd5b6101d2888389016100f9565b945060408701519150808211156101e7575f80fd5b6101f3888389016100f9565b93506060870151915080821115610208575f80fd5b50610215878288016100f9565b91505092959194509250565b600181811c9082168061023557607f821691505b60208210810361025357634e487b7160e01b5f52602260045260245ffd5b50919050565b601f8211156102a057805f5260205f20601f840160051c8101602085101561027e5750805b601f840160051c820191505b8181101561029d575f815560010161028a565b50505b505050565b81516001600160401b038111156102be576102be6100e5565b6102d2816102cc8454610221565b84610259565b602080601f831160018114610305575f84156102ee5750858301515b5f19600386901b1c1916600185901b17855561035c565b5f85815260208120601f198616915b8281101561033357888601518255948401946001909101908401610314565b508582101561035057878501515f19600388901b60f8161c191681555b505060018460011b0185555b505050505050565b6106d0806103715f395ff3fe608060405234801561000f575f80fd5b5060043610610085575f3560e01c80638da5cb5b116100585780638da5cb5b146100e3578063d70c9f90146100fd578063dd965faf14610105578063f2fde38b1461010d575f80fd5b806301ffc9a71461008957806335a51270146100b15780636c55e19b146100c6578063715018a6146100d9575b5f80fd5b61009c6100973660046104ab565b610120565b60405190151581526020015b60405180910390f35b6100b96101b8565b6040516100a891906104f1565b6100b96100d436600461053a565b610244565b6100e1610289565b005b5f546040516001600160a01b0390911681526020016100a8565b6100b961029c565b6100b96102a9565b6100e161011b366004610564565b6102b6565b5f7fffffffff0000000000000000000000000000000000000000000000000000000082167f6c55e19b0000000000000000000000000000000000000000000000000000000014806101b257507f01ffc9a7000000000000000000000000000000000000000000000000000000007fffffffff000000000000000000000000000000000000000000000000000000008316145b92915050565b600180546101c59061057f565b80601f01602080910402602001604051908101604052809291908181526020018280546101f19061057f565b801561023c5780601f106102135761010080835404028352916020019161023c565b820191905f5260205f20905b81548152906001019060200180831161021f57829003601f168201915b505050505081565b6060600161025184610311565b600261025c85610388565b6003604051602001610272959493929190610660565b604051602081830303815290604052905092915050565b6102916103ff565b61029a5f610444565b565b600280546101c59061057f565b600380546101c59061057f565b6102be6103ff565b6001600160a01b038116610305576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b61030e81610444565b50565b6060604051905060608101604052602881527f3031323334353637383961626364656600000000000000000000000000000000602082018360601b5f5b601481101561037f5781811a8160011b858260041c1a8186015385600f83161a60018201860153505060010161034e565b50505050919050565b6040518180156103e657825f5b81156103a957600a90910490600101610395565b808452603f8101601f1916840160405284915083016020015b81156103df575f19016030600a8306018153600a820491506103c2565b50506103f9565b6040820160405260018252603060208301535b50919050565b5f546001600160a01b0316331461029a576040517f118cdaa70000000000000000000000000000000000000000000000000000000081523360048201526024016102fc565b5f80546001600160a01b038381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b5f602082840312156104bb575f80fd5b81357fffffffff00000000000000000000000000000000000000000000000000000000811681146104ea575f80fd5b9392505050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b6001600160a01b038116811461030e575f80fd5b5f806040838503121561054b575f80fd5b823561055681610526565b946020939093013593505050565b5f60208284031215610574575f80fd5b81356104ea81610526565b600181811c9082168061059357607f821691505b6020821081036103f957634e487b7160e01b5f52602260045260245ffd5b80545f90600181811c90808316806105ca57607f831692505b602080841082036105e957634e487b7160e01b5f52602260045260245ffd5b8180156105fd57600181146106125761063d565b60ff198616895284151585028901965061063d565b5f888152602090205f5b868110156106355781548b82015290850190830161061c565b505084890196505b50505050505092915050565b5f81518060208401855e5f93019283525090919050565b5f61068f61068961068361067d610677868c6105b1565b8a610649565b886105b1565b86610649565b846105b1565b97965050505050505056fea264697066735822122044bca91df9cba8360ec773bdba82a8abf1189a707b6721747a7a02b0fbd6d7c964736f6c63430008190033",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b5060043610610085575f3560e01c80638da5cb5b116100585780638da5cb5b146100e3578063d70c9f90146100fd578063dd965faf14610105578063f2fde38b1461010d575f80fd5b806301ffc9a71461008957806335a51270146100b15780636c55e19b146100c6578063715018a6146100d9575b5f80fd5b61009c6100973660046104ab565b610120565b60405190151581526020015b60405180910390f35b6100b96101b8565b6040516100a891906104f1565b6100b96100d436600461053a565b610244565b6100e1610289565b005b5f546040516001600160a01b0390911681526020016100a8565b6100b961029c565b6100b96102a9565b6100e161011b366004610564565b6102b6565b5f7fffffffff0000000000000000000000000000000000000000000000000000000082167f6c55e19b0000000000000000000000000000000000000000000000000000000014806101b257507f01ffc9a7000000000000000000000000000000000000000000000000000000007fffffffff000000000000000000000000000000000000000000000000000000008316145b92915050565b600180546101c59061057f565b80601f01602080910402602001604051908101604052809291908181526020018280546101f19061057f565b801561023c5780601f106102135761010080835404028352916020019161023c565b820191905f5260205f20905b81548152906001019060200180831161021f57829003601f168201915b505050505081565b6060600161025184610311565b600261025c85610388565b6003604051602001610272959493929190610660565b604051602081830303815290604052905092915050565b6102916103ff565b61029a5f610444565b565b600280546101c59061057f565b600380546101c59061057f565b6102be6103ff565b6001600160a01b038116610305576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b61030e81610444565b50565b6060604051905060608101604052602881527f3031323334353637383961626364656600000000000000000000000000000000602082018360601b5f5b601481101561037f5781811a8160011b858260041c1a8186015385600f83161a60018201860153505060010161034e565b50505050919050565b6040518180156103e657825f5b81156103a957600a90910490600101610395565b808452603f8101601f1916840160405284915083016020015b81156103df575f19016030600a8306018153600a820491506103c2565b50506103f9565b6040820160405260018252603060208301535b50919050565b5f546001600160a01b0316331461029a576040517f118cdaa70000000000000000000000000000000000000000000000000000000081523360048201526024016102fc565b5f80546001600160a01b038381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b5f602082840312156104bb575f80fd5b81357fffffffff00000000000000000000000000000000000000000000000000000000811681146104ea575f80fd5b9392505050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b6001600160a01b038116811461030e575f80fd5b5f806040838503121561054b575f80fd5b823561055681610526565b946020939093013593505050565b5f60208284031215610574575f80fd5b81356104ea81610526565b600181811c9082168061059357607f821691505b6020821081036103f957634e487b7160e01b5f52602260045260245ffd5b80545f90600181811c90808316806105ca57607f831692505b602080841082036105e957634e487b7160e01b5f52602260045260245ffd5b8180156105fd57600181146106125761063d565b60ff198616895284151585028901965061063d565b5f888152602090205f5b868110156106355781548b82015290850190830161061c565b505084890196505b50505050505092915050565b5f81518060208401855e5f93019283525090919050565b5f61068f61068961068361067d610677868c6105b1565b8a610649565b886105b1565b86610649565b846105b1565b97965050505050505056fea264697066735822122044bca91df9cba8360ec773bdba82a8abf1189a707b6721747a7a02b0fbd6d7c964736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {},
+  "inputSourceName": "project/src/registry/StaticURIRenderer.sol",
+  "buildInfoId": "solc-0_8_25-b30e6dc9a03b37f6a0b89af5d02a73d3993944f7",
+  "devdoc": {
+    "errors": {
+      "OwnableInvalidOwner(address)": [
+        {
+          "details": "The owner is not a valid owner account. (eg. `address(0)`)"
+        }
+      ],
+      "OwnableUnauthorizedAccount(address)": [
+        {
+          "details": "The caller account is not authorized to perform an operation."
+        }
+      ]
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "afterRegistry": "URI fragment between registry address and token.",
+          "afterToken": "URI fragment after token.",
+          "owner_": "Contract owner.",
+          "prefix": "URI fragment before registry address."
+        }
+      },
+      "owner()": {
+        "details": "Returns the address of the current owner."
+      },
+      "renderURI(address,uint256)": {
+        "params": {
+          "registry": "The registry.",
+          "tokenId": "The token ID in the registry."
+        },
+        "returns": {
+          "_0": "The generated URI."
+        }
+      },
+      "renounceOwnership()": {
+        "details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
+      },
+      "supportsInterface(bytes4)": {
+        "details": "See {IERC165-supportsInterface}."
+      },
+      "transferOwnership(address)": {
+        "details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
+      }
+    },
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "348800",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "AFTER_REGISTRY()": "infinite",
+        "AFTER_TOKEN()": "infinite",
+        "PREFIX()": "infinite",
+        "owner()": "2299",
+        "renderURI(address,uint256)": "infinite",
+        "renounceOwnership()": "infinite",
+        "supportsInterface(bytes4)": "367",
+        "transferOwnership(address)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"},{\"internalType\":\"string\",\"name\":\"prefix\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"afterRegistry\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"afterToken\",\"type\":\"string\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"AFTER_REGISTRY\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"AFTER_TOKEN\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"PREFIX\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"contract IRegistry\",\"name\":\"registry\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"tokenId\",\"type\":\"uint256\"}],\"name\":\"renderURI\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"errors\":{\"OwnableInvalidOwner(address)\":[{\"details\":\"The owner is not a valid owner account. (eg. `address(0)`)\"}],\"OwnableUnauthorizedAccount(address)\":[{\"details\":\"The caller account is not authorized to perform an operation.\"}]},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"afterRegistry\":\"URI fragment between registry address and token.\",\"afterToken\":\"URI fragment after token.\",\"owner_\":\"Contract owner.\",\"prefix\":\"URI fragment before registry address.\"}},\"owner()\":{\"details\":\"Returns the address of the current owner.\"},\"renderURI(address,uint256)\":{\"params\":{\"registry\":\"The registry.\",\"tokenId\":\"The token ID in the registry.\"},\"returns\":{\"_0\":\"The generated URI.\"}},\"renounceOwnership()\":{\"details\":\"Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner.\"},\"supportsInterface(bytes4)\":{\"details\":\"See {IERC165-supportsInterface}.\"},\"transferOwnership(address)\":{\"details\":\"Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner.\"}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"AFTER_REGISTRY()\":{\"notice\":\"URI fragment between registry address and token.\"},\"AFTER_TOKEN()\":{\"notice\":\"URI fragment after token.\"},\"PREFIX()\":{\"notice\":\"URI fragment before registry address.\"},\"renderURI(address,uint256)\":{\"notice\":\"Generate URI for `tokenId` from `registry`.\"}},\"notice\":\"An immutable IRegistryURIRenderer that injects registry address and token ID into a URI string using fragments.  Ownable for contract naming. The registry address does not include \\\"0x\\\". Format: \\\"{PREFIX}{registryAsHexAddress}{AFTER_REGISTRY}{tokenIdAsDecimal}{AFTER_TOKEN}\\\" eg.       PREFIX = \\\"https://metadata/0x\\\"   AFTER_REGISTRY = \\\"/\\\"      AFTER_TOKEN = \\\".json\\\" renderURI(1, 2) => \\\"https://metadata/0x0000000000000000000000000000000000000001/2.json\\\"\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/registry/StaticURIRenderer.sol\":\"StaticURIRenderer\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts-upgradeable/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/openzeppelin-contracts/contracts/access/Ownable.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Context} from \\\"../utils/Context.sol\\\";\\n\\n/**\\n * @dev Contract module which provides a basic access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * The initial owner is set to the address provided by the deployer. This can\\n * later be changed with {transferOwnership}.\\n *\\n * This module is used through inheritance. It will make available the modifier\\n * `onlyOwner`, which can be applied to your functions to restrict their use to\\n * the owner.\\n */\\nabstract contract Ownable is Context {\\n    address private _owner;\\n\\n    /**\\n     * @dev The caller account is not authorized to perform an operation.\\n     */\\n    error OwnableUnauthorizedAccount(address account);\\n\\n    /**\\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\\n     */\\n    error OwnableInvalidOwner(address owner);\\n\\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\\n     */\\n    constructor(address initialOwner) {\\n        if (initialOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(initialOwner);\\n    }\\n\\n    /**\\n     * @dev Throws if called by any account other than the owner.\\n     */\\n    modifier onlyOwner() {\\n        _checkOwner();\\n        _;\\n    }\\n\\n    /**\\n     * @dev Returns the address of the current owner.\\n     */\\n    function owner() public view virtual returns (address) {\\n        return _owner;\\n    }\\n\\n    /**\\n     * @dev Throws if the sender is not the owner.\\n     */\\n    function _checkOwner() internal view virtual {\\n        if (owner() != _msgSender()) {\\n            revert OwnableUnauthorizedAccount(_msgSender());\\n        }\\n    }\\n\\n    /**\\n     * @dev Leaves the contract without owner. It will not be possible to call\\n     * `onlyOwner` functions. Can only be called by the current owner.\\n     *\\n     * NOTE: Renouncing ownership will leave the contract without an owner,\\n     * thereby disabling any functionality that is only available to the owner.\\n     */\\n    function renounceOwnership() public virtual onlyOwner {\\n        _transferOwnership(address(0));\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Can only be called by the current owner.\\n     */\\n    function transferOwnership(address newOwner) public virtual onlyOwner {\\n        if (newOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual {\\n        address oldOwner = _owner;\\n        _owner = newOwner;\\n        emit OwnershipTransferred(oldOwner, newOwner);\\n    }\\n}\\n\",\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/ERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {IERC165} from \\\"./IERC165.sol\\\";\\n\\n/**\\n * @dev Implementation of the {IERC165} interface.\\n *\\n * Contracts that want to implement ERC-165 should inherit from this contract and override {supportsInterface} to check\\n * for the additional interface id that will be supported. For example:\\n *\\n * ```solidity\\n * function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n *     return interfaceId == type(MyInterface).interfaceId || super.supportsInterface(interfaceId);\\n * }\\n * ```\\n */\\nabstract contract ERC165 is IERC165 {\\n    /**\\n     * @dev See {IERC165-supportsInterface}.\\n     */\\n    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {\\n        return interfaceId == type(IERC165).interfaceId;\\n    }\\n}\\n\",\"keccak256\":\"0xddce8e17e3d3f9ed818b4f4c4478a8262aab8b11ed322f1bf5ed705bb4bd97fa\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/IERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Interface of the ERC-165 standard, as defined in the\\n * https://eips.ethereum.org/EIPS/eip-165[ERC].\\n *\\n * Implementers can declare support of contract interfaces, which can then be\\n * queried by others ({ERC165Checker}).\\n *\\n * For an implementation, see {ERC165}.\\n */\\ninterface IERC165 {\\n    /**\\n     * @dev Returns true if this contract implements the interface defined by\\n     * `interfaceId`. See the corresponding\\n     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section]\\n     * to learn more about how these ids are created.\\n     *\\n     * This function call must use less than 30 000 gas.\\n     */\\n    function supportsInterface(bytes4 interfaceId) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x79796192ec90263f21b464d5bc90b777a525971d3de8232be80d9c4f9fb353b8\",\"license\":\"MIT\"},\"project/src/registry/StaticURIRenderer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity 0.8.25;\\n\\nimport {Ownable} from \\\"@openzeppelin/contracts/access/Ownable.sol\\\";\\nimport {ERC165} from \\\"@openzeppelin/contracts/utils/introspection/ERC165.sol\\\";\\n\\nimport {LibString} from \\\"../utils/LibString.sol\\\";\\n\\nimport {IRegistry} from \\\"./interfaces/IRegistry.sol\\\";\\nimport {IRegistryURIRenderer} from \\\"./interfaces/IRegistryURIRenderer.sol\\\";\\n\\n/// @notice An immutable IRegistryURIRenderer that injects registry address\\n/// and token ID into a URI string using fragments.  Ownable for contract naming.\\n///\\n/// The registry address does not include \\\"0x\\\".\\n///\\n/// Format: \\\"{PREFIX}{registryAsHexAddress}{AFTER_REGISTRY}{tokenIdAsDecimal}{AFTER_TOKEN}\\\"\\n///\\n/// eg.       PREFIX = \\\"https://metadata/0x\\\"\\n///   AFTER_REGISTRY = \\\"/\\\"\\n///      AFTER_TOKEN = \\\".json\\\"\\n///\\n/// renderURI(1, 2) => \\\"https://metadata/0x0000000000000000000000000000000000000001/2.json\\\"\\n///\\ncontract StaticURIRenderer is Ownable, ERC165, IRegistryURIRenderer {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice URI fragment before registry address.\\n    string public PREFIX;\\n\\n    /// @notice URI fragment between registry address and token.\\n    string public AFTER_REGISTRY;\\n\\n    /// @notice URI fragment after token.\\n    string public AFTER_TOKEN;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param owner_ Contract owner.\\n    /// @param prefix URI fragment before registry address.\\n    /// @param afterRegistry URI fragment between registry address and token.\\n    /// @param afterToken URI fragment after token.\\n    constructor(\\n        address owner_,\\n        string memory prefix,\\n        string memory afterRegistry,\\n        string memory afterToken\\n    )\\n        Ownable(owner_)\\n    {\\n        PREFIX = prefix;\\n        AFTER_REGISTRY = afterRegistry;\\n        AFTER_TOKEN = afterToken;\\n    }\\n\\n    /// @inheritdoc ERC165\\n    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n        return\\n            interfaceId == type(IRegistryURIRenderer).interfaceId ||\\n            super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IRegistryURIRenderer\\n    function renderURI(IRegistry registry, uint256 tokenId) external view returns (string memory) {\\n        return\\n            string.concat(\\n                PREFIX,\\n                LibString.toAddressString(address(registry)),\\n                AFTER_REGISTRY,\\n                LibString.toString(tokenId),\\n                AFTER_TOKEN\\n            );\\n    }\\n}\\n\",\"keccak256\":\"0xce13e165ce7e85c03a8fe3cc5eadd57a023a410914f68f0b2c7ff8db030f1eaf\",\"license\":\"MIT\"},\"project/src/registry/interfaces/IRegistry.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity >=0.8.13;\\n\\nimport {IRegistryEvents} from \\\"./IRegistryEvents.sol\\\";\\n\\n/// @dev Interface selector: `0x51f67f40`\\ninterface IRegistry is IRegistryEvents {\\n    /// @notice Fetches the registry for a label.\\n    /// @param label The label to resolve.\\n    /// @return The address of the registry for this label, or `address(0)` if none exists.\\n    function getSubregistry(string calldata label) external view returns (IRegistry);\\n\\n    /// @notice Fetches the resolver responsible for the specified label.\\n    /// @param label The label to fetch a resolver for.\\n    /// @return resolver The address of a resolver responsible for this label, or `address(0)` if none exists.\\n    function getResolver(string calldata label) external view returns (address);\\n\\n    /// @notice Get canonical \\\"location\\\" of this registry.\\n    /// @return parent The canonical parent of this registry.\\n    /// @return label The canonical subdomain of this registry.\\n    function getParent() external view returns (IRegistry parent, string memory label);\\n}\\n\",\"keccak256\":\"0x13897e5eb2420a53ae4cb3dedd42d7595f72d414c4cea5bf564827e5109884d4\",\"license\":\"MIT\"},\"project/src/registry/interfaces/IRegistryEvents.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity >=0.8.13;\\n\\nimport {IRegistry} from \\\"./IRegistry.sol\\\";\\n\\n/// @notice Events interface for the registry, following ENSIP16.\\ninterface IRegistryEvents {\\n    /// @notice A registry was created/initialized.\\n    event RegistryCreated();\\n\\n    /// @notice A label was registered.\\n    /// @param tokenId The token ID registered.\\n    /// @param labelHash The label hash registered.\\n    /// @param label The label registered.\\n    /// @param owner The owner of the label.\\n    /// @param expiry The expiry of the label.\\n    /// @param sender The sender of the call to register.\\n    event LabelRegistered(\\n        uint256 indexed tokenId,\\n        bytes32 indexed labelHash,\\n        string label,\\n        address owner,\\n        uint64 expiry,\\n        address indexed sender\\n    );\\n\\n    /// @notice A label was reserved.\\n    /// @param tokenId The token ID reserved.\\n    /// @param labelHash The label hash reserved.\\n    /// @param label The label reserved.\\n    /// @param expiry The expiry of the label.\\n    /// @param sender The sender of the call to reserve.\\n    event LabelReserved(\\n        uint256 indexed tokenId,\\n        bytes32 indexed labelHash,\\n        string label,\\n        uint64 expiry,\\n        address indexed sender\\n    );\\n\\n    /// @notice A label was unregistered.\\n    /// @param tokenId The token ID unregistered.\\n    /// @param sender The sender of the call to unregister.\\n    event LabelUnregistered(uint256 indexed tokenId, address indexed sender);\\n\\n    /// @notice Expiry of label was changed.\\n    /// @param tokenId The token ID of the label.\\n    /// @param newExpiry The new expiry of the label.\\n    /// @param sender The sender of the call to update the expiry.\\n    event ExpiryUpdated(uint256 indexed tokenId, uint64 indexed newExpiry, address indexed sender);\\n\\n    /// @notice Subregistry of label was changed.\\n    /// @param tokenId The token ID of the label.\\n    /// @param subregistry The new subregistry.\\n    /// @param sender The sender of the call to update the subregistry.\\n    event SubregistryUpdated(\\n        uint256 indexed tokenId,\\n        IRegistry indexed subregistry,\\n        address indexed sender\\n    );\\n\\n    /// @notice Resolver of label was changed.\\n    /// @param tokenId The token ID of the label.\\n    /// @param resolver The new resolver.\\n    /// @param sender The sender of the call to update the resolver.\\n    event ResolverUpdated(\\n        uint256 indexed tokenId,\\n        address indexed resolver,\\n        address indexed sender\\n    );\\n\\n    /// @notice URI was changed.\\n    /// @param uri The new URI.\\n    /// @param renderer The new render address.\\n    /// @param sender The sender of the call to update the URI.\\n    event URIUpdated(string uri, address renderer, address indexed sender);\\n\\n    /// @notice Token was regenerated with a new token ID.\\n    ///         This occurs when roles are granted or revoked to maintain ERC1155 compliance.\\n    /// @param oldTokenId The old token ID.\\n    /// @param newTokenId The new token ID.\\n    event TokenRegenerated(uint256 indexed oldTokenId, uint256 indexed newTokenId);\\n\\n    /// @notice Parent was changed.\\n    /// @param parent The new parent.\\n    /// @param label The new label.\\n    /// @param sender The sender of the call to update the parent.\\n    event ParentUpdated(IRegistry indexed parent, string label, address indexed sender);\\n}\\n\",\"keccak256\":\"0x97399c29b20df503b4c1039c5cdad89eca90b5306f1a664983ba1b0a179947ad\",\"license\":\"MIT\"},\"project/src/registry/interfaces/IRegistryURIRenderer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity >=0.8.13;\\n\\nimport {IRegistry} from \\\"./IRegistry.sol\\\";\\n\\n/// @dev Interface selector: `0x6c55e19b`\\ninterface IRegistryURIRenderer {\\n    /// @notice Generate URI for `tokenId` from `registry`.\\n    /// @param registry The registry.\\n    /// @param tokenId The token ID in the registry.\\n    /// @return The generated URI.\\n    function renderURI(IRegistry registry, uint256 tokenId) external view returns (string memory);\\n}\\n\",\"keccak256\":\"0xa6ea64ff73d10fa58118ae9c0d0c2caa72f2f3488776227a22bd0cd9cd6586f6\",\"license\":\"MIT\"},\"project/src/utils/LibString.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\n/// @title LibString\\n/// @notice Gas-efficient string conversion utilities for Ethereum addresses and numbers.\\n/// @dev All functions use inline assembly for optimal gas efficiency.\\nlibrary LibString {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Address to String Conversions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Converts an address to its lowercase hex string representation (without 0x prefix).\\n    ///\\n    /// Uses inline assembly for gas efficiency.\\n    /// Produces exactly 40 hex characters.\\n    ///\\n    /// @param value The address to convert.\\n    /// @return result The lowercase hex string (40 bytes, no 0x prefix).\\n    function toAddressString(address value) internal pure returns (string memory result) {\\n        /// @solidity memory-safe-assembly\\n        assembly {\\n            // Allocate memory for result string\\n            result := mload(0x40)\\n            mstore(0x40, add(result, 0x60)) // 32 (length slot) + 40 (data) padded to 64 bytes\\n            mstore(result, 40) // Store string length (40 hex chars)\\n\\n            // Hex lookup table: \\\"0123456789abcdef\\\" left-aligned in a bytes32\\n            let table := 0x3031323334353637383961626364656600000000000000000000000000000000\\n\\n            let o := add(result, 32) // Pointer to string data (after length slot)\\n            let v := shl(96, value) // Left-align 160-bit address in 256-bit word\\n\\n            // Process 1 byte (2 nibbles) per iteration \\u2192 20 iterations for 40 hex chars\\n            for {\\n                let i := 0\\n            } lt(i, 20) {\\n                i := add(i, 1)\\n            } {\\n                let b := byte(i, v) // Extract i-th byte from left\\n                let pos := shl(1, i) // Output position = i * 2\\n                mstore8(add(o, pos), byte(shr(4, b), table)) // High nibble \\u2192 ASCII\\n                mstore8(add(o, add(pos, 1)), byte(and(b, 0xf), table)) // Low nibble \\u2192 ASCII\\n            }\\n        }\\n    }\\n\\n    /// @dev Converts an address to its EIP-55 checksummed hex string.\\n    ///\\n    /// Uses toAddressString for lowercase conversion, then applies EIP-55 checksum.\\n    /// Produces \\\"0x\\\" + 40 hex characters.\\n    ///\\n    /// @param addr The address to convert.\\n    /// @return result The checksummed hex string (42 bytes).\\n    function toChecksumHexString(address addr) internal pure returns (string memory result) {\\n        // Get lowercase hex without prefix (40 chars)\\n        string memory lowercase = toAddressString(addr);\\n\\n        assembly {\\n            result := mload(0x40)\\n            mstore(0x40, add(result, 0x60)) // 32 (length) + 42 (data) = 74, round up to 96\\n            mstore(result, 42) // Set string length\\n\\n            let ptr := add(result, 32)\\n            // Write \\\"0x\\\" prefix\\n            mstore8(ptr, 0x30) // '0'\\n            mstore8(add(ptr, 1), 0x78) // 'x'\\n\\n            let hexPtr := add(ptr, 2)\\n            let srcPtr := add(lowercase, 32)\\n\\n            // Copy 40 bytes from lowercase string to result\\n            mstore(hexPtr, mload(srcPtr))\\n            mstore(add(hexPtr, 32), mload(add(srcPtr, 32)))\\n\\n            // Hash the 40 lowercase hex chars for checksum\\n            let hashVal := keccak256(hexPtr, 40)\\n\\n            // Apply checksum: uppercase letters where hash nibble >= 8\\n            for {\\n                let i := 0\\n            } lt(i, 40) {\\n                i := add(i, 1)\\n            } {\\n                let charPos := add(hexPtr, i)\\n                let char := byte(0, mload(charPos))\\n                // If char is a-f (97-102) and hash nibble >= 8, uppercase it (xor with 0x20)\\n                // Hash nibble at position i: shift right by (252 - i*4) and mask\\n                if and(gt(char, 96), gt(and(shr(sub(252, shl(2, i)), hashVal), 0xf), 7)) {\\n                    mstore8(charPos, xor(char, 0x20))\\n                }\\n            }\\n        }\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Number to String Conversions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Converts a uint256 to its ASCII decimal string representation.\\n    /// @param value The value to convert.\\n    /// @return result The decimal string.\\n    function toString(uint256 value) internal pure returns (string memory result) {\\n        assembly {\\n            result := mload(0x40)\\n\\n            switch value\\n            case 0 {\\n                mstore(0x40, add(result, 0x40)) // 32 (length slot) + 1 (data) = 33, round to 64\\n                mstore(result, 1) // length = 1\\n                mstore8(add(result, 32), 0x30) // '0'\\n            }\\n            default {\\n                // Count digits: `for {} temp {}` is Yul idiom for `while (temp != 0)`\\n                let temp := value\\n                let digits := 0\\n                for {} temp {} {\\n                    digits := add(digits, 1)\\n                    temp := div(temp, 10)\\n                }\\n\\n                // Set length and update free memory pointer (rounded to 32-byte boundary)\\n                mstore(result, digits)\\n                mstore(0x40, add(result, and(add(add(32, digits), 31), not(31))))\\n\\n                // Write digits from right to left: `for {} temp {}` is Yul idiom for `while (temp != 0)`\\n                let ptr := add(add(result, 32), digits)\\n                temp := value\\n                for {} temp {} {\\n                    ptr := sub(ptr, 1)\\n                    mstore8(ptr, add(48, mod(temp, 10))) // 48 = ASCII '0'\\n                    temp := div(temp, 10)\\n                }\\n            }\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x3b579a4bdad063398e0c7aea0ca53f4147235e28a4ec8d007a8b6d9262ddf4e7\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 35298,
+        "contract": "project/src/registry/StaticURIRenderer.sol:StaticURIRenderer",
+        "label": "_owner",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_address"
+      },
+      {
+        "astId": 69455,
+        "contract": "project/src/registry/StaticURIRenderer.sol:StaticURIRenderer",
+        "label": "PREFIX",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_string_storage"
+      },
+      {
+        "astId": 69458,
+        "contract": "project/src/registry/StaticURIRenderer.sol:StaticURIRenderer",
+        "label": "AFTER_REGISTRY",
+        "offset": 0,
+        "slot": "2",
+        "type": "t_string_storage"
+      },
+      {
+        "astId": 69461,
+        "contract": "project/src/registry/StaticURIRenderer.sol:StaticURIRenderer",
+        "label": "AFTER_TOKEN",
+        "offset": 0,
+        "slot": "3",
+        "type": "t_string_storage"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_string_storage": {
+        "encoding": "bytes",
+        "label": "string",
+        "numberOfBytes": "32"
+      }
+    }
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {
+      "AFTER_REGISTRY()": {
+        "notice": "URI fragment between registry address and token."
+      },
+      "AFTER_TOKEN()": {
+        "notice": "URI fragment after token."
+      },
+      "PREFIX()": {
+        "notice": "URI fragment before registry address."
+      },
+      "renderURI(address,uint256)": {
+        "notice": "Generate URI for `tokenId` from `registry`."
+      }
+    },
+    "notice": "An immutable IRegistryURIRenderer that injects registry address and token ID into a URI string using fragments.  Ownable for contract naming. The registry address does not include \"0x\". Format: \"{PREFIX}{registryAsHexAddress}{AFTER_REGISTRY}{tokenIdAsDecimal}{AFTER_TOKEN}\" eg.       PREFIX = \"https://metadata/0x\"   AFTER_REGISTRY = \"/\"      AFTER_TOKEN = \".json\" renderURI(1, 2) => \"https://metadata/0x0000000000000000000000000000000000000001/2.json\"",
+    "version": 1
+  },
+  "argsData": "0x00000000000000000000000084d3a426d4e12e955d1df95db0b24fe26afe39d3000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000002768747470733a2f2f6d657461646174612e656e732e646f6d61696e732f7365706f6c69612f30780000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000052e6a736f6e000000000000000000000000000000000000000000000000000000",
+  "transaction": {
+    "hash": "0x68510eb96aed8d92d77b54cde92f88e92b75cf9d4c06982ca69c16e5fd442d6f",
+    "nonce": "0xf5d",
+    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+  },
+  "receipt": {
+    "blockHash": "0x31c577c823f78ce87f5b2d7e57bfa94616196ce7bc3b8e551708ed01eb5494c6",
+    "blockNumber": "0xb45cff",
+    "transactionIndex": "0x88"
+  }
+}

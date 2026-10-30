@@ -1,4 +1,9 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_IRentPriceOracle } from "generated/abis/IRentPriceOracle.js";
+import type { Abi_INameWrapper } from "generated/abis/INameWrapper.js";
+import type { Abi_IWrappedETHRegistrarController } from "generated/abis/IWrappedETHRegistrarController.js";
+import { Artifact_ETHRenewerV1 } from "generated/artifacts/ETHRenewerV1.js";
 import {
   DEPLOYMENT_ROLES,
   GRACE_PERIOD_V2,
@@ -11,29 +16,25 @@ export default execute(
     execute: write,
     get,
     getV1,
-    namedAccounts: { deployer, owner },
+    read,
+    namedAccounts: { beneficiary, deployer, owner },
   }) => {
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
-
-    const rentPriceOracle = get<(typeof artifacts.IRentPriceOracle)["abi"]>(
+    const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
+    const rentPriceOracle = get<Abi_IRentPriceOracle>(
       "StandardRentPriceOracle",
     );
-
-    const nameWrapper =
-      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
-
-    const wrappedController = await getV1<
-      (typeof artifacts.IWrappedETHRegistrarController)["abi"]
-    >("WrappedETHRegistrarController");
+    const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
+    const wrappedController = await getV1<Abi_IWrappedETHRegistrarController>(
+      "WrappedETHRegistrarController",
+    );
 
     const ethRenewerV1 = await deploy("ETHRenewerV1", {
       account: deployer,
-      artifact: artifacts.ETHRenewerV1,
+      artifact: Artifact_ETHRenewerV1,
       args: [
         owner,
         ethRegistry.address,
-        owner, // TODO: beneficiary,
+        beneficiary,
         rentPriceOracle.address,
         GRACE_PERIOD_V2,
         PREMIGRATION_BONUS_PERIOD,
@@ -42,11 +43,17 @@ export default execute(
       ],
     });
 
-    await write(ethRegistry, {
-      functionName: "grantRootRoles",
+    const granted = await read(ethRegistry, {
+      functionName: "hasRootRoles",
       args: [DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT, ethRenewerV1.address],
-      account: deployer,
     });
+    if (!granted) {
+      await write(ethRegistry, {
+        functionName: "grantRootRoles",
+        args: [DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT, ethRenewerV1.address],
+        account: deployer,
+      });
+    }
   },
   {
     tags: ["ETHRenewerV1", "migration:phase1:deploy-v2", "v2"],
