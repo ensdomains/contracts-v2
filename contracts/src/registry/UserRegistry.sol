@@ -91,7 +91,7 @@ contract UserRegistry is
         address /* previousImplementation */
     )
         external
-        pure
+        view
         virtual
         override
         returns (bool allowed)
