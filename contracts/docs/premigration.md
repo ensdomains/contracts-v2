@@ -37,8 +37,11 @@ bun run script/preMigration.ts --continue \
 
 In the phased migration this script is driven through the operator CLI
 (`bun run migration -- premigration run` / `resume`, then `verify`) — see
-[migration.md](./migration.md). The CLI fills in `--graveyards` from the deployment artifacts. The
-reference below documents the underlying script directly.
+[migration.md](./migration.md). The CLI fills in `--graveyards` from the deployment artifacts. On a
+local fork or a Tenderly virtual testnet, its `--impersonate-account <address>` sends as that
+`BatchRegistrar` owner without a key: it impersonates and funds the account, passes it as
+`--account`, and ignores the keys in the environment. The reference below documents the underlying
+script directly.
 
 ## Prerequisites
 
@@ -133,12 +136,20 @@ endings are tolerated.
 
 **Strict structural parsing.** Any structural problem aborts the run with the CSV path and 1-based
 line number (header = line 1); fix the file and re-run. Aborts on: no label column (none of the above); unbalanced quotes (header or row); a data row whose column count differs from the
-header; an empty/whitespace-only label cell; a blank line anywhere but a single trailing one; an empty
-file.
+header; an empty/whitespace-only label cell in a row with no labelhash to name it by; a blank line
+anywhere but a single trailing one; an empty file.
+
+**Names with no known label.** When the CSV has a `labelhash` column (the Dune and exporter formats,
+and the subgraph's `labelHash`), a row whose label cell is empty, or holds text that does not hash to
+the row's labelhash, is an export's stand-in for a label nobody knows: Dune writes an empty cell or
+`<nil>`. Such a row is read as its labelhash in bracketed form (`[…]`) rather than aborting the run
+or reserving the stand-in text as a name.
 
 **Application-level filtering** happens *after* structural parsing and does **not** abort: labels
-longer than 255 bytes and the bracketed-labelhash form (`[0x…]`) are skipped and counted as
-`invalidLabelCount`.
+longer than 255 bytes are skipped and counted as `invalidLabelCount`. A label in the
+bracketed-labelhash form (`[…]`) is judged by v1 like any other. A name registered with that text
+itself is a v1 name under the hash of the text, and is reserved. A placeholder for a label nobody
+knows has a hash v1 never registered, so it is skipped and counted as `invalidLabelCount`.
 
 > **Limitation:** `readline` splits on `\n`, so a field containing a literal newline inside quotes is
 > misread. No exporter we control produces these; pre-process the file if you have one.
@@ -190,8 +201,8 @@ node. The node is `keccak256(namehash("eth") ‖ labelhash)`, so no plaintext la
   locked migration leaves the `BaseRegistrar` token and the node with the `NameWrapper`, and hands the
   wrapper token to the Graveyard.
 
-A name nobody holds has no registrant. A failed read that the registrant depends on fails the name, and
-the name is retried.
+A name nobody holds has no registrant. A failed read that the registrant depends on is read again (see
+[Output](#output)), and fails the name only when it keeps failing; the name is then retried.
 
 `--graveyards` must list every Graveyard on the chain, not only the active deployment's. A superseded
 deployment's Graveyard keeps every name it reclaimed or received while it was live: on Sepolia, the
@@ -220,8 +231,9 @@ out of the batch and counted separately, so the final sync sends only what has a
 than resubmitting the whole CSV.
 
 > **When can a name be `Registered (2)`?** Not during the migration phases. Migration opens to users
-> only after the final pre-migration sync completes, so a name owned on v2 while pre-migration is
-> still running did not get there by being claimed. It is reported and counted, and does not fail the
+> at go-live ([phase 6](./migration.md#phase-6-enable-the-v2-controller)), after the final
+> pre-migration sync completes, so a name owned on v2 while pre-migration is still running did not get
+> there by being claimed. It is reported and counted, and does not fail the
 > run, but it is worth understanding before continuing.
 
 **One name cannot stop the run.** Every per-name failure mode is handled explicitly, but an
@@ -238,7 +250,10 @@ with `--continue` once the cause is fixed.
 **Gas safety.** Before submitting, the script estimates gas; if it exceeds 80% of the block limit the
 batch is split in half and re-estimated (recursively). If a batch reverts at execution, it is
 recursively halved and retried (binary search) until failing names are isolated — preserving partial
-progress. A transaction that is slow to be mined is waited for, with or without a gas price limit,
+progress. A send the RPC endpoint's rate limit refuses is not split: it is sent again after a wait
+that doubles with each refusal in a row, up to the same attempt limit as a refused read, and only
+then is the batch halved. The refusal comes before any node sees the send, and a repeat that lands
+all the same changes nothing, since a reservation is only ever extended. A transaction that is slow to be mined is waited for, with or without a gas price limit,
 and is not counted as failed: splitting its batch would send the names again while it can still be
 mined. A checkpoint is saved after each batch.
 
@@ -316,6 +331,16 @@ RPC timeouts at a 30s limit for a reply to start and two minutes for all of it, 
 errors) are counted and logged without aborting
 the batch, so partial progress is preserved.
 
+**A failed read is read again before it fails a name.** None of the reads that judge a name fails for a
+reason the chain gives: the v2 entry and the v1 expiry and owners answer for any name. So when a read
+in a batch fails, such as a timeout, a refused request or a load-balanced node erroring at random, the
+whole batch is read again after a wait that doubles with each failure in a row, from about a second up
+to 30 seconds, spread at random so retries do not bunch up. After 10 attempts the names whose reads
+failed are counted failed. A rate-limited endpoint therefore slows the run rather than failing names. A failed read of either chain's time is read again the
+same way, and past the limit it stops the run, because any other time would change which names count
+as claimable. This matters most for a dry run, which keeps no checkpoint and so must start again from
+the first row after a failure.
+
 **A failed name is retried, not stepped over.** The checkpoint stops before the first failure, so
 `--continue` reaches that name again rather than resuming past it. Names that succeeded after it are
 re-read and skipped as already up to date, so the retry is cheap. A whole batch failing stops the run
@@ -325,6 +350,38 @@ for the same reason: none of its names were written, and the cursor must stay be
 reporting the run as a success would hand back a green result over an incomplete reservation set.
 Re-run with `--continue` after fixing the cause. The "already registered" and "already up to date"
 counters are not failures — nothing was lost in either case — and do not affect the exit status.
+
+## Syncing only changed names
+
+Once a run has reserved every name, a later sync only needs the names whose v1 expiry changed since.
+A v1 expiry changes only through the `BaseRegistrar`'s `NameRegistered` and `NameRenewed` events, so
+`premigration changed-names` reads those events in a block range and writes the names as a
+pre-migration CSV. A sync over that CSV checks a day's changes in minutes. A sync over a full export
+reads every name, which takes hours.
+
+```bash
+bun run migration -- premigration changed-names --network mainnet \
+  --from-block <first block not yet synced> --out .dev/sync/input.csv \
+  --label-csv <earlier export.csv> ...
+bun run migration -- premigration run --network mainnet \
+  --csv-file .dev/sync/input.csv --work-dir .dev/sync
+```
+
+- **Range.** Give `--from-block <n>`, or `--since <ISO time>` for the first block at or after a time.
+  `--to-block` defaults to the chain's `finalized` block, so a reorg cannot drop an event the next sync
+  then skips. It also takes a block number or `latest`. Start the next sync at the block after this
+  one's `toBlock`. Ranges may overlap, because pre-migration only extends an expiry.
+- **Labels.** A name's label comes from the registrar controller's event in the range, kept only when
+  it hashes to the labelhash. A name with no such event, such as one a controller with no label event
+  registered, takes its label from the `--label-csv` exports, matched on its labelhash. A name neither
+  labels is written as `[labelhash]`, which pre-migration counts as invalid, like an unlabelled export
+  row.
+- **Coverage.** `<out>.meta.json` records the range, the logs read, and how many names were labelled
+  by events, by exports, or not at all.
+- The list does no filtering. Pre-migration reads each name's v1 and v2 state and decides whether to
+  reserve, renew, skip, or leave it.
+- `--log-span` (default 50,000 blocks) and `--log-concurrency` (default 4) set the log queries. A
+  query the RPC refuses is halved and asked again.
 
 ## Cost estimate
 

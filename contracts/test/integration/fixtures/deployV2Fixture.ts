@@ -67,7 +67,7 @@ export async function deployV2Fixture(
     walletClient.account.address,
     ethRegistry.address,
     zeroAddress,
-    DEPLOYMENT_ROLES.ETH_TOKEN,
+    DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
     MAX_EXPIRY,
   ]);
   await ethRegistry.write.setParent([rootRegistry.address, "eth"]);

@@ -80,6 +80,12 @@ export type NetworkConfig = {
   defaultForkPort: number;
   defaultOwner: Address;
   defaultV1Owner: Address;
+  // Admin of the managed URP a deploy creates or adopts, when the network names one;
+  // otherwise the deployer administers it.
+  defaultUrManager?: Address;
+  // Holder of the root registry's `eth` token after the handover, when the network
+  // names one.
+  defaultNameOwner?: Address;
   chainTags: string[];
 };
 
@@ -89,6 +95,15 @@ const MAINNET_DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
 // The Sepolia ENS v1 BaseRegistrar owner EOA; derived from the `v1Owner` named
 // account in rocketh/config.ts so the two values cannot drift apart.
 const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
+// The managed URP admin per network, from the `securityCouncil` named account in
+// rocketh/config.ts for the same reason.
+const SEPOLIA_UR_MANAGER = getAddress(
+  rockethConfig.accounts.securityCouncil.sepolia,
+);
+const MAINNET_UR_MANAGER = getAddress(
+  rockethConfig.accounts.securityCouncil.mainnet,
+);
+const MAINNET_NAME_OWNER = getAddress(rockethConfig.accounts.nameOwner.mainnet);
 
 export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
   sepolia: {
@@ -98,6 +113,7 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
     defaultForkPort: 8547,
     defaultOwner: DEFAULT_ANVIL_OWNER,
     defaultV1Owner: SEPOLIA_V1_OWNER,
+    defaultUrManager: SEPOLIA_UR_MANAGER,
     chainTags: [],
   },
   mainnet: {
@@ -107,9 +123,47 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
     defaultForkPort: 8548,
     defaultOwner: MAINNET_DAO,
     defaultV1Owner: MAINNET_DAO,
+    defaultUrManager: MAINNET_UR_MANAGER,
+    defaultNameOwner: MAINNET_NAME_OWNER,
     chainTags: ["hasDao"],
   },
 };
+
+/// A `.eth` name registered straight to its owner on v2, outside pre-migration.
+export type DirectRegistration = {
+  label: string;
+  owner: Address;
+  /// The resolver to register with: a fixed address, or `"v1"` for the resolver the
+  /// name has on v1 when it is registered.
+  resolver: Address | "v1";
+  /// The expiry to register with: a fixed time, or `"v1"` for the expiry the name
+  /// has on v1 when it is registered.
+  expiry: bigint | "v1";
+};
+
+/// Names each network registers directly on v2. They skip pre-migration because no
+/// export carries their label and no registrar prices them, and the DAO chooses
+/// their owner. A v2 name cannot be owned by the DAO timelock, which has no ERC-1155
+/// receiver, so a DAO name goes to the name owner.
+export const DIRECT_REGISTRATIONS: Partial<
+  Record<MigrationNetwork, DirectRegistration[]>
+> = {
+  mainnet: [
+    {
+      label: "on",
+      owner: MAINNET_NAME_OWNER,
+      resolver: "v1",
+      expiry: "v1",
+    },
+  ],
+};
+
+/// The names a network registers directly on v2; none where it lists none.
+export function directRegistrations(
+  network: MigrationNetwork,
+): DirectRegistration[] {
+  return DIRECT_REGISTRATIONS[network] ?? [];
+}
 
 ////////////////////////////////////////////////////////////////////////
 // Deployment artifact roots
