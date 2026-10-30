@@ -4,6 +4,17 @@ export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
 export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
   "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
 
+export const DAO_WALLET = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
+
+export const DAO_TOKEN_SAFE =
+  "0x5B716D6587d241166bC8914858640F8684F3A2F3" as const;
+
+export const DAO_ENDOWMENT_SAFE =
+  "0x4F2083f5fBede34C2714aFfb3105539775f7FE64" as const;
+
+export const DAO_SECURITY_COUNCIL_SAFE =
+  "0x7101B78638e34444F0a5AdE9e1149fbEeC029931" as const;
+
 // Networks whose top URP already fronts a long-lived intermediate (managed) URP
 // whose admin we control, keyed by network name. On these networks a fresh v2
 // deployment reuses the existing intermediate URP instead of deploying a new one.
@@ -98,6 +109,10 @@ export const ROLES = {
   ADMIN,
 } as const;
 
+export function toRequiredGrantRevokeRoles(roleBitmap: bigint) {
+  return (roleBitmap | (roleBitmap >> 128n)) << 128n;
+}
+
 // Root roles that reach a registry's names or replace its code: setting a name's
 // child registry or resolver, unregistering it, letting its owner transfer it, and
 // upgrading the registry, each with its admin role. A registry where nobody holds
@@ -169,6 +184,9 @@ export const DEPLOYMENT_ROLES = {
   // UnlockedMigrationController and LockedMigrationController
   // only need to register() pre-migrated reservations on ETHRegistry (see: "ENSv2 Migration Case Study")
   MIGRATION_CONTROLLER_ROOT: ROLES.REGISTRY.REGISTER_RESERVED,
+
+  TEMPORARY_DNS_REGISTRAR_ROOT:
+    ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.REGISTER_RESERVED,
 } as const;
 
 // see: IPermissionedRegistry.sol
