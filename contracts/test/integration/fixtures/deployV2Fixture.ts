@@ -30,6 +30,8 @@ export async function deployV2Fixture(
     "ContractNamer",
     contractNamerProxy.address,
   );
+  const verifiableFactory =
+    await network.viem.deployContract("VerifiableFactory");
   const labelStore = await network.viem.deployContract("LabelStore", [
     contractNamer.address,
   ]);
@@ -58,10 +60,6 @@ export async function deployV2Fixture(
     [rootRegistry.address, batchGatewayProvider.address, contractNamer.address],
     { client: { public: publicClient } },
   );
-  const universalHelper = await network.viem.deployContract("UniversalHelper", [
-    rootRegistry.address,
-    contractNamer.address,
-  ]);
   await rootRegistry.write.register([
     "eth",
     walletClient.account.address,
@@ -71,15 +69,25 @@ export async function deployV2Fixture(
     MAX_EXPIRY,
   ]);
   await ethRegistry.write.setParent([rootRegistry.address, "eth"]);
-
   // Grant REGISTRAR so setupName can register subdomains under .eth
   await ethRegistry.write.grantRootRoles([
     ROLES.REGISTRY.REGISTRAR,
     walletClient.account.address,
   ]);
-  const verifiableFactory =
-    await network.viem.deployContract("VerifiableFactory");
-  const PermissionedResolverImpl = await network.viem.deployContract(
+  const trustedRegistrySet = await network.viem.deployContract(
+    "PermissionedAddressSet",
+    [walletClient.account.address],
+  );
+  await trustedRegistrySet.write.approve([rootRegistry.address, true]);
+  await trustedRegistrySet.write.approve([ethRegistry.address, true]);
+  const universalHelper = await network.viem.deployContract("UniversalHelper", [
+    rootRegistry.address,
+    verifiableFactory.address,
+    trustedRegistrySet.address,
+    zeroAddress,
+    contractNamer.address,
+  ]);
+  const permissionedResolverImpl = await network.viem.deployContract(
     "PermissionedResolver",
     [contractNamer.address],
   );
@@ -111,8 +119,8 @@ export async function deployV2Fixture(
     return deployVerifiableProxy({
       walletClient: await network.viem.getWalletClient(owner),
       factoryAddress: verifiableFactory.address,
-      implAddress: PermissionedResolverImpl.address,
-      abi: PermissionedResolverImpl.abi,
+      implAddress: permissionedResolverImpl.address,
+      abi: permissionedResolverImpl.abi,
       functionName: "initialize",
       args: [[[walletClient.account.address, roles]], setters],
       salt,
