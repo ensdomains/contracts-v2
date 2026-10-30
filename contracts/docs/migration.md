@@ -299,7 +299,7 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
 
   | Surface | Candidates considered | Revoked via |
   | --- | --- | --- |
-  | `BaseRegistrar` | the four v1 registration controllers, the handoff contracts (`ETHRenewerV1`, `Graveyard`, `TestnetV1PremigrationRegistrar`) of **every** namespace on this chain, and any address in the registrar's `ControllerAdded` history that no local artifact accounts for | `RegistrarSecurityController.removeRegistrarController` while it still owns the registrar, else `removeController` |
+  | `BaseRegistrar` | the four v1 registration controllers, the handoff contracts (`ETHRenewerV1`, `Graveyard`, `GraveyardRepairer`, `TestnetV1PremigrationRegistrar`) of **every** namespace on this chain, and any address in the registrar's `ControllerAdded` history that no local artifact accounts for | `RegistrarSecurityController.removeRegistrarController` while it still owns the registrar, else `removeController` |
   | `ReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `ReverseRegistrarAdapter`) of **every** namespace on this chain, plus any address in the registrar's `ControllerChanged` history that reports forwarding to it | `setController(addr, false)` |
   | `DefaultReverseRegistrar` | this tooling's handoff contracts granted there (`TestnetV1PremigrationRegistrar`, `DefaultReverseRegistrarAdapter`) of **every** namespace on this chain, plus any address in the registrar's `ControllerChanged` history that reports forwarding to it | `setController(addr, false)` |
 
@@ -345,6 +345,20 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
   for a wrapped name — the `NameWrapper`'s own copy of the expiry, all in one transaction, leaving the
   v2 entry `RESERVED`. This does **not** reopen the phase 3 registration freeze. `verify-v1-renewer`
   confirms both halves of the state a renewal needs.
+- **`GraveyardRepairer` (mainnet only).** The `Graveyard` deployed on mainnet never writes a .eth
+  node it already owns, since a migration hands it over with the resolver cleared, so a registry owner
+  who hands it a node with a resolver set keeps that resolver live. It cannot be upgraded. Once such a
+  registration lapses, `GraveyardRepairer.repair` registers the name to itself, clears the resolver and
+  hands the node and the token to the `Graveyard`. Deploy it into the active namespace, so phase 3
+  keeps its grant:
+  ```bash
+  bun run deploy-and-verify:contract GraveyardRepairer --network mainnet \
+    --deployment-network mainnet --args '["<Graveyard address>"]'
+  ```
+  It needs the `BaseRegistrar` controller role. With the registrar owned by `ETHRenewerV1`, the DAO
+  grants it in one execution: `ETHRenewerV1.transferRegistrarOwnership` to the DAO,
+  `addController`, and the ownership transfer back, so renewals keep working.
+  `test/fork/GraveyardRepairer.fork.t.sol` runs both against mainnet.
 
 > **The controller grant alone does not make a name renewable.** `ETHRenewerV1.renew` calls
 > `syncWrapper`, which calls `addController` on the v1 `BaseRegistrar` so `NameWrapper` can update a

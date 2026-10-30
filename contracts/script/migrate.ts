@@ -2243,6 +2243,7 @@ const V1_HANDOFF_CONTROLLERS: Record<
   BaseRegistrarImplementation: [
     "ETHRenewerV1",
     "Graveyard",
+    "GraveyardRepairer",
     "TestnetV1PremigrationRegistrar",
   ],
   ReverseRegistrar: [
