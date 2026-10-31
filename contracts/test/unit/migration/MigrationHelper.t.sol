@@ -12,6 +12,7 @@ import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
+import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {MigrationHelper, LockedChildren} from "~src/migration/MigrationHelper.sol";
 import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
@@ -55,7 +56,8 @@ contract MigrationHelperTest is MigrationControllerFixture {
             boxedRenderer,
             publicResolverSet,
             address(0), // publicResolver
-            address(this) // namer
+            address(this), // namer
+            IAddressSet(address(0)) // upgradeAuthority
         );
         lockedController = new LockedMigrationController(
             nameWrapper,

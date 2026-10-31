@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -12,6 +11,8 @@ import {
     Grant
 } from "../access-control/interfaces/IEACGrantInitializable.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
+import {DelegatedUpgradeAuthority} from "../utils/DelegatedUpgradeAuthority.sol";
+import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
@@ -24,11 +25,11 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 ///         initializers on the implementation contract; proxies call `initialize()` to set up the
 ///         admin and initial roles. Upgrade authorization requires the upgrade role in the root resource.
 contract UserRegistry is
-    Initializable,
     PermissionedRegistry,
+    IEACGrantInitializable,
+    Initializable,
     UUPSUpgradeable,
-    IProxyAuthorization,
-    IEACGrantInitializable
+    DelegatedUpgradeAuthority
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -44,12 +45,19 @@ contract UserRegistry is
     /// @param labelStore The shared label database.
     /// @param uriRenderer The default URI renderer.
     /// @param namer The implementation namer.
-    constructor(ILabelStore labelStore, IRegistryURIRenderer uriRenderer, address namer)
+    /// @param upgradeAuthority The upgrade authority.
+    constructor(
+        ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
+        address namer,
+        IAddressSet upgradeAuthority
+    )
         PermissionedRegistry(
             labelStore,
             namer,
             RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         )
+        DelegatedUpgradeAuthority(upgradeAuthority)
     {
         _disableInitializers();
         URI_RENDERER = uriRenderer;
@@ -73,7 +81,6 @@ contract UserRegistry is
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(UUPSUpgradeable).interfaceId ||
-            interfaceId == type(IProxyAuthorization).interfaceId ||
             interfaceId == type(IEACGrantInitializable).interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -81,21 +88,6 @@ contract UserRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
-    ///      upgrade call.
-    /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `false` as this is the first implementation
-    function canUpgradeFrom(
-        address /* previousImplementation */
-    )
-        external
-        view
-        virtual
-        override
-        returns (bool allowed)
-    {}
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Override: includes `ROLE_UPGRADE` because implementation is unrestricted.

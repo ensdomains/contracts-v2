@@ -4,7 +4,6 @@ pragma solidity >=0.8.13;
 import {console} from "forge-std/console.sol";
 
 import {
-    INameWrapper,
     OperationProhibited,
     CANNOT_UNWRAP,
     CAN_DO_EVERYTHING,
@@ -23,15 +22,14 @@ import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
+import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 
 import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
-import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
 import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -46,12 +44,15 @@ import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     PublicResolverV2 publicResolver;
     WrapperRegistry wrapperRegistryImpl;
+    PermissionedAddressSet upgradeAuthority;
+    WrapperRegistry newWrapperRegistryImpl;
 
     function setUp() external {
         deployMigrationControllerFixture();
@@ -70,7 +71,24 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             boxedRenderer,
             publicResolverSet,
             address(publicResolver),
-            address(this) // namer
+            address(this), // namer
+            IAddressSet(address(0)) // upgradeAuthority
+        );
+
+        upgradeAuthority = new PermissionedAddressSet(address(this));
+
+        newWrapperRegistryImpl = new WrapperRegistry(
+            nameWrapper,
+            address(graveyard),
+            verifiableFactory,
+            address(ensV1Resolver),
+            registryUpgradeSet,
+            labelStore,
+            boxedRenderer,
+            publicResolverSet,
+            address(publicResolver),
+            address(this), // namer
+            upgradeAuthority
         );
 
         migrationController = new LockedMigrationController(
@@ -199,37 +217,54 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
+    function test_wrapperRegistryUpgrade() external {
         WrapperRegistry registry = _deployWrapperRegistryProxy();
-        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
+
+        upgradeAuthority.approve(address(registry), true);
+        registryUpgradeSet.approve(address(newWrapperRegistryImpl), true);
+
+        vm.prank(testOwner);
+        registry.upgradeToAndCall(address(newWrapperRegistryImpl), "");
+
+        assertEq(
+            verifiableFactory.verifyContract(address(registry)),
+            address(newWrapperRegistryImpl)
+        );
+    }
+
+    function test_wrapperRegistryUpgrade_requiresUpgradeAuthority() external {
+        WrapperRegistry registry = _deployWrapperRegistryProxy();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IUUPSProxy.InvalidUpgradeTarget.selector,
+                wrapperRegistryImpl,
+                newWrapperRegistryImpl
+            )
+        );
+        vm.prank(testOwner);
+        registry.upgradeToAndCall(address(newWrapperRegistryImpl), "");
+    }
+
+    function test_wrapperRegistryUpgrade_requiresUpgradeSet() external {
+        WrapperRegistry registry = _deployWrapperRegistryProxy();
+
+        upgradeAuthority.approve(address(registry), true);
 
         vm.expectRevert(
             abi.encodeWithSelector(
                 IWrapperRegistry.UpgradeTargetNotApproved.selector,
-                address(newImplementation)
+                newWrapperRegistryImpl
             )
         );
         vm.prank(testOwner);
-        registry.upgradeToAndCall(address(newImplementation), "");
+        registry.upgradeToAndCall(address(newWrapperRegistryImpl), "");
     }
 
-    function test_wrapperRegistryUpgrade_allowsApprovedTarget() external {
+    function test_wrapperRegistryUpgrade_notAuthorized() external {
         WrapperRegistry registry = _deployWrapperRegistryProxy();
-        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
 
-        registryUpgradeSet.approve(address(newImplementation), true);
-
-        vm.prank(testOwner);
-        registry.upgradeToAndCall(address(newImplementation), "");
-
-        assertEq(WrapperRegistryV2Mock(address(registry)).version(), 2, "version");
-    }
-
-    function test_wrapperRegistryUpgrade_requiresUpgradeRole() external {
-        WrapperRegistry registry = _deployWrapperRegistryProxy();
-        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
-
-        registryUpgradeSet.approve(address(newImplementation), true);
+        upgradeAuthority.approve(address(registry), true);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -240,7 +275,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             )
         );
         vm.prank(actor);
-        registry.upgradeToAndCall(address(newImplementation), "");
+        registry.upgradeToAndCall(address(newWrapperRegistryImpl), "");
     }
 
     function test_MIN_DATA_SIZE() external pure {
@@ -1408,58 +1443,5 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
         return WrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
-    }
-
-    function _newWrapperRegistryV2Mock() internal returns (WrapperRegistryV2Mock) {
-        return
-            new WrapperRegistryV2Mock(
-                nameWrapper,
-                address(graveyard),
-                verifiableFactory,
-                address(ensV1Resolver),
-                registryUpgradeSet,
-                labelStore,
-                boxedRenderer,
-                publicResolverSet,
-                address(publicResolver),
-                address(this)
-            );
-    }
-}
-
-
-contract WrapperRegistryV2Mock is WrapperRegistry {
-    constructor(
-        INameWrapper nameWrapper,
-        address graveyard,
-        IVerifiableFactory verifiableFactory,
-        address ensV1Resolver,
-        IAddressSet upgradeSet,
-        ILabelStore labelStore,
-        IRegistryURIRenderer uriRenderer,
-        IAddressSet publicResolverSet,
-        address publicResolver,
-        address namer
-    )
-        WrapperRegistry(
-            nameWrapper,
-            graveyard,
-            verifiableFactory,
-            ensV1Resolver,
-            upgradeSet,
-            labelStore,
-            uriRenderer,
-            publicResolverSet,
-            publicResolver,
-            namer
-        )
-    {}
-
-    function canUpgradeFrom(address) external pure override returns (bool) {
-        return true;
-    }
-
-    function version() public pure returns (uint256) {
-        return 2;
     }
 }

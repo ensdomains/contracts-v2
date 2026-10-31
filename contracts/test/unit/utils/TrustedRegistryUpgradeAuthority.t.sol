@@ -11,21 +11,19 @@ import {
     IEACGrantInitializable,
     Grant
 } from "~src/access-control/interfaces/IEACGrantInitializable.sol";
-import {UserRegistryWithUpgradeAuthority} from "~src/registry/UserRegistryWithUpgradeAuthority.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
+import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
+import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
-import {
-    TrustedRegistryUpgradeAuthority,
-    UPGRADE_ROLE_BITMAP
-} from "~src/utils/TrustedRegistryUpgradeAuthority.sol";
+import {TrustedRegistryUpgradeAuthority} from "~src/utils/TrustedRegistryUpgradeAuthority.sol";
 
 contract TrustedRegistryUpgradeAuthorityTest is Test {
     VerifiableFactory factory;
     TrustedRegistryUpgradeAuthority authority;
-    UserRegistryWithUpgradeAuthority userRegistryImpl;
-    BadUserRegistry badUserRegistryImpl;
-    BadUserRegistry badUserRegistry;
+    UserRegistry userRegistryImpl;
+    UserRegistry badUserRegistryImpl;
+    UserRegistry badUserRegistry;
 
     address admin = makeAddr("admin");
     uint256 privateKey = 4;
@@ -36,22 +34,23 @@ contract TrustedRegistryUpgradeAuthorityTest is Test {
         authority = new TrustedRegistryUpgradeAuthority(address(this), signer);
 
         factory = new VerifiableFactory();
-        userRegistryImpl = new UserRegistryWithUpgradeAuthority(
+        userRegistryImpl = new UserRegistry(
             ILabelStore(address(0)),
             IRegistryURIRenderer(address(0)),
             address(1),
             authority
         );
 
-        badUserRegistryImpl = new BadUserRegistry(
+        badUserRegistryImpl = new UserRegistry(
             ILabelStore(address(0)),
             IRegistryURIRenderer(address(0)),
-            address(1)
+            address(1),
+            new AcceptAny()
         );
 
         Grant[] memory grants = new Grant[](1);
         grants[0] = Grant(admin, EACBaseRolesLib.ALL_ROLES);
-        badUserRegistry = BadUserRegistry(
+        badUserRegistry = UserRegistry(
             factory.deployProxy(
                 address(badUserRegistryImpl),
                 0,
@@ -156,14 +155,15 @@ contract TrustedRegistryUpgradeAuthorityTest is Test {
     ////////////////////////////////////////////////////////////////////////
 
     function _prepareForUpgrade() internal {
+        uint256 roleBitmap = RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN;
         vm.prank(admin);
-        badUserRegistry.grantRootRoles(UPGRADE_ROLE_BITMAP, address(authority));
+        badUserRegistry.grantRootRoles(roleBitmap, address(authority));
         vm.prank(admin);
-        badUserRegistry.revokeRootRoles(UPGRADE_ROLE_BITMAP, admin);
+        badUserRegistry.revokeRootRoles(roleBitmap, admin);
         assertTrue(
             badUserRegistry.isOnlyAssignee(
                 badUserRegistry.ROOT_RESOURCE(),
-                UPGRADE_ROLE_BITMAP,
+                roleBitmap,
                 address(authority)
             )
         );
@@ -176,11 +176,8 @@ contract TrustedRegistryUpgradeAuthorityTest is Test {
 }
 
 
-contract BadUserRegistry is UserRegistry {
-    constructor(ILabelStore labelStore, IRegistryURIRenderer uriRenderer, address namer)
-        UserRegistry(labelStore, uriRenderer, namer)
-    {}
-    function canUpgradeFrom(address) external pure override returns (bool) {
+contract AcceptAny is IAddressSet {
+    function includes(address) external pure returns (bool) {
         return true;
     }
 }

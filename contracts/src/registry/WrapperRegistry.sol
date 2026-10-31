@@ -3,7 +3,6 @@ pragma solidity 0.8.25;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -12,6 +11,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
 import {LibMigration} from "../migration/libraries/LibMigration.sol";
 import {LockedWrapperReceiver} from "../migration/LockedWrapperReceiver.sol";
+import {DelegatedUpgradeAuthority} from "../utils/DelegatedUpgradeAuthority.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
@@ -27,13 +27,13 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 /// @notice UUPS-upgradeable registry that wraps an ENSv1 NameWrapper, supporting migration of
 ///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
+    PermissionedRegistry,
     IWrapperRegistry,
     IWrapperRegistryInitializable,
-    PermissionedRegistry,
     LockedWrapperReceiver,
     Initializable,
     UUPSUpgradeable,
-    IProxyAuthorization
+    DelegatedUpgradeAuthority
 {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
@@ -42,7 +42,7 @@ contract WrapperRegistry is
     /// @notice Fallback resolver for ENSv1 resolution.
     address public immutable V1_RESOLVER;
 
-    /// @notice Gate for approved implementation upgrade targets.
+    /// @notice Set of allowed upgrade targets.
     IAddressSet public immutable UPGRADE_SET;
 
     /// @notice Fixed URI renderer.
@@ -72,6 +72,7 @@ contract WrapperRegistry is
     /// @param publicResolverSet The approved list of `PublicResolver` contracts.
     /// @param publicResolver The replacement `PublicResolver`.
     /// @param namer The implementation namer.
+    /// @param upgradeAuthority The upgrade authority.
     constructor(
         INameWrapper nameWrapper,
         address graveyard,
@@ -82,7 +83,8 @@ contract WrapperRegistry is
         IRegistryURIRenderer uriRenderer,
         IAddressSet publicResolverSet,
         address publicResolver,
-        address namer
+        address namer,
+        IAddressSet upgradeAuthority
     )
         PermissionedRegistry(
             labelStore,
@@ -97,6 +99,7 @@ contract WrapperRegistry is
             publicResolverSet,
             publicResolver
         )
+        DelegatedUpgradeAuthority(upgradeAuthority)
     {
         _disableInitializers();
         V1_RESOLVER = ensV1Resolver;
@@ -115,7 +118,6 @@ contract WrapperRegistry is
         return
             type(IWrapperRegistry).interfaceId == interfaceId ||
             type(UUPSUpgradeable).interfaceId == interfaceId ||
-            type(IProxyAuthorization).interfaceId == interfaceId ||
             type(IWrapperRegistryInitializable).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -145,24 +147,6 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
-    ///      upgrade call, including the wrapper upgrade target allowlist.
-    /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `false` as this is the first implementation of WrapperRegistry with no
-    ///                 valid predecessors.
-    function canUpgradeFrom(
-        address /* previousImplementation */
-    )
-        external
-        pure
-        virtual
-        override
-        returns (bool allowed)
-    {
-        // `allowed` defaults to `false`.
-    }
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Blocks registration of emancipated children.
@@ -311,9 +295,7 @@ contract WrapperRegistry is
         // active v1 registry owner.  A null owner means the subname was ABANDONED
         // and reserving the label would lock it forever; positive expiry on either
         // side marks a completed migration.
-        return
-            LibMigration.isEmancipatedChild(_getFuses(node)) &&
-            _REGISTRY_V1.owner(node) != address(0);
+        return LibMigration.isEmancipatedChild(_getFuses(node));
     }
 
     /// @dev Convenience for `NameWrapper` fuses.

@@ -20,6 +20,9 @@ export default execute(
     const registryUpgradeSet = get<Abi_IAddressSet>("RegistryUpgradeSet");
     const publicResolverSet = get<Abi_IAddressSet>("PublicResolverSet");
     const publicResolverV2 = get<Abi_PublicResolverV2>("PublicResolverV2");
+    const upgradeAuthority = get<Abi_IAddressSet>(
+      "TrustedRegistryUpgradeAuthority",
+    );
 
     await deploy("WrapperRegistryImpl", {
       account: deployer,
@@ -34,7 +37,8 @@ export default execute(
         uriRenderer.address,
         publicResolverSet.address,
         publicResolverV2.address,
-        owner,
+        owner, // namer
+        upgradeAuthority.address,
       ],
     });
   },
@@ -50,6 +54,7 @@ export default execute(
       "BoxedENSURIRenderer",
       "PublicResolverSet",
       "PublicResolverV2",
+      "TrustedRegistryUpgradeAuthority",
     ],
   },
 );

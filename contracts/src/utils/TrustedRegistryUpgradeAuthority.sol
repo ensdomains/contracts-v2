@@ -6,22 +6,17 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
-import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 
 import {IAddressSet} from "./interfaces/IAddressSet.sol";
-
-/// @dev Roles required to restore original account.
-uint256 constant UPGRADE_ROLE_BITMAP =
-    RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN;
 
 /// @notice Authority which permits upgrades via signature.
 ///
 /// Requires auditor to verify the current requested proxy is upgradeable.
 ///
-/// Auditor must ensure `UPGRADE_ROLE_BITMAP` roles are held only by the authority
+/// Auditor must ensure roles like `ROLE_UPGRADE` are held only by the authority
 /// to prevent upgrades between the audit (signature) and the upgrade (transaction).
 ///
-/// After upgrading, transfers `UPGRADE_ROLE_BITMAP` to the original account.
+/// After upgrading, transfers roles to the original account.
 ///
 contract TrustedRegistryUpgradeAuthority is Ownable, IAddressSet {
     ////////////////////////////////////////////////////////////////////////
@@ -89,8 +84,9 @@ contract TrustedRegistryUpgradeAuthority is Ownable, IAddressSet {
         _allowed = proxy;
         UUPSUpgradeable(proxy).upgradeToAndCall(impl, data);
         delete _allowed;
-        IEnhancedAccessControl(proxy).grantRootRoles(UPGRADE_ROLE_BITMAP, admin);
-        IEnhancedAccessControl(proxy).revokeRootRoles(UPGRADE_ROLE_BITMAP, address(this));
+        uint256 roleBitmap = IEnhancedAccessControl(proxy).roles(0, address(this));
+        IEnhancedAccessControl(proxy).grantRootRoles(roleBitmap, admin);
+        IEnhancedAccessControl(proxy).revokeRootRoles(roleBitmap, address(this));
     }
 
     /// @inheritdoc IAddressSet
