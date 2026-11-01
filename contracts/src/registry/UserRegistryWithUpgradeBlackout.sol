@@ -97,12 +97,18 @@ contract UserRegistryWithUpgradeBlackout is UserRegistryWithUpgradeSet {
     {
         uint64 until = uint64(block.number + blocks);
         if (_blackoutIncludes(block.number)) {
-            if (upgradeBlackoutLastBlock < until) {}
-            upgradeBlackoutLastBlock = until; // extend
+            if (upgradeBlackoutLastBlock < until) {
+                upgradeBlackoutLastBlock = until; // extend
+            }
         } else {
             upgradeBlackoutFirstBlock = uint64(block.number);
             upgradeBlackoutLastBlock = until; // replace
         }
+    }
+
+    /// @notice Return `true` if during upgrade blackout.
+    function isDuringUpgradeBlackout() external view returns (bool) {
+        return _blackoutIncludes(block.number);
     }
 
     /// @inheritdoc UUPSUpgradeable
@@ -110,10 +116,11 @@ contract UserRegistryWithUpgradeBlackout is UserRegistryWithUpgradeSet {
     function upgradeToAndCall(address newImplementation, bytes memory data) public payable override {
         if (newImplementation == address(_BLACKOUT_IMPLEMENTATION)) {
             (uint256 blockNumber, bytes memory signature) = abi.decode(data, (uint256, bytes));
-            if (!_blackoutIncludes(blockNumber) || !_blackoutIncludes(block.number)) {
+            if (!_blackoutIncludes(block.number)) {
                 revert UpgradeRequiresBlackout();
             }
             if (
+                blockNumber != upgradeBlackoutFirstBlock ||
                 !SignatureChecker.isValidSignatureNow(
                     _BLACKOUT_UPGRADE_SIGNER,
                     keccak256(abi.encode(address(this), newImplementation, blockNumber)),
@@ -122,8 +129,7 @@ contract UserRegistryWithUpgradeBlackout is UserRegistryWithUpgradeSet {
             ) {
                 revert UpgradeNotAuthorized();
             }
-            delete upgradeBlackoutFirstBlock;
-            delete upgradeBlackoutLastBlock;
+            delete upgradeBlackoutFirstBlock; // mark for upgrade during blackout, see: _authorizeUpgrade()
             delete data;
         }
         super.upgradeToAndCall(newImplementation, data);
@@ -133,10 +139,19 @@ contract UserRegistryWithUpgradeBlackout is UserRegistryWithUpgradeSet {
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Override: block upgrades during blackout.
+    /// @dev Override: allow normal upgrades but block upgrade to the blackout implementation.
+    ///      During blackout, only allow an authorized upgrade to the blackout implementation.
     function _authorizeUpgrade(address newImplementation) internal override {
         if (_blackoutIncludes(block.number)) {
-            revert UpgradeDuringBlackout();
+            if (upgradeBlackoutFirstBlock == 0) {
+                // the only way the first block can be zero and inside the interval 
+                // is to be a continuation of the authorized upgradeToAndCall flow
+                delete upgradeBlackoutLastBlock;
+            } else {
+                revert UpgradeDuringBlackout();
+            }
+        } else if (newImplementation == address(_BLACKOUT_IMPLEMENTATION)) {
+            revert UpgradeRequiresBlackout();
         }
         super._authorizeUpgrade(newImplementation);
     }

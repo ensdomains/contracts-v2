@@ -82,19 +82,10 @@ contract UserRegistry is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @param previousImplementation The previous implementation.
-    /// @return Always `false`, as this is the first implementation.
-    function canUpgradeFrom(address previousImplementation)
-        external
-        view
-        virtual
-        override
-        returns (bool)
-    {
-        previousImplementation;
-        return false;
-    }
+    /// @notice Prevent everything from upgrading to this implementation.
+    /// @param {previousImplementation} Ignored.
+    /// @return allowed Always `false`, as this is the first implementation.
+    function canUpgradeFrom(address) external view virtual override returns (bool allowed) {}
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Override: includes `ROLE_UPGRADE` because implementation is unrestricted.

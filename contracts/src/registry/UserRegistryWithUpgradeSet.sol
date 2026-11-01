@@ -40,7 +40,8 @@ contract UserRegistryWithUpgradeSet is UserRegistry {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc UserRegistry
+    /// @notice Allow specific implementations to upgrade to this implementation.
+    /// @param previousImplementation The previous implementation.
     /// @return `true` iff the previous implementation is supported.
     function canUpgradeFrom(address previousImplementation)
         external
@@ -49,6 +50,6 @@ contract UserRegistryWithUpgradeSet is UserRegistry {
         override
         returns (bool)
     {
-        return _upgradeable[previousImplementation];
+        return _upgradeable[previousImplementation]; // this is the implementation, not the proxy
     }
 }
