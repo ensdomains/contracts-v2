@@ -83,19 +83,18 @@ contract UserRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
-    ///      upgrade call.
-    /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `false` as this is the first implementation
-    function canUpgradeFrom(
-        address /* previousImplementation */
-    )
+    /// @param previousImplementation The previous implementation.
+    /// @return Always `false`, as this is the first implementation.
+    function canUpgradeFrom(address previousImplementation)
         external
-        pure
+        view
         virtual
         override
-        returns (bool allowed)
-    {}
+        returns (bool)
+    {
+        previousImplementation;
+        return false;
+    }
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Override: includes `ROLE_UPGRADE` because implementation is unrestricted.
@@ -116,6 +115,7 @@ contract UserRegistry is
     /// @param newImplementation The address of the new implementation contract.
     function _authorizeUpgrade(address newImplementation)
         internal
+        virtual
         override
         onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
     {}
