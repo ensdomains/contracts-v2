@@ -82,11 +82,14 @@ contract StandaloneSingleOwnerHCATest is Test {
         uint128 numer;
     }
 
-    /// @dev Layout mirror of `StandardRentPriceOracle`'s `PaymentRatio` constructor argument.
+    /// @dev Layout mirror of `StandardRentPriceOracle`'s `PaymentConfig` constructor argument.
     struct OraclePaymentRatio {
         address paymentToken;
         uint128 numer;
         uint128 denom;
+        address oracle;
+        bool flip;
+        uint64 maxAge;
     }
 
     bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
@@ -1950,7 +1953,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     {
         OraclePaymentRatio[] memory ratios = new OraclePaymentRatio[](paymentTokens.length);
         for (uint256 i; i < paymentTokens.length; ++i) {
-            ratios[i] = OraclePaymentRatio(paymentTokens[i], 1, 1);
+            ratios[i] = OraclePaymentRatio(paymentTokens[i], 1, 1, address(0), false, 0);
         }
         address oracle =
             deployCode(

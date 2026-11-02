@@ -667,7 +667,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
                 continue;
             }
 
-            if (selector == IETHRegistrar.register.selector) {
+            if (selector == HCARegistrarPolicyLib.REGISTER_SELECTOR) {
                 if (!_isAuthorizedRegistrar(execution.target, state)) {
                     revert ActionNotAllowed(execution.target, selector);
                 }

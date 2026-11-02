@@ -5,7 +5,7 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {AbstractETHRegistrar} from "~src/registrar/AbstractETHRegistrar.sol";
-import {IETHRenewer} from "~src/registrar/interfaces/IETHRenewer.sol";
+import {IETHRenewer, ETH_RENEWER_V0_INTERFACE_ID} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
@@ -26,6 +26,10 @@ contract AbstractETHRegistrarTest is MigrationControllerFixture, StandardRentPri
         assertTrue(
             ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRenewer).interfaceId),
             "IETHRenewer"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(ethRegistrar), ETH_RENEWER_V0_INTERFACE_ID),
+            "IETHRenewer (v0)"
         );
         assertTrue(
             ERC165Checker.supportsInterface(

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
 
-import {IETHRegistrar} from "../../registrar/interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "../../registrar/interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "../../registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "../../registry/interfaces/IPermissionedRegistry.sol";
@@ -16,6 +14,10 @@ import {HCAExecutionLib} from "./HCAExecutionLib.sol";
 /// @notice Identifies authorized registrars and the payment tokens their rent oracles accept.
 /// @dev Fails closed when registrar authorization or oracle discovery is unavailable.
 library HCARegistrarPolicyLib {
+    /// @dev Function selector for the parameterized `IETHRegistry.register()`.
+    bytes4 internal constant REGISTER_SELECTOR =
+        bytes4(keccak256("register(string,address,bytes32,address,address,uint64,address,bytes32)"));
+
     /// @notice Returns whether a registry currently authorizes an account to register names.
     /// @dev Checks the registrar role at the registry root.
     /// @param registry The permissioned ENS registry.
@@ -47,7 +49,7 @@ library HCARegistrarPolicyLib {
             if (address(oracle).code.length == 0) {
                 return false;
             }
-            try oracle.isPaymentToken(IERC20(token)) returns (bool isSupported) {
+            try oracle.isPaymentToken(token) returns (bool isSupported) {
                 return isSupported;
             } catch {
                 return false;
@@ -71,7 +73,7 @@ library HCARegistrarPolicyLib {
         address registrar;
         bool seenRegistration;
         for (uint256 i; i < executions.length; ++i) {
-            if (HCAExecutionLib.selector(executions[i].callData) != IETHRegistrar.register.selector) {
+            if (HCAExecutionLib.selector(executions[i].callData) != REGISTER_SELECTOR) {
                 continue;
             }
             if (!seenRegistration) {

@@ -13,7 +13,12 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
-import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
+import {NATIVE_ETH} from "~src/utils/ERC7528.sol";
+import {
+    IETHRegistrar,
+    CommitData,
+    ETH_REGISTRAR_V0_INTERFACE_ID
+} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IETHRenewer, RenewData} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {ETHRegistrar, REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
@@ -23,9 +28,11 @@ import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOr
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
 // [gas analysis]
-// test_commit(): 24420
-// test_register(): 165841
-// test_renew(): 32012
+// test_commit()            50457
+// test_register()         225986
+// test_registerWithETH()  260948
+// test_renew()            101331
+// test_renewWithETH()     171592
 
 contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracleFixture {
     ETHRegistrar ethRegistrar;
@@ -71,6 +78,10 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         assertTrue(
             ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRegistrar).interfaceId),
             "IETHRegistrar"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(ethRegistrar), ETH_REGISTRAR_V0_INTERFACE_ID),
+            "IETHRegistrar (v0)"
         );
         assertTrue(
             ERC165Checker.supportsInterface(
@@ -133,7 +144,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     ////////////////////////////////////////////////////////////////////////
 
     function test_commit() external {
-        bytes32 commitment = _makeCommitment();
+        bytes32 commitment = ethRegistrar.makeCommitment(_commitData());
         assertEq(
             commitment,
             keccak256(
@@ -175,7 +186,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     }
 
     function test_commit_consumed() external {
-        bytes32 commitment = _makeCommitment();
+        bytes32 commitment = ethRegistrar.makeCommitment(_commitData());
         this.register();
         assertEq(ethRegistrar.commitmentAt(commitment), 0);
     }
@@ -191,41 +202,41 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     function test_register_gas() external {
         delete testRegistry;
         delete testResolver;
-        labelStore.setLabel(testLabel);
 
-        ethRegistrar.commit(_makeCommitment());
+        CommitData memory cd = _commitData();
+        ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
         vm.warp(block.timestamp + testCommitDelay);
 
         vm.prank(testOwner);
         uint256 g = gasleft();
-        ethRegistrar.register(
-            testLabel,
-            testOwner,
-            testSecret,
-            testRegistry,
-            testResolver,
-            testDuration,
-            testPaymentToken,
-            testReferrer
-        );
+        ethRegistrar.register(cd, address(testPaymentToken));
+        g -= gasleft();
+        console.log("Gas: %s", g);
+    }
+
+    function test_registerWithETH_gas() external {
+        delete testRegistry;
+        delete testResolver;
+
+        CommitData memory cd = _commitData();
+        ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
+        vm.warp(block.timestamp + testCommitDelay);
+
+        vm.prank(testOwner);
+        uint256 g = gasleft();
+        ethRegistrar.registerWithETH{value: testOwner.balance}(cd, testOwner);
         g -= gasleft();
         console.log("Gas: %s", g);
     }
 
     function test_register(uint32 available, uint32 duration) external {
-        vm.assume(
-            duration >= ethRegistrar.MIN_REGISTER_DURATION() &&
-            available < 2 * rentPriceOracle.PREMIUM_PERIOD()
-        );
-        vm.warp(ethRegistry.getExpiry(this.register()) + ethRegistrar.GRACE_PERIOD() + available);
-
-        testDuration = duration;
+        _ensurePriorRegistration(available, duration);
         (uint256 base, uint256 premium) =
             rentPriceOracle.getRegisterPrice(
                 testLabel,
                 available + testCommitDelay, // commit-reveal
                 testDuration,
-                testPaymentToken
+                address(testPaymentToken)
             );
         uint256 labelId = LibLabel.id(testLabel);
         uint256 tokenId = LibLabel.withVersion(labelId, 1);
@@ -248,7 +259,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
             testRegistry,
             testResolver,
             testDuration,
-            testPaymentToken,
+            address(testPaymentToken),
             testReferrer,
             base,
             premium
@@ -261,11 +272,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     }
 
     function test_register_balanceChanges(uint32 available, uint32 duration) external {
-        vm.assume(
-            duration >= ethRegistrar.MIN_REGISTER_DURATION() &&
-            available < 2 * rentPriceOracle.PREMIUM_PERIOD()
-        );
-        vm.warp(ethRegistry.getExpiry(this.register()) + ethRegistrar.GRACE_PERIOD() + available);
+        _ensurePriorRegistration(available, duration);
         uint256 owner0 = testPaymentToken.balanceOf(testOwner);
         uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
         (uint256 base, uint256 premium) =
@@ -273,13 +280,73 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
                 testLabel,
                 available + testCommitDelay, // commit-reveal
                 duration,
-                testPaymentToken
+                address(testPaymentToken)
             );
-        testDuration = duration;
         this.register();
         uint256 amount = base + premium;
-        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "owner");
+        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "payer");
         assertEq(beneficiary0 + amount, testPaymentToken.balanceOf(beneficiary), "beneficiary");
+    }
+
+    function test_registerWithETH(uint32 available, uint32 duration) external {
+        _ensurePriorRegistration(available, duration);
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(
+                testLabel,
+                available + testCommitDelay, // commit-reveal
+                testDuration,
+                NATIVE_ETH
+            );
+        uint256 amount = base + premium;
+        uint256 overpay = amount / 100;
+        CommitData memory cd = _commitData();
+        ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
+        vm.warp(block.timestamp + testCommitDelay);
+        uint256 owner0 = testOwner.balance;
+        uint256 beneficiary0 = beneficiary.balance;
+        vm.prank(testOwner);
+        ethRegistrar.registerWithETH{value: amount + overpay}(cd, refundTo);
+        assertEq(owner0 - amount - overpay, testOwner.balance, "payer");
+        assertEq(beneficiary0 + amount, beneficiary.balance, "beneficiary");
+        assertEq(overpay, refundTo.balance, "refund");
+    }
+
+    function test_registerWithETH_insufficientETH() external {
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(testLabel, type(uint64).max, testDuration, NATIVE_ETH);
+        uint256 amount = base + premium;
+        CommitData memory cd = _commitData();
+        ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
+        vm.warp(block.timestamp + testCommitDelay);
+        vm.expectRevert(
+            abi.encodeWithSelector(IETHRenewer.InsufficientETH.selector, amount - 1, amount)
+        );
+        vm.prank(testOwner);
+        ethRegistrar.registerWithETH{value: amount - 1}(cd, testOwner);
+    }
+
+    function test_registerWithETH_unableToReceiveETH_beneficiary() external {
+        vm.etch(beneficiary, address(ethRegistry).code); // no receive()
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(testLabel, type(uint64).max, testDuration, NATIVE_ETH);
+        CommitData memory cd = _commitData();
+        ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
+        vm.warp(block.timestamp + testCommitDelay);
+        vm.expectRevert(abi.encodeWithSelector(IETHRenewer.UnableToReceiveETH.selector, beneficiary));
+        vm.prank(testOwner);
+        ethRegistrar.registerWithETH{value: base + premium}(cd, refundTo);
+    }
+
+    function test_registerWithETH_unableToReceiveETH_refund() external {
+        vm.etch(refundTo, address(ethRegistry).code); // no receive()
+        (uint256 base, uint256 premium) =
+            rentPriceOracle.getRegisterPrice(testLabel, type(uint64).max, testDuration, NATIVE_ETH);
+        CommitData memory cd = _commitData();
+        ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
+        vm.warp(block.timestamp + testCommitDelay);
+        vm.expectRevert(abi.encodeWithSelector(IETHRenewer.UnableToReceiveETH.selector, refundTo));
+        vm.prank(testOwner);
+        ethRegistrar.registerWithETH{value: base + premium + 1}(cd, refundTo);
     }
 
     function test_register_whileRegistered(uint32 duration) external {
@@ -337,7 +404,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
                 testLabel,
                 type(uint64).max,
                 testDuration,
-                testPaymentToken
+                address(testPaymentToken)
             );
         this.register();
         assertEq(premium, 0, "premium");
@@ -347,7 +414,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         vm.prank(testOwner);
         tokenUSDC.approve(address(ethRegistrar), 0);
         (uint256 base, uint256 premium) =
-            ethRegistrar.getRegisterPrice(testLabel, testDuration, testPaymentToken);
+            ethRegistrar.getRegisterPrice(testLabel, testDuration, address(testPaymentToken));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IERC20Errors.ERC20InsufficientAllowance.selector,
@@ -366,7 +433,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
                 testLabel,
                 type(uint64).max,
                 testDuration,
-                testPaymentToken
+                address(testPaymentToken)
             );
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -386,7 +453,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         vm.expectRevert(
             abi.encodeWithSelector(
                 IETHRegistrar.CommitmentTooNew.selector,
-                _makeCommitment(),
+                ethRegistrar.makeCommitment(_commitData()),
                 t + dt,
                 t
             )
@@ -401,7 +468,7 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         vm.expectRevert(
             abi.encodeWithSelector(
                 IETHRegistrar.CommitmentTooOld.selector,
-                _makeCommitment(),
+                ethRegistrar.makeCommitment(_commitData()),
                 t - dt,
                 t
             )
@@ -439,6 +506,69 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         this.register();
     }
 
+    function test_registerBatch(uint8 n) external {
+        vm.assume(n < 10);
+        CommitData[] memory cds = new CommitData[](n);
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            testLabel = _label(i);
+            cds[i] = _commitData();
+            ethRegistrar.commit(ethRegistrar.makeCommitment(cds[i]));
+            (uint256 base, uint256 premium) =
+                rentPriceOracle.getRegisterPrice(
+                    testLabel,
+                    type(uint64).max,
+                    testDuration,
+                    address(testPaymentToken)
+                );
+            total += base + premium;
+        }
+        vm.warp(block.timestamp + testCommitDelay);
+        uint256 owner0 = testPaymentToken.balanceOf(testOwner);
+        uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
+        vm.prank(testOwner);
+        uint256[] memory tokenIds = ethRegistrar.registerBatch(cds, address(testPaymentToken));
+        assertEq(owner0 - total, testPaymentToken.balanceOf(testOwner), "payer");
+        assertEq(beneficiary0 + total, testPaymentToken.balanceOf(beneficiary), "beneficiary");
+        assertEq(tokenIds.length, n, "tokens");
+        for (uint256 i; i < n; ++i) {
+            assertEq(ethRegistry.ownerOf(tokenIds[i]), testOwner);
+        }
+    }
+
+    function test_registerBatchWithETH(uint8 n) external {
+        vm.assume(n < 10);
+        CommitData[] memory cds = new CommitData[](n);
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            testLabel = _label(i);
+            cds[i] = _commitData();
+            ethRegistrar.commit(ethRegistrar.makeCommitment(cds[i]));
+            (uint256 base, uint256 premium) =
+                rentPriceOracle.getRegisterPrice(
+                    testLabel,
+                    type(uint64).max,
+                    testDuration,
+                    NATIVE_ETH
+                );
+            total += base + premium;
+        }
+        uint256 overpay = total / 100;
+        vm.warp(block.timestamp + testCommitDelay);
+        uint256 owner0 = testOwner.balance;
+        uint256 beneficiary0 = beneficiary.balance;
+        vm.prank(testOwner);
+        uint256[] memory tokenIds =
+            ethRegistrar.registerBatchWithETH{value: total + overpay}(cds, refundTo);
+        assertEq(owner0 - total - overpay, testOwner.balance, "payer");
+        assertEq(beneficiary0 + total, beneficiary.balance, "beneficiary");
+        assertEq(overpay, refundTo.balance, "refund");
+        assertEq(tokenIds.length, n, "tokens");
+        for (uint256 i; i < n; ++i) {
+            assertEq(ethRegistry.ownerOf(tokenIds[i]), testOwner);
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // renew()
     ////////////////////////////////////////////////////////////////////////
@@ -452,7 +582,8 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         uint256 tokenId = this.register();
         testDuration = duration;
         uint64 newExpiry = ethRegistry.getExpiry(tokenId) + testDuration;
-        uint256 amount = ethRegistrar.getRenewPrice(testLabel, testDuration, testPaymentToken);
+        uint256 amount =
+            ethRegistrar.getRenewPrice(testLabel, testDuration, address(testPaymentToken));
         vm.expectEmit();
         emit IRegistryEvents.ExpiryUpdated(tokenId, newExpiry, address(ethRegistrar));
         vm.expectEmit();
@@ -461,13 +592,16 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
             testLabel,
             testDuration,
             newExpiry,
-            testPaymentToken,
+            address(testPaymentToken),
             testReferrer,
             amount
         );
         vm.prank(testOwner);
         uint256 g = gasleft();
-        ethRegistrar.renew(RenewData(testLabel, testDuration, testReferrer), testPaymentToken);
+        ethRegistrar.renew(
+            RenewData(testLabel, testDuration, testReferrer),
+            address(testPaymentToken)
+        );
         g -= gasleft();
         console.log("Gas: %s", g);
         assertEq(ethRegistry.getExpiry(tokenId), newExpiry);
@@ -478,10 +612,10 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         this.register();
         uint256 owner0 = testPaymentToken.balanceOf(testOwner);
         uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
-        uint256 amount = ethRegistrar.getRenewPrice(testLabel, duration, testPaymentToken);
+        uint256 amount = ethRegistrar.getRenewPrice(testLabel, duration, address(testPaymentToken));
         testDuration = duration;
         this.renew();
-        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "owner");
+        assertEq(owner0 - amount, testPaymentToken.balanceOf(testOwner), "payer");
         assertEq(beneficiary0 + amount, testPaymentToken.balanceOf(beneficiary), "beneficiary");
     }
 
@@ -518,7 +652,8 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         this.register();
         vm.prank(testOwner);
         testPaymentToken.approve(address(ethRegistrar), 0);
-        uint256 amount = ethRegistrar.getRenewPrice(testLabel, testDuration, testPaymentToken);
+        uint256 amount =
+            ethRegistrar.getRenewPrice(testLabel, testDuration, address(testPaymentToken));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IERC20Errors.ERC20InsufficientAllowance.selector,
@@ -533,7 +668,8 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     function test_renew_insufficientBalance() external {
         this.register();
         testPaymentToken.nuke(testOwner);
-        uint256 amount = ethRegistrar.getRenewPrice(testLabel, testDuration, testPaymentToken);
+        uint256 amount =
+            ethRegistrar.getRenewPrice(testLabel, testDuration, address(testPaymentToken));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IERC20Errors.ERC20InsufficientBalance.selector,
@@ -545,6 +681,39 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         this.renew();
     }
 
+    function test_renewWithETH(uint32 duration) external {
+        vm.assume(duration >= ethRegistrar.MIN_RENEW_DURATION());
+        this.register();
+        uint256 owner0 = testOwner.balance;
+        uint256 beneficiary0 = beneficiary.balance;
+        uint256 amount = ethRegistrar.getRenewPrice(testLabel, duration, NATIVE_ETH);
+        uint256 overpay = amount / 100;
+        vm.prank(testOwner);
+        uint256 g = gasleft();
+        ethRegistrar.renewWithETH{value: amount + overpay}(
+            RenewData(testLabel, duration, testReferrer),
+            refundTo
+        );
+        g -= gasleft();
+        console.log("Gas: %s", g);
+        assertEq(owner0 - amount - overpay, testOwner.balance, "payer");
+        assertEq(beneficiary0 + amount, beneficiary.balance, "beneficiary");
+        assertEq(overpay, refundTo.balance, "refund");
+    }
+
+    function test_renewWithETH_insufficientETH() external {
+        this.register();
+        uint256 amount = ethRegistrar.getRenewPrice(testLabel, testDuration, NATIVE_ETH);
+        vm.expectRevert(
+            abi.encodeWithSelector(IETHRenewer.InsufficientETH.selector, amount - 1, amount)
+        );
+        vm.prank(testOwner);
+        ethRegistrar.renewWithETH{value: amount - 1}(
+            RenewData(testLabel, testDuration, testReferrer),
+            testOwner
+        );
+    }
+
     function test_renewBatch(uint8 n) external {
         vm.assume(n < 10);
         RenewData[] memory rds = new RenewData[](n);
@@ -554,12 +723,12 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
             this.register();
             uint64 duration = testDuration + uint64(i);
             rds[i] = RenewData(testLabel, duration, testReferrer);
-            total += ethRegistrar.getRenewPrice(testLabel, duration, testPaymentToken);
+            total += ethRegistrar.getRenewPrice(testLabel, duration, address(testPaymentToken));
         }
         uint256 owner0 = testPaymentToken.balanceOf(testOwner);
         uint256 beneficiary0 = testPaymentToken.balanceOf(beneficiary);
         vm.prank(testOwner);
-        ethRegistrar.renewBatch(rds, testPaymentToken);
+        ethRegistrar.renewBatch(rds, address(testPaymentToken));
         assertEq(owner0 - total, testPaymentToken.balanceOf(testOwner), "payer");
         assertEq(beneficiary0 + total, testPaymentToken.balanceOf(beneficiary), "beneficiary");
     }
@@ -572,8 +741,29 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         }
         uint64 expiry = ethRegistry.getExpiry(tokenId);
         vm.prank(testOwner);
-        ethRegistrar.renewBatch(rds, testPaymentToken);
+        ethRegistrar.renewBatch(rds, address(testPaymentToken));
         assertEq(ethRegistry.getExpiry(tokenId), expiry + testDuration * rds.length);
+    }
+
+    function test_renewBatchWithETH(uint8 n) external {
+        vm.assume(n < 10);
+        RenewData[] memory rds = new RenewData[](n);
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            testLabel = _label(i);
+            this.register();
+            uint64 duration = testDuration + uint64(i);
+            rds[i] = RenewData(testLabel, duration, testReferrer);
+            total += ethRegistrar.getRenewPrice(testLabel, duration, NATIVE_ETH);
+        }
+        uint256 overpay = total / 100;
+        uint256 owner0 = testOwner.balance;
+        uint256 beneficiary0 = beneficiary.balance;
+        vm.prank(testOwner);
+        ethRegistrar.renewBatchWithETH{value: total + overpay}(rds, refundTo);
+        assertEq(owner0 - total - overpay, testOwner.balance, "payer");
+        assertEq(beneficiary0 + total, beneficiary.balance, "beneficiary");
+        assertEq(overpay, refundTo.balance, "refund");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -643,9 +833,9 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     // Helpers
     ////////////////////////////////////////////////////////////////////////
 
-    function _makeCommitment() internal view returns (bytes32) {
+    function _commitData() internal view returns (CommitData memory) {
         return
-            ethRegistrar.makeCommitment(
+            CommitData(
                 testLabel,
                 testOwner,
                 testSecret,
@@ -657,23 +847,27 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
     }
 
     function register() external returns (uint256 tokenId) {
-        ethRegistrar.commit(_makeCommitment());
+        CommitData memory cd = _commitData();
+        ethRegistrar.commit(ethRegistrar.makeCommitment(cd));
         vm.warp(block.timestamp + testCommitDelay);
         vm.prank(testOwner);
-        tokenId = ethRegistrar.register(
-            testLabel,
-            testOwner,
-            testSecret,
-            testRegistry,
-            testResolver,
-            testDuration,
-            testPaymentToken,
-            testReferrer
-        );
+        tokenId = ethRegistrar.register(cd, address(testPaymentToken));
     }
 
     function renew() external {
         vm.prank(testOwner);
-        ethRegistrar.renew(RenewData(testLabel, testDuration, testReferrer), testPaymentToken);
+        ethRegistrar.renew(
+            RenewData(testLabel, testDuration, testReferrer),
+            address(testPaymentToken)
+        );
+    }
+
+    function _ensurePriorRegistration(uint64 available, uint64 duration) internal {
+        vm.assume(
+            duration >= ethRegistrar.MIN_REGISTER_DURATION() &&
+            available < 2 * rentPriceOracle.PREMIUM_PERIOD()
+        );
+        vm.warp(ethRegistry.getExpiry(this.register()) + ethRegistrar.GRACE_PERIOD() + available);
+        testDuration = duration;
     }
 }

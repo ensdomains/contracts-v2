@@ -1,4 +1,5 @@
 import { execute } from "@rocketh";
+import { formatGwei, zeroAddress, type Address } from "viem";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
 import {
@@ -14,6 +15,11 @@ import {
   SEPOLIA_USDC,
   MAINNET_USDC,
   MAINNET_DAI,
+  MAINNET_WETH,
+  MAINNET_ETH_ORACLE,
+  SEPOLIA_WETH,
+  SEPOLIA_ETH_ORACLE,
+  NATIVE_ETH,
   ratioFromDecimals,
 } from "../script/deploy-constants.js";
 
@@ -30,44 +36,83 @@ export default execute(
     // Mainnet whitelists the real payment tokens; the free-mint mocks are only
     // deployed (and only accepted) on test/dev networks. The ERC20 metadata
     // reads below (symbol/decimals) work against the real tokens too.
-    const paymentTokens = tags.hasDao
-      ? [
-          { address: MAINNET_USDC, abi: Artifact_MockERC20.abi },
-          { address: MAINNET_DAI, abi: Artifact_MockERC20.abi },
-        ]
-      : [
-          get<(typeof Artifact_MockERC20)["abi"]>("MockUSDC"),
-          get<(typeof Artifact_MockERC20)["abi"]>("MockDAI"),
-          ...(tags.sepolia || tags["clean-testnet"]
-            ? [{ address: SEPOLIA_USDC, abi: Artifact_MockERC20.abi }]
-            : []),
-        ];
+
+    type OracleConfig = { oracle: Address; flip: boolean; maxAge: bigint };
+
+    const paymentTokens: Address[] = [];
+    const oracles: Record<Address, OracleConfig> = {};
+    const noOracle: OracleConfig = {
+      oracle: zeroAddress,
+      flip: false,
+      maxAge: 0n,
+    };
+    const maxAge = 3n * 3600n; // safetyFactory * (1 hour) => https://docs.chain.link/data-feeds/overview#check-the-timestamp-of-the-latest-answer
+    let wethAddress: Address;
+    if (tags.hasDao) {
+      wethAddress = MAINNET_WETH;
+      oracles[wethAddress] = {
+        oracle: MAINNET_ETH_ORACLE,
+        flip: false,
+        maxAge,
+      };
+      paymentTokens.push(MAINNET_USDC);
+      paymentTokens.push(MAINNET_DAI);
+    } else if (tags.sepolia || tags["clean-testnet"]) {
+      wethAddress = SEPOLIA_WETH;
+      oracles[wethAddress] = {
+        oracle: SEPOLIA_ETH_ORACLE,
+        flip: false,
+        maxAge,
+      };
+      paymentTokens.push(SEPOLIA_USDC);
+    } else {
+      wethAddress = get("MockWETH").address;
+      oracles[wethAddress] = {
+        oracle: get("MockChainlinkETHUSD").address,
+        flip: false,
+        maxAge,
+      };
+      paymentTokens.push(get("MockUSDC").address);
+      paymentTokens.push(get("MockDAI").address);
+    }
+    paymentTokens.push(wethAddress);
 
     const baseRates = BASE_RATE_PER_CP.flatMap((rate, i) => {
       const yearly = Number(rate * SEC_PER_YEAR) / Number(PRICE_SCALE);
       return rate ? { cp: 1 + i, rate, yearly } : [];
     }).reverse();
 
-    const paymentFactors = await Promise.all(
-      paymentTokens.map(async (x) => {
+    const paymentConfigs = await Promise.all(
+      paymentTokens.map(async (address) => {
+        const { abi } = Artifact_MockERC20;
         const [symbol, decimalsResult] = await Promise.all([
-          read(x, { functionName: "symbol" }),
-          read(x, { functionName: "decimals" }),
+          read({ address, abi }, { functionName: "symbol" }),
+          read({ address, abi }, { functionName: "decimals" }),
         ]);
         const decimals = Number(decimalsResult);
         const [numer, denom] = ratioFromDecimals(decimals);
         return {
           MockERC20: symbol,
-          paymentToken: x.address,
+          paymentToken: address,
           decimals,
           Δ: decimals - PRICE_DECIMALS,
           numer,
           denom,
+          ...(oracles[address] ?? noOracle),
         };
       }),
     );
 
-    console.table(paymentFactors);
+    const wethIndex = paymentTokens.indexOf(wethAddress);
+    if (wethIndex >= 0) {
+      paymentConfigs.push({
+        ...paymentConfigs[wethIndex],
+        MockERC20: "[ether]",
+        paymentToken: NATIVE_ETH,
+      });
+    }
+
+    console.table(paymentConfigs);
 
     console.table(
       baseRates.map((x) => ({ ...x, yearly: x.yearly.toFixed(2) })),
@@ -88,26 +133,29 @@ export default execute(
           PREMIUM_PRICE_INITIAL,
           PREMIUM_HALVING_PERIOD,
           PREMIUM_PERIOD,
-          paymentFactors,
+          paymentConfigs,
         ],
       }));
 
-    for (const paymentFactor of paymentFactors) {
-      const [numer, denom] = (await read(standardRentPriceOracle, {
-        functionName: "getPaymentTokenRatio",
-        args: [paymentFactor.paymentToken],
-      })) as [bigint, bigint];
-      if (numer === paymentFactor.numer && denom === paymentFactor.denom) {
+    // sync ratios
+    for (const cfg of paymentConfigs) {
+      const cfg0 = await read(standardRentPriceOracle, {
+        functionName: "getPaymentTokenConfiguration",
+        args: [cfg.paymentToken],
+      });
+      if (
+        cfg0.numer === cfg.numer &&
+        cfg0.denom === cfg.denom &&
+        cfg0.oracle === cfg.oracle &&
+        cfg0.flip === cfg.flip &&
+        cfg0.maxAge === cfg.maxAge
+      ) {
         continue;
       }
       await write(standardRentPriceOracle, {
         account: owner,
         functionName: "updatePaymentToken",
-        args: [
-          paymentFactor.paymentToken,
-          paymentFactor.numer,
-          paymentFactor.denom,
-        ],
+        args: [cfg.paymentToken, cfg],
       });
     }
 
