@@ -1,11 +1,7 @@
 import { describe, it } from "vitest";
 import { forkAndAttach } from "./forkedFixture.js";
 import { dnsEncodeName } from "../utils/utils.js";
-import {
-  bundleCalls,
-  KnownProfile,
-  makeResolutions,
-} from "../utils/resolutions.js";
+import { bundleCalls, makeResolutions } from "../utils/resolutions.js";
 import { KNOWN_DNS } from "./knownDNS.js";
 
 const { connection, forkedFixture } = await forkAndAttach();
