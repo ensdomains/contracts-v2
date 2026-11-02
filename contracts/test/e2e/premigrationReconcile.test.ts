@@ -25,6 +25,7 @@ import {
   V1_GRACE_PERIOD_SECONDS,
 } from "../../script/preMigration.js";
 import {
+  DEPLOYMENT_ROLES,
   FUSES,
   GRACE_PERIOD_V2,
   ROLES,
@@ -70,6 +71,27 @@ function writeDatedCsv(
     (label, index) => `,,,,,,${label},,${entries[index].expiry.toString()}`,
   );
   writeFileSync(csvFile, [PREMIGRATION_CSV_HEADER, ...rows].join("\n"));
+}
+
+// A Dune export: the bare label in `name`, and the expiry in Unix seconds in
+// `expires_raw` beside a human-readable date.
+function writeDuneCsv(
+  csvFile: string,
+  labels: string[],
+  entries: Array<{ expiry: bigint }>,
+) {
+  const rows = labels.map((label, index) => {
+    const expiry = entries[index].expiry;
+    const date = new Date(Number(expiry) * 1000).toISOString();
+    return `${label},${label}.eth,${labelhash(label)},,${date},,${expiry},active`;
+  });
+  writeFileSync(
+    csvFile,
+    [
+      "name,full_name,labelhash,namehash,expiration_date,release_date,expires_raw,status",
+      ...rows,
+    ].join("\n"),
+  );
 }
 
 function writeIndex(
@@ -246,10 +268,13 @@ describe("premigration reconcile", () => {
 
   it("reports an expiry that does not match the bonus-adjusted v1 expiry", async () => {
     const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
 
-    // Claim a different v1 expiry than the one the name was seeded from.
-    writeIndex(workDir, [
-      { id: indexEntries[0].id, expiry: indexEntries[0].expiry + 12345n },
+    // v1 alone moves on, as a renewal the sync missed leaves it: v2 still holds the
+    // expiry the name was seeded from.
+    await env.v1.BaseRegistrar.write.renew([
+      BigInt(indexEntries[0].id),
+      12345n,
     ]);
 
     const result = await run(workDir, fromBlock, { reportOnly: true });
@@ -257,6 +282,26 @@ describe("premigration reconcile", () => {
     expect(result.expiryMismatched).toHaveLength(1);
     expect(result.expiryMismatched[0]).toContain(indexEntries[0].id);
     expect(result.missing).toEqual([]);
+  });
+
+  it("accepts a reservation renewed on v1 and v2 together after the index was built", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    writeIndex(workDir, indexEntries);
+
+    // Both sides extend by the same span once the index has read v1, as the renewer
+    // leaves them; a sync brings v2 to the renewed v1 expiry the same way.
+    await env.v1.BaseRegistrar.write.renew([
+      BigInt(indexEntries[0].id),
+      12345n,
+    ]);
+    await preMigrationMain(
+      buildMainArgs(env, csvFile, { bonusPeriodDays: BONUS_PERIOD_DAYS }),
+    );
+
+    const result = await run(workDir, fromBlock);
+
+    expect(result.reserved).toBe(1);
+    expect(result.expiryMismatched).toEqual([]);
   });
 
   it("applies the bonus period when computing the expected v2 expiry", async () => {
@@ -315,6 +360,19 @@ describe("premigration reconcile", () => {
     // An index holding one of the two names, as a lagging indexer would produce.
     // Both sources are internally consistent, so nothing but the counts reports that
     // a name went unexamined.
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    await expect(run(workDir, fromBlock, { csvFile })).rejects.toThrow(
+      /disagree on how many names are live/,
+    );
+  });
+
+  it("compares live counts against a Dune export's expiries", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeDuneCsv(csvFile, ["alpha", "beta"], indexEntries);
     writeIndex(workDir, indexEntries.slice(0, 1));
 
     await expect(run(workDir, fromBlock, { csvFile })).rejects.toThrow(
@@ -633,12 +691,13 @@ describe("premigration reconcile", () => {
     ).toBeNull();
   });
 
-  it("lists a name the CSV carries only in [labelhash] form apart from the missing", async () => {
+  it("counts a name registered with [labelhash]-shaped text as missing until it is reserved", async () => {
     const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
     const { user } = env.namedAccounts;
 
     // A name registered with ENS's placeholder text as its label, as some live
-    // mainnet names were. Pre-migration refuses that shape, so it never reaches v2.
+    // mainnet names were. Pre-migration reserves it under the hash of that text, so
+    // its CSV row does not excuse it.
     const bracketed = `[${"0418".padEnd(64, "0")}]`;
     const bracketedId = keccak256(stringToHex(bracketed));
     await env.v1.BaseRegistrar.write.register([
@@ -658,11 +717,142 @@ describe("premigration reconcile", () => {
       { id: bracketedId, expiry: bracketedExpiry },
     ]);
 
+    const before = await run(workDir, fromBlock, { csvFile, reportOnly: true });
+    expect(before.missing).toEqual([bracketedId]);
+    expect(before.unreservable).toEqual([]);
+
+    await preMigrationMain(
+      buildMainArgs(env, csvFile, { bonusPeriodDays: BONUS_PERIOD_DAYS }),
+    );
+    const result = await run(workDir, fromBlock, { csvFile });
+
+    expect(result.missing).toEqual([]);
+    expect(result.unreservable).toEqual([]);
+    expect(result.reserved).toBe(2);
+  });
+
+  it("lists a name the CSV names only by its labelhash apart from the missing", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A live name whose label no export knows: the row leaves the label empty, or
+    // writes a stand-in that does not hash to it, and carries only the labelhash.
+    const unknownId = keccak256(stringToHex("nobodyknowsme"));
+    await env.v1.BaseRegistrar.write.register([
+      BigInt(unknownId),
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const unknownExpiry = await env.v1.BaseRegistrar.read.nameExpires([
+      BigInt(unknownId),
+    ]);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,${unknownId},,,,,,\n,,${unknownId},,,,<nil>,,`,
+    );
+    writeIndex(workDir, [
+      ...indexEntries,
+      { id: unknownId, expiry: unknownExpiry },
+    ]);
+
     const result = await run(workDir, fromBlock, { csvFile });
 
     expect(result.missing).toEqual([]);
     expect(result.unreservable).toEqual([
-      { id: bracketedId, label: bracketed },
+      { id: unknownId, label: `[${unknownId.slice(2)}]` },
+    ]);
+  });
+
+  it("lists a name whose CSV label is over 255 bytes apart from the missing", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user } = env.namedAccounts;
+
+    // A label too long for any DNS-encoded name, as some live mainnet names carry.
+    // Pre-migration refuses it, so it never reaches v2.
+    const long = "69".repeat(150);
+    const longId = keccak256(stringToHex(long));
+    await env.v1.BaseRegistrar.write.register([
+      BigInt(longId),
+      user.address,
+      BigInt(ONE_YEAR_SECONDS),
+    ]);
+    const longExpiry = await env.v1.BaseRegistrar.read.nameExpires([
+      BigInt(longId),
+    ]);
+    writeFileSync(
+      csvFile,
+      `${readFileSync(csvFile, "utf-8").trimEnd()}\n,,,,,,${long},,`,
+    );
+    writeIndex(workDir, [...indexEntries, { id: longId, expiry: longExpiry }]);
+
+    const result = await run(workDir, fromBlock, { csvFile });
+
+    expect(result.missing).toEqual([]);
+    expect(result.unreservable).toEqual([{ id: longId, label: long }]);
+  });
+
+  it("counts a directly registered name missing until registered, then lists it apart", async () => {
+    const { workDir, indexEntries, fromBlock } = await seed(["alpha"]);
+    const { user, deployer } = env.namedAccounts;
+
+    // Live on v1 and absent from the CSV, as on.eth is on mainnet.
+    const onExpiry = await registerV1Name(
+      env,
+      "on",
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
+    const onId = labelhash("on");
+    writeIndex(workDir, [...indexEntries, { id: onId, expiry: onExpiry }]);
+    const directRegistrations = [
+      {
+        label: "on",
+        owner: getAddress(user.address),
+        resolver: zeroAddress,
+        expiry: "v1" as const,
+      },
+    ];
+
+    const before = await run(workDir, fromBlock, {
+      directRegistrations,
+      reportOnly: true,
+    });
+    expect(before.missing).toEqual([
+      `${onId} (on.eth) is not registered yet: run phase register-direct-names`,
+    ]);
+    expect(before.directlyRegistered).toEqual([]);
+
+    const asDeployer = { account: deployer };
+    await env.v2.ETHRegistry.write.grantRootRoles(
+      [ROLES.REGISTRY.REGISTRAR, deployer.address],
+      asDeployer,
+    );
+    await env.v2.ETHRegistry.write.register(
+      [
+        "on",
+        user.address,
+        zeroAddress,
+        zeroAddress,
+        DEPLOYMENT_ROLES.DIRECT_REGISTRATION,
+        onExpiry,
+      ],
+      asDeployer,
+    );
+
+    const after = await run(workDir, fromBlock, { directRegistrations });
+    expect(after.missing).toEqual([]);
+    expect(after.unexpected).toEqual([]);
+    expect(after.directlyRegistered).toEqual([{ id: onId, label: "on" }]);
+
+    // Registered with any other expiry, it is not the name the table asks for.
+    const wrong = await run(workDir, fromBlock, {
+      directRegistrations: [
+        { ...directRegistrations[0], expiry: onExpiry + 1n },
+      ],
+      reportOnly: true,
+    });
+    expect(wrong.unexpected).toEqual([
+      expect.stringContaining("(on.eth) is registered to"),
     ]);
   });
 

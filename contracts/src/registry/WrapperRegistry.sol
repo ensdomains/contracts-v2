@@ -16,7 +16,6 @@ import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
@@ -151,7 +150,8 @@ contract WrapperRegistry is
     /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
     ///      upgrade call, including the wrapper upgrade target allowlist.
     /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `true` for implementations in this wrapper registry family.
+    /// @return allowed Always `false` as this is the first implementation of WrapperRegistry with no
+    ///                 valid predecessors.
     function canUpgradeFrom(
         address /* previousImplementation */
     )
@@ -161,7 +161,7 @@ contract WrapperRegistry is
         override
         returns (bool allowed)
     {
-        return true;
+        // `allowed` defaults to `false`.
     }
 
     /// @inheritdoc PermissionedRegistry
@@ -213,16 +213,6 @@ contract WrapperRegistry is
         returns (bytes32)
     {
         return _node;
-    }
-
-    /// @inheritdoc PermissionedRegistry
-    function isEmancipated()
-        public
-        pure
-        override(PermissionedRegistry, IPermissionedRegistry)
-        returns (bool)
-    {
-        return true; // see: LockedWrapperReceiver._subregistryRoleBitmapFromFuses()
     }
 
     ////////////////////////////////////////////////////////////////////////

@@ -53,6 +53,7 @@ type Artifact = {
   address: string;
   metadata?: string;
   contractName?: string;
+  buildInfoId?: string;
   transaction?: { hash?: string };
 };
 
@@ -131,17 +132,55 @@ function usableMetadata(raw: unknown) {
   return metadata;
 }
 
-// Every input file's literal content, taken from the metadata where the compiler
-// embedded it and read from disk otherwise. A source read from disk is checked
-// against the hash the metadata recorded, so a working tree that has moved on
-// since the deployment fails loudly instead of verifying against the wrong code.
-function sourceContents(metadata: any, label: string): Record<string, string> {
+const buildInputs = new Map<string, Record<string, { content?: unknown }>>();
+
+// The compiler input a deployment was built from, saved beside the namespace's
+// records under the build id the record names; undefined when none is saved.
+function recordedBuildSources(
+  artifactPath: string,
+  artifact: { buildInfoId?: unknown },
+): Record<string, { content?: unknown }> | undefined {
+  if (typeof artifact.buildInfoId !== "string") return undefined;
+  const path = join(
+    dirname(artifactPath),
+    "build-info",
+    `${artifact.buildInfoId}.json`,
+  );
+  if (!buildInputs.has(path)) {
+    if (!existsSync(path)) return undefined;
+    buildInputs.set(
+      path,
+      JSON.parse(readFileSync(path, "utf8")).input?.sources ?? {},
+    );
+  }
+  return buildInputs.get(path);
+}
+
+// Every input file's literal content: embedded in the metadata, else from the
+// compiler input the deployment was built from, else read from disk. A source taken
+// from the build input or disk is checked against the hash the metadata recorded, so
+// a contract kept across a later source change still verifies against its own code,
+// and a working tree that has moved on fails loudly instead of verifying against the
+// wrong code.
+function sourceContents(
+  metadata: any,
+  label: string,
+  buildSources?: Record<string, { content?: unknown }>,
+): Record<string, string> {
   const contents: Record<string, string> = {};
   for (const [sourceKey, source] of Object.entries<any>(
     metadata.sources ?? {},
   )) {
     if (typeof source.content === "string") {
       contents[sourceKey] = source.content;
+      continue;
+    }
+    const built = buildSources?.[sourceKey]?.content;
+    if (
+      typeof built === "string" &&
+      (!source.keccak256 || keccak256(toBytes(built)) === source.keccak256)
+    ) {
+      contents[sourceKey] = built;
       continue;
     }
     const diskPath = diskPathForSource(sourceKey);
@@ -161,13 +200,17 @@ function sourceContents(metadata: any, label: string): Record<string, string> {
   return contents;
 }
 
-function backfillSourceContent(artifactPath: string) {
+export function backfillSourceContent(artifactPath: string) {
   const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
   if (typeof artifact.metadata !== "string") return false;
 
   const metadata = JSON.parse(artifact.metadata);
   const label = artifact.contractName ?? artifactPath;
-  const contents = sourceContents(metadata, label);
+  const contents = sourceContents(
+    metadata,
+    label,
+    recordedBuildSources(artifactPath, artifact),
+  );
   let patched = 0;
   for (const [sourceKey, source] of Object.entries<any>(
     metadata.sources ?? {},
@@ -328,7 +371,11 @@ async function verifyOnSourcify({
         chainId,
         artifact,
         metadata,
-        sourceContents(metadata, name),
+        sourceContents(
+          metadata,
+          name,
+          recordedBuildSources(join(srcDir, file), artifact),
+        ),
       );
       console.log(
         match ? `${name}: verified (${match})` : `${name}: already verified`,

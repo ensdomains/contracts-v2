@@ -9,7 +9,7 @@ import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistr
 import {NATIVE_ETH} from "../utils/ERC7528.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {IETHRenewer, RenewData} from "./interfaces/IETHRenewer.sol";
+import {IETHRenewer, RenewData, ETH_RENEWER_V0_INTERFACE_ID} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "./interfaces/IRentPriceOracleProvider.sol";
 
@@ -70,6 +70,7 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer, IRentPri
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IETHRenewer).interfaceId ||
+            interfaceId == ETH_RENEWER_V0_INTERFACE_ID ||
             interfaceId == type(IRentPriceOracleProvider).interfaceId ||
             super.supportsInterface(interfaceId);
     }

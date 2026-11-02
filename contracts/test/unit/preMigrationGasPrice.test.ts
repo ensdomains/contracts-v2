@@ -8,6 +8,7 @@ import {
   FeeCapTooLowError,
   type FeeHistory,
   type Hex,
+  HttpRequestError,
   parseGwei,
   TransactionNotFoundError,
   TransactionReceiptNotFoundError,
@@ -27,7 +28,10 @@ import {
   waitForGasPriceAtOrBelow,
   waitForInclusion,
 } from "../../script/preMigration.js";
-import { whileMiningBlocks } from "../../script/migrations/rpc.js";
+import {
+  REFUSED_READ_ATTEMPTS,
+  whileMiningBlocks,
+} from "../../script/migrations/rpc.js";
 
 // A fee history over blocks with these base fees and median tips. Like a node's, its
 // base fees run one entry past the last block, to the next block's.
@@ -312,6 +316,7 @@ describe("submitBatchWithBinaryFallback", () => {
       resolver: zeroAddress,
       maxGas: 0n,
       maxGasPrice,
+      pollIntervalMs: 1,
     };
     return { sender, sent };
   }
@@ -351,6 +356,41 @@ describe("submitBatchWithBinaryFallback", () => {
       [1n, 2n],
     );
     expect(sent.map(({ labels }) => labels)).toEqual([["a", "b"]]);
+    expect(result.failed).toEqual([]);
+  });
+
+  it("waits and sends the same batch again when the rate limit refused it", async () => {
+    const tooManyRequests = new BaseError("send failed", {
+      cause: new HttpRequestError({ url: "http://rpc", status: 429 }),
+    });
+    const overPlan = new BaseError("send failed", {
+      details: "You reached rate limit for your plan",
+    });
+    const { sender, sent } = fakeSender(LIMIT, {
+      sendOutcomes: [tooManyRequests, overPlan],
+    });
+    const result = await submitBatchWithBinaryFallback(
+      sender,
+      ["a", "b"],
+      [1n, 2n],
+    );
+    expect(sent.map(({ labels }) => labels)).toEqual([["a", "b"]]);
+    expect(result.failed).toEqual([]);
+  });
+
+  it("splits a batch the rate limit keeps refusing past the attempt limit", async () => {
+    const overPlan = new BaseError("send failed", {
+      details: "You reached rate limit for your plan",
+    });
+    const { sender, sent } = fakeSender(LIMIT, {
+      sendOutcomes: Array(REFUSED_READ_ATTEMPTS + 1).fill(overPlan),
+    });
+    const result = await submitBatchWithBinaryFallback(
+      sender,
+      ["a", "b"],
+      [1n, 2n],
+    );
+    expect(sent.map(({ labels }) => labels)).toEqual([["a"], ["b"]]);
     expect(result.failed).toEqual([]);
   });
 

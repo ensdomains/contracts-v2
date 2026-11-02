@@ -33,6 +33,7 @@ describe("resolution snapshot", () => {
       rpcUrl: `http://${env.hostPort}`,
       chainId: "1",
       universalResolver: env.v2.UniversalResolver.address,
+      v1BaseRegistrar: env.v1.BaseRegistrar.address,
     };
   }
 

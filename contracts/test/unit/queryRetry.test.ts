@@ -98,6 +98,49 @@ describe("readEventLogs", () => {
     expect(chain.served).toEqual([[0n, 999n]]);
   });
 
+  // Tenderly caps a log query at 20,000 results and says so only in the error's data,
+  // so a span of dense blocks is refused well below the smallest span for other errors.
+  it("narrows a range refused for its result count below the smallest span", async () => {
+    const served: Array<[bigint, bigint]> = [];
+    const client = {
+      getLogs: async ({
+        fromBlock,
+        toBlock,
+      }: {
+        fromBlock: bigint;
+        toBlock: bigint;
+      }) => {
+        if (toBlock - fromBlock + 1n > 300n) {
+          throw Object.assign(new Error("invalid params"), {
+            data: "Query returned more than 20000 results. Try with this block range [0x0, 0x12b].",
+          });
+        }
+        served.push([fromBlock, toBlock]);
+        return blocks
+          .filter((block) => block >= fromBlock && block <= toBlock)
+          .map((blockNumber) => ({
+            args: {},
+            blockNumber,
+            logIndex: 0,
+            transactionHash: "0x00",
+          }));
+      },
+    };
+    const logs = await readEventLogs(
+      client as never,
+      { address, event, fromBlock: 0n, toBlock: 1_999n },
+      new QueryRetry(0),
+    );
+    expect(logs.map((log) => log.blockNumber)).toEqual([7n, 1_007n]);
+    let next = 0n;
+    for (const [from, to] of served) {
+      expect(to - from + 1n <= 300n).toBe(true);
+      expect(from).toBe(next);
+      next = to + 1n;
+    }
+    expect(next).toBe(2_000n);
+  });
+
   it("gives up after too many failures in a row", async () => {
     const chain = chainOf(() => true);
     await expect(

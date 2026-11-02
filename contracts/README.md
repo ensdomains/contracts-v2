@@ -134,8 +134,8 @@ Roles granted during core deployment.
 | Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | CAN_NAME | UPGRADE |
 | --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | -------- | ------- |
 | RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       |         |
-| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       |                 | AR           | AR                 |          |         |
-| RootRegistry    | .reverse | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |          |         |
+| RootRegistry    | .eth     | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | A                  | AR       | AR      |
+| RootRegistry    | .reverse | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | A                  | AR       | AR      |
 | ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       |         |
 | ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |          |         |
 | ETHRegistry     | Root     | `BatchRegistrar`              | R         |                   |            |            | R     |                 |              |                    |          |         |
@@ -147,9 +147,21 @@ Legend: A = admin only, R = regular only, AR = admin and regular
 
 _`ETHRegistrar` and `ETHRenewerV1` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
-_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller)._
+_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller). The `deferMigration` tag, also always set, does the same for the migration controllers' `REGISTER_RESERVED`._
 
-_The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
+_The tokens for `eth` and `reverse` are registered to the deployer with every role and admin role (`ROLES.ALL`); `addr.reverse` is reserved._
+
+_These are the roles at deploy. Where the owner is not the deployer (mainnet), phase 8 of the
+migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over.
+On both `RootRegistry` and `ETHRegistry` the owner takes every root role except the dangerous ones
+(setting a name's child registry or resolver, unregistering it, letting its owner transfer it, and
+upgrading the registry), each with its admin role. It can add top-level names, give reserved ones,
+such as DNS top-level names, to their operators, and authorize `.eth` registrars, but no root role
+reaches a registered name, so both registries' names are emancipated. The `eth` and `reverse` tokens move to the name owner (the ENS DAO name owner
+Safe on mainnet) with every role they carry. The deployer drops every role it holds, on these
+registries and on any root registry a root replacement set aside, and renounces every batch
+registrar. `phase verify-roles` records
+the roles actually held in `deployments/<namespace>/roles.md`._
 
 #### Creating Emancipated Names
 

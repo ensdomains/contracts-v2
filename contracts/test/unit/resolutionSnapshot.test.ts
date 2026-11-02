@@ -3,7 +3,9 @@ import { encodeAbiParameters, zeroAddress, type Hex } from "viem";
 
 import {
   diffResolutionSnapshots,
+  ethSecondLevelLabel,
   isRegression,
+  partitionLapsed,
   queriesFromSnapshot,
   recordIsEmpty,
   recordQueries,
@@ -204,6 +206,61 @@ const REAL_ADDR = encodeAbiParameters(
   ["0x7f1266aa4e48567f42e02e9da040eeec33edd5cb"],
 );
 const REAL_TEXT = encodeAbiParameters([{ type: "string" }], ["hello"]);
+
+describe("ethSecondLevelLabel", () => {
+  it("takes the label under .eth, for the name and its subnames", () => {
+    expect(ethSecondLevelLabel("vitalik.eth")).toBe("vitalik");
+    expect(ethSecondLevelLabel("jesse.base.eth")).toBe("base");
+    expect(ethSecondLevelLabel("Nick.ETH")).toBe("nick");
+  });
+
+  it("finds no .eth name outside .eth", () => {
+    expect(ethSecondLevelLabel("gregskril.com")).toBeUndefined();
+    expect(ethSecondLevelLabel("eth")).toBeUndefined();
+  });
+});
+
+describe("partitionLapsed", () => {
+  const differences = diffResolutionSnapshots(
+    snapshot([
+      { name: "lapsed.eth", records: { addr: ADDR_A } },
+      { name: "sub.lapsed.eth", records: { addr: ADDR_A } },
+      { name: "live.eth", records: { addr: ADDR_A } },
+      { name: "dns.com", records: { addr: ADDR_A } },
+      { name: "gone.eth", records: { addr: ADDR_A } },
+    ]),
+    snapshot([
+      { name: "lapsed.eth", records: { addr: null } },
+      { name: "sub.lapsed.eth", records: { addr: ADDR_B } },
+      { name: "live.eth", records: { addr: null } },
+      { name: "dns.com", records: { addr: null } },
+    ]),
+  ).filter(isRegression);
+
+  it("puts a lapsed .eth name's lost and changed records down to the lapse", () => {
+    const { lapsed, broken } = partitionLapsed(
+      differences,
+      new Set(["lapsed", "gone"]),
+    );
+    expect(lapsed.map((d) => d.name)).toEqual(["lapsed.eth", "sub.lapsed.eth"]);
+    expect(broken.map((d) => d.name)).toEqual([
+      "live.eth",
+      "dns.com",
+      "gone.eth",
+    ]);
+  });
+
+  it("never puts a name missing from the post-cutover snapshot down to a lapse", () => {
+    const { broken } = partitionLapsed(differences, new Set(["gone"]));
+    expect(broken.find((d) => d.name === "gone.eth")?.kind).toBe("missing");
+  });
+
+  it("counts every regression when nothing has lapsed", () => {
+    const { lapsed, broken } = partitionLapsed(differences, new Set());
+    expect(lapsed).toEqual([]);
+    expect(broken).toHaveLength(differences.length);
+  });
+});
 
 describe("recordIsEmpty", () => {
   it("treats a reverted lookup as no record", () => {

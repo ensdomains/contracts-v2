@@ -58,6 +58,12 @@ const ARCHIVED_DEFAULT_REVERSE_ADAPTER = getAddress(
 const ARCHIVED_ETH_RENEWER = getAddress(
   "0x00000000000000000000000000000000000ada03",
 );
+// A BaseRegistrar controller no deployment artifact names, such as a registrar
+// controller or a multisig the v1 owner authorized directly. Only the registrar's
+// own controller history can surface it.
+const UNTRACKED_V1_CONTROLLER = getAddress(
+  "0x00000000000000000000000000000000000ada04",
+);
 
 // The devnet derives its accounts from the standard test mnemonic. The prepared
 // owner-transaction runner signs with a key rather than by impersonation, so the
@@ -429,6 +435,29 @@ describe("v1 registrar freeze", () => {
 
       await verifyV1RegistrarsDisabled(freezeOptions());
       await verifyReverseAdapters(freezeOptions());
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "revokes a BaseRegistrar controller that only the registrar's history names",
+    async () => {
+      writeDeploymentArtifacts();
+      await env.v1.RegistrarSecurityController.write.addRegistrarController(
+        [UNTRACKED_V1_CONTROLLER],
+        { account: await ownerAccountOf(env.v1.RegistrarSecurityController) },
+      );
+
+      await expect(verifyV1RegistrarsDisabled(freezeOptions())).rejects.toThrow(
+        `v1 BaseRegistrar: unrecognized controller ${UNTRACKED_V1_CONTROLLER}`,
+      );
+
+      await disableV1Registrars(freezeOptions());
+
+      await expect(
+        env.v1.BaseRegistrar.read.controllers([UNTRACKED_V1_CONTROLLER]),
+      ).resolves.toBe(false);
+      await verifyV1RegistrarsDisabled(freezeOptions());
     },
     TEST_TIMEOUT_MS,
   );

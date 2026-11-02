@@ -9,7 +9,11 @@ import {NATIVE_ETH} from "../utils/ERC7528.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
-import {IETHRegistrar, CommitData} from "./interfaces/IETHRegistrar.sol";
+import {
+    IETHRegistrar,
+    CommitData,
+    ETH_REGISTRAR_V0_INTERFACE_ID
+} from "./interfaces/IETHRegistrar.sol";
 import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
@@ -102,7 +106,9 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
     /// @inheritdoc AbstractETHRegistrar
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return
-            interfaceId == type(IETHRegistrar).interfaceId || super.supportsInterface(interfaceId);
+            interfaceId == type(IETHRegistrar).interfaceId ||
+            interfaceId == ETH_REGISTRAR_V0_INTERFACE_ID ||
+            super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////

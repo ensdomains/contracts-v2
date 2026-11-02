@@ -14,7 +14,11 @@ import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {NATIVE_ETH} from "~src/utils/ERC7528.sol";
-import {IETHRegistrar, CommitData} from "~src/registrar/interfaces/IETHRegistrar.sol";
+import {
+    IETHRegistrar,
+    CommitData,
+    ETH_REGISTRAR_V0_INTERFACE_ID
+} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IETHRenewer, RenewData} from "~src/registrar/interfaces/IETHRenewer.sol";
 import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {ETHRegistrar, REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
@@ -24,9 +28,11 @@ import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOr
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
 // [gas analysis]
-// test_commit(): 24420
-// test_register(): 165841
-// test_renew(): 32012
+// test_commit()            50457
+// test_register()         225986
+// test_registerWithETH()  260948
+// test_renew()            101331
+// test_renewWithETH()     171592
 
 contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracleFixture {
     ETHRegistrar ethRegistrar;
@@ -72,6 +78,10 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         assertTrue(
             ERC165Checker.supportsInterface(address(ethRegistrar), type(IETHRegistrar).interfaceId),
             "IETHRegistrar"
+        );
+        assertTrue(
+            ERC165Checker.supportsInterface(address(ethRegistrar), ETH_REGISTRAR_V0_INTERFACE_ID),
+            "IETHRegistrar (v0)"
         );
         assertTrue(
             ERC165Checker.supportsInterface(
@@ -679,10 +689,13 @@ contract ETHRegistrarTest is MigrationControllerFixture, StandardRentPriceOracle
         uint256 amount = ethRegistrar.getRenewPrice(testLabel, duration, NATIVE_ETH);
         uint256 overpay = amount / 100;
         vm.prank(testOwner);
+        uint256 g = gasleft();
         ethRegistrar.renewWithETH{value: amount + overpay}(
             RenewData(testLabel, duration, testReferrer),
             refundTo
         );
+        g -= gasleft();
+        console.log("Gas: %s", g);
         assertEq(owner0 - amount - overpay, testOwner.balance, "payer");
         assertEq(beneficiary0 + amount, beneficiary.balance, "beneficiary");
         assertEq(overpay, refundTo.balance, "refund");

@@ -145,9 +145,12 @@ export async function generateAddressMarkdown(
   const chain = readJson<{ chainId?: string | number }>(
     join(namespaceDir, ".chain"),
   );
-  const deployment = readJson<{ deployedAt?: string }>(
+  const deployment = readJson<{ deployedAt?: string; updatedAt?: string }>(
     join(namespaceDir, ".deployment.json"),
   );
+  // The latest deploy that changed the namespace, with the first one beside it
+  // when they differ.
+  const lastDeployedAt = deployment?.updatedAt ?? deployment?.deployedAt;
   const chainId =
     chain?.chainId !== undefined ? Number(chain.chainId) : undefined;
 
@@ -155,8 +158,9 @@ export async function generateAddressMarkdown(
   const meta = [
     `- **Network:** ${docName}`,
     chainId !== undefined ? `- **Chain ID:** ${chainId}` : null,
-    deployment?.deployedAt
-      ? `- **Deployed at:** ${deployment.deployedAt}`
+    lastDeployedAt ? `- **Deployed at:** ${lastDeployedAt}` : null,
+    deployment?.deployedAt && deployment.deployedAt !== lastDeployedAt
+      ? `- **First deployed at:** ${deployment.deployedAt}`
       : null,
   ].filter(Boolean) as string[];
 
