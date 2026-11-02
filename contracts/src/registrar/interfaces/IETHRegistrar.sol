@@ -6,7 +6,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 import {IETHRenewer} from "./IETHRenewer.sol";
 
 /// @dev v0 interface: https://github.com/ensdomains/contracts-v2/blob/21db1e167c4aa63b46327f13ff5812407bb7598c/contracts/src/registrar/interfaces/IETHRegistrar.sol#L12
-bytes4 constant ETH_REGISTRAR_V0_INTERFACE_ID = 0x432eb5d9;
+bytes4 constant ETH_REGISTRAR_V0_INTERFACE_ID = 0xc1401b80;
 
 struct CommitData {
     /// @param label The name to register.

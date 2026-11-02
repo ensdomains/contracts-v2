@@ -2,7 +2,7 @@
 pragma solidity >=0.8.13;
 
 /// @dev v0 interface: https://github.com/ensdomains/contracts-v2/blob/21db1e167c4aa63b46327f13ff5812407bb7598c/contracts/src/registrar/interfaces/IETHRenewer.sol#L17
-bytes4 constant ETH_RENEWER_V0_INTERFACE_ID = 0x432eb5d9;
+bytes4 constant ETH_RENEWER_V0_INTERFACE_ID = 0x37e6a567;
 
 struct RenewData {
     /// @param label The name to renew.

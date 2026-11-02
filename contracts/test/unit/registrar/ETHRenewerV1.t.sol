@@ -20,16 +20,17 @@ import {MockERC20} from "~test/mocks/MockERC20.sol";
 import {StandardRegistrar} from "~test/StandardRegistrar.sol";
 
 // [gas analysis]
-// test_renew(): 80798
-// test_syncWrapper_unwrapped(): 25412
-// test_syncWrapper_wrapped():
+// test_renew()                  151325
+// test_renewBatch()              88527
+// test_syncWrapper_unwrapped()   83347
+// test_syncWrapper_wrapped()
 //   N | Gas
-//   0 | 8904
-//   1 | 24626
-//   2 | 31342
-//   3 | 42558
-//   4 | 53787
-//   5 | 65019
+//   0 | 53876
+//   1 | 91878
+//   2 | 114362
+//   3 | 136846
+//   4 | 159355
+//   5 | 181939
 
 contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracleFixture {
     ETHRenewerV1 ethRenewerV1;
@@ -346,7 +347,7 @@ contract ETHRenewerV1Test is MigrationControllerFixture, StandardRentPriceOracle
         uint256 g = gasleft();
         ethRenewerV1.renewBatch(rds, address(testPaymentToken));
         g -= gasleft();
-        console.log("Gas: %s", g);
+        console.log("Gas: %s", g / (n > 0 ? n : 1));
         assertEq(owner0 - total, testPaymentToken.balanceOf(testOwner), "payer");
         assertEq(beneficiary0 + total, testPaymentToken.balanceOf(beneficiary), "beneficiary");
     }
