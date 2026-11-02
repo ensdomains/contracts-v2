@@ -92,11 +92,11 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
         if (!PUBLIC_SUFFIX_LIST.isPublicSuffix(NameCoder.addLabel(hex"00", label))) {
             revert TLDNotPublic(label);
         }
-        IPermissionedRegistry.State memory state = ROOT_REGISTRY.getState(LibLabel.id(label));
-        if (state.status == IPermissionedRegistry.Status.REGISTERED) {
+        uint256 labelId = LibLabel.id(label);
+        if (ROOT_REGISTRY.getStatus(labelId) == IPermissionedRegistry.Status.REGISTERED) {
             // check if resolver needs updated
             if (ROOT_REGISTRY.getResolver(label) != defaultResolver) {
-                ROOT_REGISTRY.setResolver(state.tokenId, defaultResolver); // reverts w/o SET_RESOLVER
+                ROOT_REGISTRY.setResolver(labelId, defaultResolver); // reverts w/o SET_RESOLVER
             }
         } else {
             // on v2 launch, dns domains were reserved
