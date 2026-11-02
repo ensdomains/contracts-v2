@@ -4,14 +4,19 @@ export const LOCAL_BATCH_GATEWAY_URL = "x-batch-gateway:true";
 export const DEPLOYED_UNIVERSAL_RESOLVER_PROXY =
   "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe" as const;
 
+// ENS DAO Wallet (wallet.ensdao.eth)
 export const DAO_WALLET = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
 
+// ENS DAO Token Safe, a Safe whose only owner is the DAO timelock and which
+// accepts ERC-1155 tokens.
 export const DAO_TOKEN_SAFE =
   "0x5B716D6587d241166bC8914858640F8684F3A2F3" as const;
 
+// ENS DAO Endowment Safe (endowment.ensdao.eth)
 export const DAO_ENDOWMENT_SAFE =
   "0x4F2083f5fBede34C2714aFfb3105539775f7FE64" as const;
 
+/// ENS DAO Security Council Safe
 export const DAO_SECURITY_COUNCIL_SAFE =
   "0x7101B78638e34444F0a5AdE9e1149fbEeC029931" as const;
 

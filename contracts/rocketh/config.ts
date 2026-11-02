@@ -27,8 +27,8 @@ export const config = {
       default: 0,
     },
     owner: {
-      default: 0,
-      // admin is DAO on mainnet
+      // the "dao"
+      default: "deployer",
       mainnet: DAO_WALLET,
       1: DAO_WALLET,
     },
@@ -36,9 +36,6 @@ export const config = {
       // admin of ManagedUniversalResolverProxy; the deployer where no
       // network names a security council
       default: "deployer",
-      // the ENS DAO Security Council Safe. Keyed by environment name only: the
-      // local devnet also runs as chain 1, and its deploy must administer the
-      // managed URP itself.
       mainnet: DAO_SECURITY_COUNCIL_SAFE,
       // admin of the long-lived intermediate URP that the top URP already fronts
       sepolia: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
@@ -51,17 +48,12 @@ export const config = {
       // holds the v2 root registry's `eth` token after the handover; the owner where
       // no network names one
       default: "owner",
-      // the ENS DAO name owner, a Safe whose only owner is the DAO timelock and which
-      // accepts ERC-1155 tokens. Keyed by environment name only, as the local devnet
-      // also runs as chain 1.
       mainnet: DAO_TOKEN_SAFE,
     },
     beneficiary: {
       // receives the v2 registrar's and the v1 renewer's payments; the owner where
       // no network names one
       default: "owner",
-      // the ENS DAO endowment Safe (endowment.ensdao.eth). Keyed by environment name
-      // only, as the local devnet also runs as chain 1.
       mainnet: DAO_ENDOWMENT_SAFE,
     },
     v1Owner: {

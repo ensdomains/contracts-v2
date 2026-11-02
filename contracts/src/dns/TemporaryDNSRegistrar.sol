@@ -44,10 +44,6 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
     /// @dev Error selector: `0x0afb8b28`
     error TLDNotPublic(string label);
 
-    /// @notice TLD not owned by `TOKEN_OWNER`.
-    /// @dev Error selector: `0x6128680d`
-    error TLDNotOwned(string label, address owner);
-
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -98,13 +94,9 @@ contract TemporaryDNSRegistrar is ERC165, Ownable {
         }
         IPermissionedRegistry.State memory state = ROOT_REGISTRY.getState(LibLabel.id(label));
         if (state.status == IPermissionedRegistry.Status.REGISTERED) {
-            if (state.latestOwner != TOKEN_OWNER) {
-                revert TLDNotOwned(label, state.latestOwner);
-            }
             // check if resolver needs updated
             if (ROOT_REGISTRY.getResolver(label) != defaultResolver) {
-                // this contract must have SET_RESOLVER role or approval
-                ROOT_REGISTRY.setResolver(state.tokenId, defaultResolver);
+                ROOT_REGISTRY.setResolver(state.tokenId, defaultResolver); // reverts w/o SET_RESOLVER
             }
         } else {
             // on v2 launch, dns domains were reserved

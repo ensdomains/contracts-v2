@@ -1,10 +1,15 @@
 import hre from "hardhat";
 import type { Account, Address } from "viem";
-import { DAO_WALLET, DAO_TOKEN_SAFE } from "../../script/deploy-constants.js";
+import {
+  DAO_WALLET,
+  DAO_TOKEN_SAFE,
+  DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+} from "../../script/deploy-constants.js";
 
+// TODO: make this robust once deployments are consolidated
 export async function forkAndAttach(network = "mainnet") {
   if (network !== "mainnet") {
-    throw new Error(`unsupported fork: ${network}`); // TODO
+    throw new Error(`unsupported fork: ${network}`);
   }
 
   const connection = await hre.network.connect(`${network}Fork`);
@@ -26,7 +31,7 @@ export async function forkAndAttach(network = "mainnet") {
     );
     const EthRegistry = await connection.viem.getContractAt(
       "PermissionedRegistry",
-      "0xf60aba43E1f7F3DAB1186Ff03B561401C9Df85E2",
+      await RootRegistry.read.getSubregistry(["eth"]),
     );
     const DNSTLDResolver = await connection.viem.getContractAt(
       "DNSTLDResolver",
@@ -34,7 +39,7 @@ export async function forkAndAttach(network = "mainnet") {
     );
     const UniversalResolver = await connection.viem.getContractAt(
       "UniversalResolverV2",
-      "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe",
+      DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
     );
 
     const namedAccounts = {

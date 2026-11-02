@@ -6,6 +6,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {SimplePublicSuffixList} from "@ens/contracts/dnsregistrar/SimplePublicSuffixList.sol";
 
 import {TemporaryDNSRegistrar, TLD_ROLE_BITMAP} from "~src/dns/TemporaryDNSRegistrar.sol";
+import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
@@ -164,10 +165,16 @@ contract TemporaryDNSRegistrarTest is V2Fixture {
         _checkSync(registeredLabel);
     }
 
-    function test_syncTLD_assigned() external {
+    function test_syncTLD_notAuthorized() external {
         assertEq(rootRegistry.findOwner(assignedLabel), actor, "before");
+        uint256 resource = rootRegistry.getResource(LibLabel.id(assignedLabel));
         vm.expectRevert(
-            abi.encodeWithSelector(TemporaryDNSRegistrar.TLDNotOwned.selector, assignedLabel, actor)
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                resource,
+                RegistryRolesLib.ROLE_SET_RESOLVER,
+                registrar
+            )
         );
         registrar.syncTLD(assignedLabel);
     }
