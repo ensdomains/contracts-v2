@@ -15,31 +15,62 @@ export async function forkAndAttach(network = "mainnet") {
   const connection = await hre.network.connect(`${network}Fork`);
 
   const forkedFixture = async () => {
-    // v1
-    const SimplePublicSuffixList = await connection.viem.getContractAt(
-      "SimplePublicSuffixList",
-      "0x823BDa9cA8c47d072376eCD595530c8fb2fAa3ED",
+    const ENSRegistry = await connection.viem.getContractAt(
+      "ENSRegistry",
+      "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e",
     );
     const OffchainDNSResolver = await connection.viem.getContractAt(
       "OffchainDNSResolver",
       "0xEbBcBFBE4A8F3357e7d1d444406C28cFa34f1261",
     );
-    // v2
-    const RootRegistry = await connection.viem.getContractAt(
-      "PermissionedRegistry",
-      "0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e",
-    );
-    const EthRegistry = await connection.viem.getContractAt(
-      "PermissionedRegistry",
-      await RootRegistry.read.getSubregistry(["eth"]),
-    );
-    const DNSTLDResolver = await connection.viem.getContractAt(
-      "DNSTLDResolver",
-      "0x6695327EE70F41151d2cBADC3ABBb6e4a58e739c",
+    const SimplePublicSuffixList = await connection.viem.getContractAt(
+      "SimplePublicSuffixList",
+      "0x823BDa9cA8c47d072376eCD595530c8fb2fAa3ED",
     );
     const UniversalResolver = await connection.viem.getContractAt(
       "UniversalResolverV2",
       DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+    );
+    const RootRegistry = await connection.viem.getContractAt(
+      "PermissionedRegistry",
+      "0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e",
+    );
+    const DNSTLDResolver = await connection.viem.getContractAt(
+      "DNSTLDResolver",
+      "0x6695327EE70F41151d2cBADC3ABBb6e4a58e739c", // fixed
+    );
+    const ContractNamer = await connection.viem.getContractAt(
+      "ContractNamer",
+      "0x5cDaF63d4C2a01218149DDe707E5bc239c68730c",
+    );
+
+    // derivable
+    const [
+      ethRegistry,
+      batchGatewayProvider,
+      dnssecGatewayProvider,
+      dnssecImpl,
+    ] = await Promise.all([
+      RootRegistry.read.getSubregistry(["eth"]),
+      DNSTLDResolver.read.BATCH_GATEWAY_PROVIDER(),
+      DNSTLDResolver.read.ORACLE_GATEWAY_PROVIDER(),
+      DNSTLDResolver.read.DNSSEC_ORACLE(),
+    ]);
+    const EthRegistry = await connection.viem.getContractAt(
+      "PermissionedRegistry",
+      ethRegistry,
+    );
+    const BatchGatewayProvider = await connection.viem.getContractAt(
+      "GatewayProvider",
+      batchGatewayProvider,
+    );
+    const DNSSECGatewayProvider = await connection.viem.getContractAt(
+      "GatewayProvider",
+      dnssecGatewayProvider,
+    );
+    const DNSSECImpl = await connection.viem.getContractAt(
+      "DNSSECImpl",
+      dnssecImpl,
     );
 
     const namedAccounts = {
@@ -48,9 +79,19 @@ export async function forkAndAttach(network = "mainnet") {
     };
 
     return {
-      v1: { SimplePublicSuffixList, OffchainDNSResolver },
-      v2: { RootRegistry, EthRegistry, DNSTLDResolver },
+      v1: {
+        ENSRegistry,
+        OffchainDNSResolver,
+      },
+      SimplePublicSuffixList,
+      DNSSECImpl,
+      RootRegistry,
+      EthRegistry,
+      DNSTLDResolver,
       UniversalResolver,
+      BatchGatewayProvider,
+      DNSSECGatewayProvider,
+      ContractNamer,
       namedAccounts,
       impersonate,
     };

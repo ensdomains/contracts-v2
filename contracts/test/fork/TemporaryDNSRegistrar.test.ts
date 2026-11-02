@@ -10,7 +10,7 @@ import {
   DEPLOYMENT_ROLES,
   STATUS,
 } from "../../script/deploy-constants.js";
-import { KNOWN_DNS } from "../integration/dns/mainnet.js";
+import { KNOWN_DNS } from "./knownDNS.js";
 
 const { connection, forkedFixture } = await forkAndAttach();
 
@@ -21,15 +21,15 @@ async function fixture() {
     "TemporaryDNSRegistrar",
     [
       DAO_WALLET,
-      F.v2.RootRegistry.address,
+      F.RootRegistry.address,
       DAO_TOKEN_SAFE,
-      F.v1.SimplePublicSuffixList.address,
-      F.v2.DNSTLDResolver.address,
+      F.SimplePublicSuffixList.address,
+      F.DNSTLDResolver.address,
     ],
   );
 
   // DAO #1: grant TemporaryDNSRegistrar roles on RootRegistry
-  await F.v2.RootRegistry.write.grantRootRoles(
+  await F.RootRegistry.write.grantRootRoles(
     [
       DEPLOYMENT_ROLES.TEMPORARY_DNS_REGISTRAR_ROOT,
       TemporaryDNSRegistrar.address,
@@ -39,7 +39,7 @@ async function fixture() {
 
   // DAO #2: grant TemporaryDNSRegistrar approval of tokens owned by DAOTokenSafe
   // note: this needs routed through SafeProxy.execTransaction()
-  await F.v2.RootRegistry.write.setApprovalForAll(
+  await F.RootRegistry.write.setApprovalForAll(
     [TemporaryDNSRegistrar.address, true],
     { account: F.namedAccounts.DAO_TOKEN_SAFE },
   );
@@ -58,20 +58,20 @@ describe("TemporaryDNSRegistrar (before activation)", () => {
 
     // current state
     await expect(
-      F.v2.RootRegistry.read.getStatus([idFromLabel(tld)]),
+      F.RootRegistry.read.getStatus([idFromLabel(tld)]),
       "reserved",
     ).resolves.toStrictEqual(STATUS.RESERVED);
 
     // sync: reserved => registered + update resolver
     await F.TemporaryDNSRegistrar.write.syncTLD([tld]);
     await expect(
-      F.v2.RootRegistry.read.getStatus([idFromLabel(tld)]),
+      F.RootRegistry.read.getStatus([idFromLabel(tld)]),
       "registered",
     ).resolves.toStrictEqual(STATUS.REGISTERED);
     await expect(
-      F.v2.RootRegistry.read.getResolver([tld]),
+      F.RootRegistry.read.getResolver([tld]),
       "set resolver",
-    ).resolves.toStrictEqual(F.v2.DNSTLDResolver.address);
+    ).resolves.toStrictEqual(F.DNSTLDResolver.address);
 
     // change default resolver
     await F.TemporaryDNSRegistrar.write.setDefaultResolver([zeroAddress], {
@@ -81,7 +81,7 @@ describe("TemporaryDNSRegistrar (before activation)", () => {
     // sync: update resolver
     await F.TemporaryDNSRegistrar.write.syncTLD([tld]);
     await expect(
-      F.v2.RootRegistry.read.getResolver([tld]),
+      F.RootRegistry.read.getResolver([tld]),
       "updated resolver",
     ).resolves.toStrictEqual(zeroAddress);
   });
@@ -96,7 +96,7 @@ describe("TemporaryDNSRegistrar (before activation)", () => {
           dnsEncodeName(kp.name),
           bundle.call,
         ]);
-        expectVar({ resolver }).toEqualAddress(F.v2.DNSTLDResolver.address);
+        expectVar({ resolver }).toEqualAddress(F.DNSTLDResolver.address);
         bundle.expect(answer);
       });
     }
