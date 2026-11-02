@@ -41,7 +41,9 @@ contract MockERC20 is ERC20Permit {
 
 /// @notice Mock ERC-20 whose issuance is bounded by a total supply ceiling and a
 /// per-call mint limit.
-/// @dev Faucet payment token for public testnets.
+/// @dev Faucet payment token for public testnets. The per-call limit bounds a
+/// single mint only: repeated mints can still reach the ceiling, and the open
+/// `nuke` frees supply again by burning a holder's balance.
 contract MockERC20Capped is MockERC20 {
     ////////////////////////////////////////////////////////////////////////
     // Storage
