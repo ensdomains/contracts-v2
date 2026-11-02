@@ -6,20 +6,36 @@ import {
 } from "../script/pinnedMockTokens.js";
 
 export default execute(
-  async ({ deploy, getOrNull, namedAccounts: { deployer }, tags }) => {
+  async ({ deploy, getOrNull, namedAccounts: { deployer }, network, tags }) => {
     // Free-mint mock payment tokens must never ship to mainnet; the price
     // oracle wires real tokens there instead.
     if (tags.hasDao) return;
 
-    // Keep an existing capped mock so its pinned address survives metadata-only
-    // changes; replace anything else, e.g. an uncapped one.
+    // Keep an existing capped mock that is still on chain so its pinned address
+    // survives metadata-only changes; replace anything else, e.g. an uncapped
+    // mock or a record left over from a reset chain.
     const existing = getOrNull(PINNED_MOCK_USDC.name);
-    if (!existing || !isPinnedMockBuild(existing, PINNED_MOCK_USDC)) {
-      await deploy(PINNED_MOCK_USDC.name, {
-        account: deployer,
-        artifact: PINNED_MOCK_USDC.artifact,
-        args: [...PINNED_MOCK_USDC.args],
-      });
+    const keep = existing
+      ? isPinnedMockBuild(existing, PINNED_MOCK_USDC) &&
+        (
+          await network.provider.request({
+            method: "eth_getCode",
+            params: [existing.address, "latest"],
+          })
+        ).length > 2
+      : false;
+    // rocketh would reuse a record whose build matches without checking the
+    // chain, so the replacement must override it.
+    if (!keep) {
+      await deploy(
+        PINNED_MOCK_USDC.name,
+        {
+          account: deployer,
+          artifact: PINNED_MOCK_USDC.artifact,
+          args: [...PINNED_MOCK_USDC.args],
+        },
+        { alwaysOverride: true },
+      );
     }
 
     await deploy("MockDAI", {

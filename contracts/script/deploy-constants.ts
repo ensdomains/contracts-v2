@@ -27,13 +27,6 @@ export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
   sepolia: "0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1",
 };
 
-// Faucet-minted MockUSDC from the active deployment namespace, accepted by the
-// live rent price oracle and whitelisted on the Rhinestone orchestrator.
-// Archived deployment namespaces carry their own MockUSDC instances that the
-// live oracle rejects — never source this address from an archived artifact.
-export const SEPOLIA_MOCK_USDC =
-  "0x16f95D91DBa7dA3Aca778Ec053dF0FF6C6A8aA8e" as const;
-
 // Constructor args for the faucet mock USDC; capped because anyone can mint.
 export const MOCK_USDC_SYMBOL = "USDC";
 export const MOCK_USDC_DECIMALS = 6;
