@@ -24,6 +24,10 @@ const program = new Command()
   .option(
     "--out-dir <path>",
     "Output directory for the generated markdown (defaults to docs/addresses)",
+  )
+  .option(
+    "--file-name <name>",
+    "Basename of the generated file, without the extension (defaults to the network name)",
   );
 
 program.parse(process.argv);
@@ -32,6 +36,7 @@ const opts = program.opts<{
   namespace?: string;
   deploymentsDir: string;
   outDir?: string;
+  fileName?: string;
 }>();
 
 const outPath = await generateAddressMarkdown({
@@ -39,6 +44,7 @@ const outPath = await generateAddressMarkdown({
   namespace: opts.namespace ?? opts.network,
   docName: opts.network,
   outDir: opts.outDir,
+  fileName: opts.fileName,
 });
 
 console.log(`Wrote ${outPath}`);

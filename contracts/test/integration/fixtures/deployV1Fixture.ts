@@ -1,13 +1,6 @@
 import type { NetworkConnection } from "hardhat/types/network";
-import {
-  type Account,
-  type Address,
-  getAddress,
-  labelhash,
-  namehash,
-  zeroAddress,
-} from "viem";
-import { splitName } from "../../utils/utils.js";
+import { type Account, type Address, getAddress, zeroAddress } from "viem";
+import { splitName, labelhash, namehash } from "../../utils/utils.js";
 import {
   LOCAL_BATCH_GATEWAY_URL,
   MAX_EXPIRY,
@@ -16,11 +9,12 @@ import {
 export async function deployV1Fixture(
   network: NetworkConnection,
   enableCcipRead = false,
+  setupEth = true,
 ) {
   const publicClient = await network.viem.getPublicClient({
     ccipRead: enableCcipRead ? undefined : false,
   });
-  const [walletClient] = await network.viem.getWalletClients();
+  const [walletClient, rootClient] = await network.viem.getWalletClients();
   const ensRegistry = await network.viem.deployContract("ENSRegistry");
   const baseRegistrar = await network.viem.deployContract(
     "BaseRegistrarImplementation",
@@ -62,24 +56,33 @@ export async function deployV1Fixture(
   );
   await baseRegistrar.write.addController([walletClient.account.address]);
   const ownedResolver = await network.viem.deployContract("OwnedResolver");
-  await ensRegistry.write.setSubnodeRecord([
-    namehash(""),
-    labelhash("eth"),
-    walletClient.account.address,
-    ownedResolver.address,
-    0n,
-  ]);
   await ownedResolver.write.setAddr([namehash("eth"), baseRegistrar.address]);
-  await ensRegistry.write.setSubnodeOwner([
-    namehash(""),
-    labelhash("eth"),
-    baseRegistrar.address,
-  ]);
+  if (setupEth) {
+    await ensRegistry.write.setSubnodeRecord([
+      namehash(""),
+      labelhash("eth"),
+      walletClient.account.address,
+      ownedResolver.address,
+      0n,
+    ]);
+    await ensRegistry.write.setSubnodeOwner([
+      namehash(""),
+      labelhash("eth"),
+      baseRegistrar.address,
+    ]);
+  }
   const nameWrapper = await network.viem.deployContract("NameWrapper", [
     ensRegistry.address,
     baseRegistrar.address,
     zeroAddress, // IMetadataService
   ]);
+  const root = await network.viem.deployContract(
+    "Root",
+    [ensRegistry.address],
+    { client: { wallet: rootClient } },
+  );
+  await root.write.setController([rootClient.account.address, true]); // allow setSubnode on root
+  await ensRegistry.write.setOwner([namehash(""), root.address]);
   return {
     network,
     publicClient,
@@ -92,6 +95,7 @@ export async function deployV1Fixture(
     batchGatewayProvider,
     universalResolver,
     nameWrapper,
+    root,
     setupName,
   };
   // clobbers registry ownership up to name
@@ -108,7 +112,7 @@ export async function deployV1Fixture(
     resolverAddress = getAddress(resolverAddress); // fix checksum
     const labels = splitName(name);
     let i = labels.length;
-    if (name.endsWith(".eth")) {
+    if (setupEth && i && labels[i - 1] === "eth") {
       await baseRegistrar.write.register([
         BigInt(labelhash(labels[(i -= 2)])),
         account.address,
@@ -118,10 +122,14 @@ export async function deployV1Fixture(
     while (i > 0) {
       const parent = labels.slice(i).join(".");
       const child = labels[--i];
-      await ensRegistry.write.setSubnodeOwner(
-        [namehash(parent), labelhash(child), account.address],
-        { account },
-      );
+      if (parent) {
+        await ensRegistry.write.setSubnodeOwner(
+          [namehash(parent), labelhash(child), account.address],
+          { account },
+        );
+      } else {
+        await root.write.setSubnodeOwner([labelhash(child), account.address]);
+      }
     }
     // set resolver on leaf
     const node = namehash(name);
