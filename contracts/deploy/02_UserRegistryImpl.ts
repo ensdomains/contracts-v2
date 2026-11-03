@@ -1,6 +1,7 @@
 import { execute } from "@rocketh";
+import type { Abi_IAddressSet } from "generated/abis/IAddressSet.js";
 import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
-import type { Abi_IRegistryURIRenderer } from "generated/abis/IRegistryURIRenderer.ts";
+import type { Abi_IRegistryURIRenderer } from "generated/abis/IRegistryURIRenderer.js";
 import { Artifact_UserRegistry } from "generated/artifacts/UserRegistry.js";
 
 export default execute(
