@@ -344,20 +344,6 @@ contract UserRegistryTest is Test, ERC1155Holder {
         proxy.upgradeToAndCall(newImpl, "");
     }
 
-    function test_upgrade_notApproved() external {
-        address newImpl =
-            address(new UserRegistryV2Mock(upgradeSet, labelStore, uriRenderer, address(this)));
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AbstractUpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
-                newImpl
-            )
-        );
-        vm.prank(admin);
-        proxy.upgradeToAndCall(newImpl, "");
-    }
-
     function test_upgrade_cannotUpgradeFrom() external {
         address newImpl =
             address(new UserRegistry(upgradeSet, labelStore, uriRenderer, address(this)));
@@ -370,22 +356,41 @@ contract UserRegistryTest is Test, ERC1155Holder {
         proxy.upgradeToAndCall(newImpl, "");
     }
 
-    function test_upgrade() external {
-        // Deploy a new implementation
+    function test_upgrade_notEmancipated() external {
         address newImpl =
             address(new UserRegistryV2Mock(upgradeSet, labelStore, uriRenderer, address(this)));
-        upgradeSet.approve(newImpl, true);
 
-        // Upgrade the proxy
+        vm.assertFalse(proxy.isEmancipated());
+
         vm.prank(admin);
         proxy.upgradeToAndCall(newImpl, "");
 
-        // Test the new functionality
-        assertEq(
-            UserRegistryV2Mock(address(proxy)).version(),
-            2,
-            "Version should be 2 after upgrade"
+        UserRegistryV2Mock(address(proxy)).newFunction();
+    }
+
+    function test_upgrade_isEmancipated() external {
+        address newImpl =
+            address(new UserRegistryV2Mock(upgradeSet, labelStore, uriRenderer, address(this)));
+
+        vm.prank(admin);
+        proxy.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, admin);
+        assertTrue(proxy.isEmancipated());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AbstractUpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
+                newImpl
+            )
         );
+        vm.prank(admin);
+        proxy.upgradeToAndCall(newImpl, "");
+
+        upgradeSet.approve(newImpl, true);
+
+        vm.prank(admin);
+        proxy.upgradeToAndCall(newImpl, "");
+
+        UserRegistryV2Mock(address(proxy)).newFunction();
     }
 
     function test_domain_expiry() public {
@@ -495,7 +500,5 @@ contract UserRegistryV2Mock is UserRegistry {
     function canUpgradeFrom(address) external pure override returns (bool) {
         return true;
     }
-    function version() public pure returns (uint256) {
-        return 2;
-    }
+    function newFunction() external pure {}
 }

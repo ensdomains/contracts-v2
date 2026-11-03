@@ -64,4 +64,13 @@ contract UserRegistry is AbstractUpgradeablePermissionedRegistry, IEACGrantIniti
             interfaceId == type(IEACGrantInitializable).interfaceId ||
             super.supportsInterface(interfaceId);
     }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Override: allow arbitrary upgrades while not emancipated.
+    function _isUpgradeApproved(address newImplementation) internal view override returns (bool) {
+        return super._isUpgradeApproved(newImplementation) || !isEmancipated();
+    }
 }
