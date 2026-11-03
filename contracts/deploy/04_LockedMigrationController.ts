@@ -8,7 +8,10 @@ import type { Abi_IAddressSet } from "generated/abis/IAddressSet.js";
 import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
 import { Artifact_LockedMigrationController } from "generated/artifacts/LockedMigrationController.js";
-import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
+import {
+  DEPLOYMENT_ROLES,
+  toRequiredGrantRevokeRoles,
+} from "../script/deploy-constants.js";
 
 export default execute(
   async ({
@@ -55,23 +58,21 @@ export default execute(
     // The phased deploy holds migration closed until go-live, when the v2
     // registrar opens too.
     if (!tags.deferMigration) {
-      const controllerRoles = DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT;
+      const roles = DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT;
       const proxyHasGrant = await read(ethRegistry, {
         functionName: "hasRootRoles",
-        args: [controllerRoles, lmc.address],
+        args: [roles, lmc.address],
       });
       if (!proxyHasGrant) {
-        const adminRoles =
-          (controllerRoles | (controllerRoles >> 128n)) << 128n;
         const deployerCanGrant = await read(ethRegistry, {
           functionName: "hasRootRoles",
-          args: [adminRoles, deployer],
+          args: [toRequiredGrantRevokeRoles(roles), deployer],
         });
         if (deployerCanGrant) {
           await write(ethRegistry, {
             account: deployer,
             functionName: "grantRootRoles",
-            args: [controllerRoles, lmc.address],
+            args: [roles, lmc.address],
           });
         } else {
           console.warn(

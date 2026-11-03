@@ -11,6 +11,13 @@ import HardhatClearRemappingsPlugin from "./plugins/clear-remappings/index.ts";
 import HardhatMigrationPlugin from "./plugins/migration/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
+const KEY_MAINNET_RPC_URL = "MAINNET_RPC_URL";
+const KEY_SEPOLIA_RPC_URL = "SEPOLIA_RPC_URL";
+
+// defaults
+process.env[KEY_MAINNET_RPC_URL] ||= "https://mainnet.gateway.tenderly.co";
+process.env[KEY_SEPOLIA_RPC_URL] ||= "https://sepolia.gateway.tenderly.co";
+
 const version = "0.8.25";
 const hcaVersion = "0.8.27";
 const outputSelection = {
@@ -120,18 +127,27 @@ const config = {
   networks: {
     mainnet: {
       type: "http",
-      url: configVariable("MAINNET_RPC_URL"),
+      url: configVariable(KEY_MAINNET_RPC_URL),
       chainId: 1,
+    },
+    mainnetFork: {
+      type: "edr-simulated",
+      allowUnlimitedContractSize: false,
+      chainId: 1,
+      forking: {
+        enabled: true,
+        url: configVariable(KEY_MAINNET_RPC_URL),
+      },
     },
     sepolia: {
       type: "http",
-      url: configVariable("SEPOLIA_RPC_URL"),
+      url: configVariable(KEY_SEPOLIA_RPC_URL),
       accounts: [configVariable("DEPLOYER_KEY")],
       chainId: 11155111,
     },
     "sepolia-dev": {
       type: "http",
-      url: configVariable("SEPOLIA_RPC_URL"),
+      url: configVariable(KEY_SEPOLIA_RPC_URL),
       accounts: [configVariable("DEV_DEPLOYER_KEY")],
       chainId: 11155111,
     },
