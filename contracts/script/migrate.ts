@@ -96,6 +96,7 @@ import {
 } from "./migrations/fixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
 import { isLogSpanRefusal } from "./migrations/logSpanRefusal.js";
+import { PINNED_MOCK_TOKENS } from "./pinnedMockTokens.js";
 import {
   briefError,
   ONE_CALL_PER_BATCH,
@@ -7747,6 +7748,10 @@ export async function deployV2(opts: DeployV2Options) {
   if (opts.fresh) {
     archiveExistingDeploymentNamespace(deploymentsDir, deploymentNetwork);
   }
+  // Pinned mocks only exist on public testnets; mainnet wires real tokens.
+  if (chainId === sepolia.id) {
+    carryPinnedMockTokens(deploymentsDir, deploymentNetwork, chainId);
+  }
   // The records' addresses before the run, to tell whether it deployed anything.
   const addressesBefore = new Map(
     [...readNamespaceRecords(deploymentsDir, deploymentNetwork)].map(
@@ -9988,11 +9993,17 @@ function readDeploymentDeployedAt(path: string): string | undefined {
 // Moves an existing deployment namespace aside so a fresh deployment can take
 // its place. The archive is suffixed with the archived deployment's date and an
 // auto-incrementing revision, e.g. `sepolia-20260525-r1`.
-function archiveExistingDeploymentNamespace(root: string, environment: string) {
+// A namespace that holds nothing but carried-over pinned mocks is not a
+// deployment, so it stays in place for the new run to reuse.
+export function archiveExistingDeploymentNamespace(
+  root: string,
+  environment: string,
+) {
   const path = join(root, environment);
   if (!existsSync(path)) return;
+  const pinned = new Set(PINNED_MOCK_TOKENS.map(({ name }) => `${name}.json`));
   const hasArtifacts = readdirSync(path).some(
-    (file) => file.endsWith(".json") || file === ".chain",
+    (file) => file.endsWith(".json") && !pinned.has(file),
   );
   if (!hasArtifacts) return;
   const deployedAt = readDeploymentDeployedAt(path) ?? new Date().toISOString();
@@ -10005,6 +10016,94 @@ function archiveExistingDeploymentNamespace(root: string, environment: string) {
   }
   renameSync(path, join(root, archive));
   console.log(`archived existing ${environment} deployment to ${archive}`);
+}
+
+/// The dated archives of a namespace on the given chain, newest first.
+function datedArchives(
+  root: string,
+  environment: string,
+  chainId: number,
+): string[] {
+  if (!existsSync(root)) return [];
+  const pattern = new RegExp(
+    `^${environment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d{8})-r(\\d+)$`,
+  );
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => {
+      const match = pattern.exec(entry.name);
+      if (!match) return [];
+      const recorded = readDeploymentChainId(join(root, entry.name));
+      if (recorded !== undefined && recorded !== chainId) return [];
+      return [
+        { name: entry.name, stamp: match[1], revision: Number(match[2]) },
+      ];
+    })
+    .sort((a, b) =>
+      a.stamp === b.stamp
+        ? b.revision - a.revision
+        : b.stamp.localeCompare(a.stamp),
+    )
+    .map(({ name }) => name);
+}
+
+/// Copies each pinned mock that the namespace lacks from its newest dated archive
+/// that holds one. The deploy step decides whether the copied record is kept.
+/// Returns the names copied.
+export function carryPinnedMockTokens(
+  root: string,
+  environment: string,
+  chainId: number,
+): string[] {
+  const target = join(root, environment);
+  const archives = datedArchives(root, environment, chainId);
+  const carried: string[] = [];
+  for (const { name } of PINNED_MOCK_TOKENS) {
+    if (existsSync(join(target, `${name}.json`))) continue;
+    const archive = archives.find((candidate) =>
+      existsSync(join(root, candidate, `${name}.json`)),
+    );
+    if (!archive) continue;
+    const contents = readFileSync(join(root, archive, `${name}.json`), "utf-8");
+    let previous: { address?: string; buildInfoId?: string };
+    try {
+      previous = JSON.parse(contents) as typeof previous;
+    } catch {
+      continue;
+    }
+    if (!previous.address) continue;
+    mkdirSync(target, { recursive: true });
+    // rocketh won't load a populated namespace without `.chain`.
+    const chainFile = join(target, ".chain");
+    if (!existsSync(chainFile)) {
+      const archivedChainFile = join(root, archive, ".chain");
+      writeFileSync(
+        chainFile,
+        existsSync(archivedChainFile)
+          ? readFileSync(archivedChainFile)
+          : JSON.stringify({ chainId: String(chainId) }),
+      );
+    }
+    writeFileSync(join(target, `${name}.json`), contents);
+    if (previous.buildInfoId) {
+      const buildInfo = join(
+        root,
+        archive,
+        "build-info",
+        `${previous.buildInfoId}.json`,
+      );
+      if (existsSync(buildInfo)) {
+        mkdirSync(join(target, "build-info"), { recursive: true });
+        writeFileSync(
+          join(target, "build-info", `${previous.buildInfoId}.json`),
+          readFileSync(buildInfo),
+        );
+      }
+    }
+    carried.push(name);
+    console.log(`carried ${name} at ${previous.address} over from ${archive}`);
+  }
+  return carried;
 }
 
 // Minimal CLI option shapes. Commander hands us plain strings; the address and
