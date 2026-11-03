@@ -5,17 +5,23 @@ import { Artifact_UserRegistry } from "generated/artifacts/UserRegistry.js";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
+    const registryUpgradeSet = get<Abi_IAddressSet>("RegistryUpgradeSet");
     const labelStore = get<Abi_ILabelStore>("LabelStore");
     const uriRenderer = get<Abi_IRegistryURIRenderer>("BoxedENSURIRenderer");
 
     await deploy("UserRegistryImpl", {
       account: deployer,
       artifact: Artifact_UserRegistry,
-      args: [labelStore.address, uriRenderer.address, owner],
+      args: [
+        registryUpgradeSet.address,
+        labelStore.address,
+        uriRenderer.address,
+        owner,
+      ],
     });
   },
   {
     tags: ["UserRegistryImpl", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["LabelStore", "BoxedENSURIRenderer"],
+    dependencies: ["LabelStore", "BoxedENSURIRenderer", "RegistryUpgradeSet"],
   },
 );

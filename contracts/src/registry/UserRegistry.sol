@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+
 import {
     IEACGrantInitializable,
     Grant
@@ -39,7 +41,6 @@ contract UserRegistry is AbstractUpgradeablePermissionedRegistry, IEACGrantIniti
     )
         AbstractUpgradeablePermissionedRegistry(upgradeSet, labelStore, namer)
     {
-        _disableInitializers();
         URI_RENDERER = uriRenderer;
     }
 
@@ -57,7 +58,7 @@ contract UserRegistry is AbstractUpgradeablePermissionedRegistry, IEACGrantIniti
         emit URIUpdated("", address(URI_RENDERER), address(0));
     }
 
-    /// @inheritdoc AbstractUpgradeablePermissionedRegistry
+    /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IEACGrantInitializable).interfaceId ||

@@ -88,7 +88,6 @@ contract WrapperRegistry is
             publicResolver
         )
     {
-        _disableInitializers();
         V1_RESOLVER = ensV1Resolver;
         URI_RENDERER = uriRenderer;
     }

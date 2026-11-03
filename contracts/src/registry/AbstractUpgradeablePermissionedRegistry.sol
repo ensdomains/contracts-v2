@@ -96,7 +96,8 @@ abstract contract AbstractUpgradeablePermissionedRegistry is
         override
         onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
     {
-        if (!UPGRADE_SET.includes(newImplementation)) {
+        IAddressSet upgradeSet = UPGRADE_SET;
+        if (address(upgradeSet) != address(0) && !upgradeSet.includes(newImplementation)) {
             revert UpgradeTargetNotApproved(newImplementation);
         }
     }
