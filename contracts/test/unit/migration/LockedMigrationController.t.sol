@@ -42,6 +42,9 @@ import {IWrapperRegistry} from "~src/registry/interfaces/IWrapperRegistry.sol";
 import {
     IWrapperRegistryInitializable
 } from "~src/registry/interfaces/IWrapperRegistryInitializable.sol";
+import {
+    AbstractUpgradeablePermissionedRegistry
+} from "~src/registry/AbstractUpgradeablePermissionedRegistry.sol";
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
@@ -205,7 +208,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IWrapperRegistry.UpgradeTargetNotApproved.selector,
+                AbstractUpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
                 address(newImplementation)
             )
         );

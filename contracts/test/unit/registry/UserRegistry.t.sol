@@ -6,6 +6,7 @@ pragma solidity >=0.8.13;
 import {Test} from "forge-std/Test.sol";
 
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
+import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -24,7 +25,12 @@ import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
+import {
+    AbstractUpgradeablePermissionedRegistry
+} from "~src/registry/AbstractUpgradeablePermissionedRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
+import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
 
@@ -33,6 +39,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
     VerifiableFactory factory;
     LabelStore labelStore;
     MockURIRenderer uriRenderer;
+    PermissionedAddressSet upgradeSet;
     UserRegistry implementation;
     UserRegistry proxy;
 
@@ -43,13 +50,14 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function setUp() public {
         factory = new VerifiableFactory();
+        upgradeSet = new PermissionedAddressSet(address(this));
         labelStore = new LabelStore(IContractNamer(address(0)));
         uriRenderer = new MockURIRenderer("mock");
 
         // Deploy the implementation
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        implementation = new UserRegistry(labelStore, uriRenderer, address(this));
+        implementation = new UserRegistry(upgradeSet, labelStore, uriRenderer, address(this));
 
         // Create initialization data
         Grant[] memory grants = new Grant[](1);
@@ -320,26 +328,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
         assertFalse(implementation.canUpgradeFrom(address(implementation)), "self");
     }
 
-    function test_upgrade() public {
-        // Deploy a new implementation
-        UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(labelStore, uriRenderer, address(this));
+    function test_upgrade_notAuthorized() external {
+        address newImpl =
+            address(new UserRegistryV2Mock(upgradeSet, labelStore, uriRenderer, address(this)));
 
-        // Upgrade the proxy
-        vm.prank(admin);
-        proxy.upgradeToAndCall(address(newImplementation), "");
-
-        // Test the new functionality
-        UserRegistryV2Mock upgradedProxy = UserRegistryV2Mock(address(proxy));
-        assertEq(upgradedProxy.version(), 2, "Version should be 2 after upgrade");
-    }
-
-    function test_Revert_unauthorized_upgrade() public {
-        // Deploy a new implementation
-        UserRegistryV2Mock newImplementation =
-            new UserRegistryV2Mock(labelStore, uriRenderer, address(this));
-
-        // User1 tries to upgrade without permission
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
@@ -349,7 +341,51 @@ contract UserRegistryTest is Test, ERC1155Holder {
             )
         );
         vm.prank(user1);
-        proxy.upgradeToAndCall(address(newImplementation), "");
+        proxy.upgradeToAndCall(newImpl, "");
+    }
+
+    function test_upgrade_notApproved() external {
+        address newImpl =
+            address(new UserRegistryV2Mock(upgradeSet, labelStore, uriRenderer, address(this)));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AbstractUpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
+                newImpl
+            )
+        );
+        vm.prank(admin);
+        proxy.upgradeToAndCall(newImpl, "");
+    }
+
+    function test_upgrade_cannotUpgradeFrom() external {
+        address newImpl =
+            address(new UserRegistry(upgradeSet, labelStore, uriRenderer, address(this)));
+        upgradeSet.approve(newImpl, true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IUUPSProxy.InvalidUpgradeTarget.selector, implementation, newImpl)
+        );
+        vm.prank(admin);
+        proxy.upgradeToAndCall(newImpl, "");
+    }
+
+    function test_upgrade() external {
+        // Deploy a new implementation
+        address newImpl =
+            address(new UserRegistryV2Mock(upgradeSet, labelStore, uriRenderer, address(this)));
+        upgradeSet.approve(newImpl, true);
+
+        // Upgrade the proxy
+        vm.prank(admin);
+        proxy.upgradeToAndCall(newImpl, "");
+
+        // Test the new functionality
+        assertEq(
+            UserRegistryV2Mock(address(proxy)).version(),
+            2,
+            "Version should be 2 after upgrade"
+        );
     }
 
     function test_domain_expiry() public {
@@ -396,16 +432,10 @@ contract UserRegistryTest is Test, ERC1155Holder {
     }
 
     function test_isEmancipated_registry() external {
-        assertFalse(proxy.isEmancipated(), "1");
+        assertFalse(proxy.isEmancipated(), "before");
         vm.prank(admin);
         proxy.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, admin);
-        assertFalse(proxy.isEmancipated(), "2");
-        vm.prank(admin);
-        proxy.revokeRootRoles(
-            RegistryRolesLib.ROLE_UPGRADE | RegistryRolesLib.ROLE_UPGRADE_ADMIN,
-            admin
-        );
-        assertTrue(proxy.isEmancipated(), "3");
+        assertTrue(proxy.isEmancipated(), "after");
     }
 
     function test_isEmancipated_token() external {
@@ -454,8 +484,13 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
 // Mock V2 contract for testing upgrades
 contract UserRegistryV2Mock is UserRegistry {
-    constructor(ILabelStore labelStore, IRegistryURIRenderer uriRenderer, address namer)
-        UserRegistry(labelStore, uriRenderer, namer)
+    constructor(
+        IAddressSet upgradeSet,
+        ILabelStore labelStore,
+        IRegistryURIRenderer uriRenderer,
+        address namer
+    )
+        UserRegistry(upgradeSet, labelStore, uriRenderer, namer)
     {}
     function canUpgradeFrom(address) external pure override returns (bool) {
         return true;
