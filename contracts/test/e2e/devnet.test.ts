@@ -1,5 +1,6 @@
-import { describe, expect, it } from "bun:test";
-import { expectVar } from "../utils/expectVar.js";
+import { describe, it } from "bun:test";
+import { expect, expectVar } from "../utils/expectVar.js";
+import { computeProxyLogicAddress } from "../integration/fixtures/deployVerifiableProxy.ts";
 
 describe("Devnet", () => {
   const { env, setupEnv, resetInitialState } = process.TEST_GLOBALS!;
@@ -26,27 +27,45 @@ describe("Devnet", () => {
   });
 
   it("saveState", async () => {
-    const gateways = await env.shared.BatchGatewayProvider.read.gateways();
-    await env.shared.BatchGatewayProvider.write.setGateways([[]], {
+    const gateways = await env.v1.BatchGatewayProvider.read.gateways();
+    await env.v1.BatchGatewayProvider.write.setGateways([[]], {
       account: env.namedAccounts.owner,
     });
-    expect(
-      env.shared.BatchGatewayProvider.read.gateways(),
+    await expect(
+      env.v1.BatchGatewayProvider.read.gateways(),
     ).resolves.toStrictEqual([]);
     await resetInitialState();
-    expect(
-      env.shared.BatchGatewayProvider.read.gateways(),
+    await expect(
+      env.v1.BatchGatewayProvider.read.gateways(),
     ).resolves.toStrictEqual(gateways);
   });
 
-  it(`computeVerifiableProxyAddress`, async () => {
+  it("computeProxyLogicAddress", async () => {
+    await expect(
+      env.v2.VerifiableFactory.read.proxyLogic(),
+    ).resolves.toEqualAddress(
+      computeProxyLogicAddress(env.v2.VerifiableFactory.address),
+    );
+  });
+
+  it("computeVerifiableProxyAddress", async () => {
     const account = env.namedAccounts.deployer;
     const salt = 1234n;
     const contract = await env.deployPermissionedResolver({
       account,
       salt,
     });
-    const address = env.computeVerifiableProxyAddress(account.address, salt);
-    expect(address).toStrictEqual(contract.address);
+    const computedAddress = env.computeVerifiableProxyAddress(
+      account.address,
+      salt,
+    );
+    expect(contract.address, "deployed").toStrictEqual(computedAddress);
+    await expect(
+      env.v2.VerifiableFactory.read.predictProxyAddress([
+        account.address,
+        salt,
+      ]),
+      "helper",
+    ).resolves.toEqualAddress(computedAddress);
   });
 });
