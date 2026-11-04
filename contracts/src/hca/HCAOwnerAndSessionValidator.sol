@@ -6,6 +6,7 @@ import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactor
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {ERC1271_MAGICVALUE, VALIDATION_FAILED, VALIDATION_SUCCESS} from "nexus/types/Constants.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
@@ -224,7 +225,8 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     /// @notice Validates an HCA owner signature or reusable fixed-session proof.
     /// @param sender The caller forwarded by the account.
     /// @param hash The digest supplied by the intent executor.
-    /// @param data A 65-byte owner signature or fixed-session envelope.
+    /// @param data A 65-byte owner signature, ECDSA or ERC-1271 when the owner has code, or a
+    ///             fixed-session envelope.
     /// @return magicValue ERC-1271 success value.
     function isValidSignatureWithSender(address sender, bytes32 hash, bytes calldata data)
         external
@@ -236,7 +238,11 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         }
         if (data.length == HCASignatureLib.SIGNATURE_LENGTH) {
             (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
-            if (HCASignatureLib.recover(hash, data) != expectedOwner) {
+            if (
+                HCASignatureLib.recover(hash, data) != expectedOwner &&
+                !(expectedOwner.code.length != 0 &&
+                    SignatureChecker.isValidERC1271SignatureNow(expectedOwner, hash, data))
+            ) {
                 revert InvalidSigner();
             }
         } else {
