@@ -15,8 +15,8 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 /// 
 /// The constructor disables initializers on the implementation contract.
 ///
-/// Upgrade authorization requires `ROLE_UPGRADE` on root and the implementation
-/// must be a member of the `UPGRADE_SET`.
+/// Upgrades requires `ROLE_UPGRADE` on root and the implementation must
+/// be approved by `_isUpgradeApproved()` which defaults to `UPGRADE_SET`.
 ///
 abstract contract AbstractUpgradeablePermissionedRegistry is
     Initializable,
@@ -89,7 +89,7 @@ abstract contract AbstractUpgradeablePermissionedRegistry is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Requires `ROLE_UPGRADE` and the implementation must be in `UPGRADE_SET`.
+    /// @dev Override: require `ROLE_UPGRADE` and implementation must be approved.
     function _authorizeUpgrade(address newImplementation)
         internal
         view
