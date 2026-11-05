@@ -11,15 +11,16 @@ import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
-/// @dev Abstract upgradeable `PermissionedRegistry`.
+/// @dev An upgradeable `PermissionedRegistry`.
 /// 
 /// The constructor disables initializers on the implementation contract and
 /// stores the list of upgradeable implementations in the implementation.
 ///
 /// Upgrades requires `ROLE_UPGRADE` on root and the implementation must
 /// be approved by `_isUpgradeApproved()` which defaults to `UPGRADE_SET`.
+/// If `UPGRADE_SET` is null, allows any upgrade to any implementation.
 ///
-abstract contract AbstractUpgradeablePermissionedRegistry is
+contract UpgradeablePermissionedRegistry is
     Initializable,
     PermissionedRegistry,
     UUPSUpgradeable,

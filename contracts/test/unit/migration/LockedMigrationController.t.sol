@@ -39,13 +39,12 @@ import {IWrapperRegistry} from "~src/registry/interfaces/IWrapperRegistry.sol";
 import {
     IWrapperRegistryInitializable
 } from "~src/registry/interfaces/IWrapperRegistryInitializable.sol";
-import {
-    AbstractUpgradeablePermissionedRegistry
-} from "~src/registry/AbstractUpgradeablePermissionedRegistry.sol";
+import {UpgradeablePermissionedRegistry} from "~src/registry/UpgradeablePermissionedRegistry.sol";
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
+import {RegistryStorageLayout} from "~test/unit/registry/RegistryStorageLayout.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
@@ -206,17 +205,16 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
     function test_storageLayout() external {
         WrapperRegistry registry = _migratedWrapperRegistry();
-
-        uint256 afterNFT = 2; // mapping + mapping
-        uint256 afterEAC = afterNFT + 2 + 256; // mapping + mapping + gap
-        uint256 afterPerm = afterEAC + 5 + 256; // address + string + string + address + mapping + gap
-
         assertEq(
-            address(uint160(uint256(vm.load(address(registry), bytes32(afterEAC))))),
-            address(ethRegistry),
+            vm.load(address(registry), bytes32(RegistryStorageLayout.SLOT_PERMREG_PARENT_REGISTRY)),
+            bytes32(abi.encode(ethRegistry)),
             "_parentRegistry"
         );
-        assertEq(vm.load(address(registry), bytes32(afterPerm)), registry.getWrappedNode(), "_node");
+        assertEq(
+            vm.load(address(registry), bytes32(RegistryStorageLayout.SLOT_WRAPREG_NODE)),
+            registry.getWrappedNode(),
+            "_node"
+        );
     }
 
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
@@ -224,7 +222,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                AbstractUpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
+                UpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
                 wrapperRegistryImplV2
             )
         );

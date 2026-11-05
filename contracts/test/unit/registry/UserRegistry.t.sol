@@ -25,13 +25,12 @@ import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {UserRegistry} from "~src/registry/UserRegistry.sol";
-import {
-    AbstractUpgradeablePermissionedRegistry
-} from "~src/registry/AbstractUpgradeablePermissionedRegistry.sol";
+import {UpgradeablePermissionedRegistry} from "~src/registry/UpgradeablePermissionedRegistry.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
+import {RegistryStorageLayout} from "~test/unit/registry/RegistryStorageLayout.sol";
 
 contract UserRegistryTest is Test, ERC1155Holder {
     // Contracts
@@ -89,6 +88,14 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
     function test_implementationIsNameable() external view {
         assertTrue(implementation.isContractNamer(address(this)));
+    }
+
+    function test_storageLayout() external view {
+        assertEq(
+            vm.load(address(proxy), bytes32(RegistryStorageLayout.SLOT_PERMREG_URI_RENDERER)),
+            bytes32(abi.encode(uriRenderer)),
+            "_uriRenderer"
+        );
     }
 
     function test_initialize_unowned() external {
@@ -402,7 +409,7 @@ contract UserRegistryTest is Test, ERC1155Holder {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                AbstractUpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
+                UpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
                 newImpl
             )
         );

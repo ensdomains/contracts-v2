@@ -13,9 +13,7 @@ import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {
-    AbstractUpgradeablePermissionedRegistry
-} from "./AbstractUpgradeablePermissionedRegistry.sol";
+import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
@@ -27,7 +25,7 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 /// @notice UUPS-upgradeable registry that wraps an ENSv1 NameWrapper, supporting migration of
 ///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
-    AbstractUpgradeablePermissionedRegistry,
+    UpgradeablePermissionedRegistry,
     LockedWrapperReceiver,
     IWrapperRegistry,
     IWrapperRegistryInitializable
@@ -49,7 +47,7 @@ contract WrapperRegistry is
         IAddressSet publicResolverSet;
         /// @param publicResolver Replacement for `PublicResolver`.
         address publicResolver;
-        // *** AbstractUpgradeablePermissionedRegistry ***
+        // *** UpgradeablePermissionedRegistry ***
         /// @param labelStore The shared label database.
         ILabelStore labelStore;
         /// @param namer The implementation namer.
@@ -91,12 +89,7 @@ contract WrapperRegistry is
 
     /// @param ca Constructor arguments.
     constructor(ConstructorArgs memory ca)
-        AbstractUpgradeablePermissionedRegistry(
-            ca.labelStore,
-            ca.namer,
-            ca.upgradeSet,
-            ca.upgradeable
-        )
+        UpgradeablePermissionedRegistry(ca.labelStore, ca.namer, ca.upgradeSet, ca.upgradeable)
         LockedWrapperReceiver(
             ca.nameWrapper,
             ca.graveyard,
@@ -115,7 +108,7 @@ contract WrapperRegistry is
         public
         view
         virtual
-        override(IERC165, AbstractWrapperReceiver, AbstractUpgradeablePermissionedRegistry)
+        override(IERC165, AbstractWrapperReceiver, UpgradeablePermissionedRegistry)
         returns (bool)
     {
         return

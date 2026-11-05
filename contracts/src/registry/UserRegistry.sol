@@ -11,13 +11,11 @@ import {InvalidOwner} from "../CommonErrors.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
-import {
-    AbstractUpgradeablePermissionedRegistry
-} from "./AbstractUpgradeablePermissionedRegistry.sol";
+import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 
 /// @notice Upgradeable `PermissionedRegistry` for user-owned subdomain registries.
-contract UserRegistry is AbstractUpgradeablePermissionedRegistry, IEACGrantInitializable {
+contract UserRegistry is UpgradeablePermissionedRegistry, IEACGrantInitializable {
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -41,7 +39,7 @@ contract UserRegistry is AbstractUpgradeablePermissionedRegistry, IEACGrantIniti
         address[] memory upgradeable,
         IRegistryURIRenderer uriRenderer
     )
-        AbstractUpgradeablePermissionedRegistry(labelStore, namer, upgradeSet, upgradeable)
+        UpgradeablePermissionedRegistry(labelStore, namer, upgradeSet, upgradeable)
     {
         URI_RENDERER = uriRenderer;
     }
