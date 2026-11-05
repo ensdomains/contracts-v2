@@ -11,8 +11,8 @@ import {InvalidOwner} from "../CommonErrors.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
-import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
+import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 
 /// @notice Upgradeable `PermissionedRegistry` for user-owned subdomain registries.
 contract UserRegistry is UpgradeablePermissionedRegistry, IEACGrantInitializable {

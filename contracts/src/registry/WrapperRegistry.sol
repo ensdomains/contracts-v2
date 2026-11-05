@@ -13,7 +13,6 @@ import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
-import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
@@ -21,6 +20,7 @@ import {IWrapperRegistry} from "./interfaces/IWrapperRegistry.sol";
 import {IWrapperRegistryInitializable} from "./interfaces/IWrapperRegistryInitializable.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
+import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 
 /// @notice UUPS-upgradeable registry that wraps an ENSv1 NameWrapper, supporting migration of
 ///         wrapped names into the namechain registry system.
