@@ -4,7 +4,6 @@ pragma solidity >=0.8.13;
 import {console} from "forge-std/console.sol";
 
 import {
-    INameWrapper,
     OperationProhibited,
     CANNOT_UNWRAP,
     CAN_DO_EVERYTHING,
@@ -26,12 +25,10 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 
 import {InvalidOwner, UnauthorizedCaller} from "~src/CommonErrors.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
-import {ILabelStore} from "~src/utils/interfaces/ILabelStore.sol";
 import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {WrappedErrorLib} from "~src/utils/WrappedErrorLib.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -42,36 +39,43 @@ import {IWrapperRegistry} from "~src/registry/interfaces/IWrapperRegistry.sol";
 import {
     IWrapperRegistryInitializable
 } from "~src/registry/interfaces/IWrapperRegistryInitializable.sol";
+import {UpgradeablePermissionedRegistry} from "~src/registry/UpgradeablePermissionedRegistry.sol";
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {IRegistryEvents} from "~src/registry/interfaces/IRegistryEvents.sol";
 import {PublicResolverV2} from "~src/resolver/PublicResolverV2.sol";
-import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
+import {RegistryStorageLayout} from "~test/unit/registry/RegistryStorageLayout.sol";
 
 contract LockedMigrationControllerTest is MigrationControllerFixture {
     LockedMigrationController migrationController;
     PublicResolverV2 publicResolver;
     WrapperRegistry wrapperRegistryImpl;
+    WrapperRegistry wrapperRegistryImplV2;
 
     function setUp() external {
         deployMigrationControllerFixture();
 
         publicResolver = new PublicResolverV2(nameWrapper, rootRegistry, contractNamer);
 
+        WrapperRegistry.ConstructorArgs memory ca;
+        ca.nameWrapper = nameWrapper;
+        ca.graveyard = address(graveyard);
+        ca.verifiableFactory = verifiableFactory;
+        ca.publicResolverSet = publicResolverSet;
+        ca.publicResolver = address(publicResolver);
+        ca.labelStore = labelStore;
+        ca.namer = address(this);
+        ca.upgradeSet = registryUpgradeSet;
+        ca.uriRenderer = boxedRenderer;
+        ca.ensV1Resolver = address(ensV1Resolver);
+
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        wrapperRegistryImpl = new WrapperRegistry(
-            nameWrapper,
-            address(graveyard),
-            verifiableFactory,
-            address(ensV1Resolver),
-            registryUpgradeSet,
-            labelStore,
-            boxedRenderer,
-            publicResolverSet,
-            address(publicResolver),
-            address(this) // namer
-        );
+        wrapperRegistryImpl = new WrapperRegistry(ca);
+
+        ca.upgradeable = new address[](1);
+        ca.upgradeable[0] = address(wrapperRegistryImpl);
+        wrapperRegistryImplV2 = new WrapperRegistry(ca);
 
         migrationController = new LockedMigrationController(
             nameWrapper,
@@ -199,37 +203,52 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_storageLayout() external {
+        WrapperRegistry registry = _migratedWrapperRegistry();
+        assertEq(
+            vm.load(address(registry), bytes32(RegistryStorageLayout.SLOT_PERMREG_PARENT_REGISTRY)),
+            bytes32(abi.encode(ethRegistry)),
+            "_parentRegistry"
+        );
+        assertEq(
+            vm.load(address(registry), bytes32(RegistryStorageLayout.SLOT_WRAPREG_NODE)),
+            registry.getWrappedNode(),
+            "_node"
+        );
+    }
+
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
-        WrapperRegistry registry = _deployWrapperRegistryProxy();
-        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
+        WrapperRegistry registry = _migratedWrapperRegistry();
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IWrapperRegistry.UpgradeTargetNotApproved.selector,
-                address(newImplementation)
+                UpgradeablePermissionedRegistry.UpgradeTargetNotApproved.selector,
+                wrapperRegistryImplV2
             )
         );
         vm.prank(testOwner);
-        registry.upgradeToAndCall(address(newImplementation), "");
+        registry.upgradeToAndCall(address(wrapperRegistryImplV2), "");
     }
 
     function test_wrapperRegistryUpgrade_allowsApprovedTarget() external {
-        WrapperRegistry registry = _deployWrapperRegistryProxy();
-        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
+        WrapperRegistry registry = _migratedWrapperRegistry();
 
-        registryUpgradeSet.approve(address(newImplementation), true);
+        registryUpgradeSet.approve(address(wrapperRegistryImplV2), true);
 
         vm.prank(testOwner);
-        registry.upgradeToAndCall(address(newImplementation), "");
+        registry.upgradeToAndCall(address(wrapperRegistryImplV2), "");
 
-        assertEq(WrapperRegistryV2Mock(address(registry)).version(), 2, "version");
+        assertEq(
+            verifiableFactory.verifyContract(address(registry)),
+            address(wrapperRegistryImplV2),
+            "upgraded"
+        );
     }
 
     function test_wrapperRegistryUpgrade_requiresUpgradeRole() external {
-        WrapperRegistry registry = _deployWrapperRegistryProxy();
-        WrapperRegistryV2Mock newImplementation = _newWrapperRegistryV2Mock();
+        WrapperRegistry registry = _migratedWrapperRegistry();
 
-        registryUpgradeSet.approve(address(newImplementation), true);
+        registryUpgradeSet.approve(address(wrapperRegistryImplV2), true);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -240,7 +259,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             )
         );
         vm.prank(actor);
-        registry.upgradeToAndCall(address(newImplementation), "");
+        registry.upgradeToAndCall(address(wrapperRegistryImplV2), "");
     }
 
     function test_MIN_DATA_SIZE() external pure {
@@ -1396,7 +1415,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
-    function _deployWrapperRegistryProxy() internal returns (WrapperRegistry) {
+    function _migratedWrapperRegistry() internal returns (WrapperRegistry) {
         bytes memory name = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
         LibMigration.Data memory md = _lockedData(name);
         vm.prank(testOwner);
@@ -1408,58 +1427,5 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             abi.encode(md)
         );
         return WrapperRegistry(address(ethRegistry.getSubregistry(md.label)));
-    }
-
-    function _newWrapperRegistryV2Mock() internal returns (WrapperRegistryV2Mock) {
-        return
-            new WrapperRegistryV2Mock(
-                nameWrapper,
-                address(graveyard),
-                verifiableFactory,
-                address(ensV1Resolver),
-                registryUpgradeSet,
-                labelStore,
-                boxedRenderer,
-                publicResolverSet,
-                address(publicResolver),
-                address(this)
-            );
-    }
-}
-
-
-contract WrapperRegistryV2Mock is WrapperRegistry {
-    constructor(
-        INameWrapper nameWrapper,
-        address graveyard,
-        IVerifiableFactory verifiableFactory,
-        address ensV1Resolver,
-        IAddressSet upgradeSet,
-        ILabelStore labelStore,
-        IRegistryURIRenderer uriRenderer,
-        IAddressSet publicResolverSet,
-        address publicResolver,
-        address namer
-    )
-        WrapperRegistry(
-            nameWrapper,
-            graveyard,
-            verifiableFactory,
-            ensV1Resolver,
-            upgradeSet,
-            labelStore,
-            uriRenderer,
-            publicResolverSet,
-            publicResolver,
-            namer
-        )
-    {}
-
-    function canUpgradeFrom(address) external pure override returns (bool) {
-        return true;
-    }
-
-    function version() public pure returns (uint256) {
-        return 2;
     }
 }

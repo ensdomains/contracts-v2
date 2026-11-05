@@ -25,16 +25,21 @@ export default execute(
       account: deployer,
       artifact: Artifact_WrapperRegistry,
       args: [
-        nameWrapper.address,
-        graveyard.address,
-        verifiableFactory.address,
-        ensV1Resolver.address,
-        registryUpgradeSet.address,
-        labelStore.address,
-        uriRenderer.address,
-        publicResolverSet.address,
-        publicResolverV2.address,
-        owner,
+        {
+          nameWrapper: nameWrapper.address,
+          graveyard: graveyard.address,
+          verifiableFactory: verifiableFactory.address,
+          publicResolverSet: publicResolverSet.address,
+          publicResolver: publicResolverV2.address,
+          //
+          labelStore: labelStore.address,
+          namer: owner,
+          upgradeSet: registryUpgradeSet.address,
+          upgradeable: [], // first version
+          //
+          uriRenderer: uriRenderer.address,
+          ensV1Resolver: ensV1Resolver.address,
+        },
       ],
     });
   },

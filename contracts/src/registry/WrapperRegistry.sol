@@ -3,10 +3,7 @@ pragma solidity 0.8.25;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
-import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {AbstractWrapperReceiver} from "../migration/AbstractWrapperReceiver.sol";
@@ -23,27 +20,55 @@ import {IWrapperRegistry} from "./interfaces/IWrapperRegistry.sol";
 import {IWrapperRegistryInitializable} from "./interfaces/IWrapperRegistryInitializable.sol";
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "./PermissionedRegistry.sol";
+import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 
 /// @notice UUPS-upgradeable registry that wraps an ENSv1 NameWrapper, supporting migration of
 ///         wrapped names into the namechain registry system.
 contract WrapperRegistry is
-    IWrapperRegistry,
-    IWrapperRegistryInitializable,
-    PermissionedRegistry,
+    UpgradeablePermissionedRegistry,
     LockedWrapperReceiver,
-    Initializable,
-    UUPSUpgradeable,
-    IProxyAuthorization
+    IWrapperRegistry,
+    IWrapperRegistryInitializable
 {
+    ////////////////////////////////////////////////////////////////////////
+    // Types
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Constructor arguments for `WrapperRegistry`.
+    struct ConstructorArgs {
+        // *** LockedWrapperReceiver ***
+        /// @param nameWrapper ENSv1 `NameWrapper`.
+        INameWrapper nameWrapper;
+        /// @param graveyard ENSv1 `BaseRegistrar` token graveyard.
+        address graveyard;
+        /// @param verifiableFactory The `VerifiableFactory`.
+        IVerifiableFactory verifiableFactory;
+        /// @param publicResolverSet List of replaceable `PublicResolver` contracts.
+        IAddressSet publicResolverSet;
+        /// @param publicResolver Replacement for `PublicResolver`.
+        address publicResolver;
+        // *** UpgradeablePermissionedRegistry ***
+        /// @param labelStore The shared label database.
+        ILabelStore labelStore;
+        /// @param namer The implementation namer.
+        address namer;
+        /// @param upgradeSet Upgrade target allowlist.
+        IAddressSet upgradeSet;
+        /// @param upgradeable List of upgradeable implementations.
+        address[] upgradeable;
+        // *** WrapperRegistry ***
+        /// @param ensV1Resolver Fallback resolver for ENSv1 resolution.
+        address ensV1Resolver;
+        /// @param uriRenderer Fixed URI renderer.
+        IRegistryURIRenderer uriRenderer;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Fallback resolver for ENSv1 resolution.
     address public immutable V1_RESOLVER;
-
-    /// @notice Gate for approved implementation upgrade targets.
-    IAddressSet public immutable UPGRADE_SET;
 
     /// @notice Fixed URI renderer.
     IRegistryURIRenderer public immutable URI_RENDERER;
@@ -62,46 +87,20 @@ contract WrapperRegistry is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param nameWrapper The ENSv1 NameWrapper.
-    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
-    /// @param verifiableFactory The VerifiableFactory.
-    /// @param ensV1Resolver The ENSv1 resolver.
-    /// @param upgradeSet The upgrade target allowlist.
-    /// @param labelStore The shared label database.
-    /// @param uriRenderer The fixed URI renderer.
-    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
-    /// @param publicResolver The replacement `PublicResolver`.
-    /// @param namer The implementation namer.
-    constructor(
-        INameWrapper nameWrapper,
-        address graveyard,
-        IVerifiableFactory verifiableFactory,
-        address ensV1Resolver,
-        IAddressSet upgradeSet,
-        ILabelStore labelStore,
-        IRegistryURIRenderer uriRenderer,
-        IAddressSet publicResolverSet,
-        address publicResolver,
-        address namer
-    )
-        PermissionedRegistry(
-            labelStore,
-            namer,
-            RegistryRolesLib.ROLE_CAN_NAME | RegistryRolesLib.ROLE_CAN_NAME_ADMIN
-        )
+    /// @param ca Constructor arguments.
+    constructor(ConstructorArgs memory ca)
+        UpgradeablePermissionedRegistry(ca.labelStore, ca.namer, ca.upgradeSet, ca.upgradeable)
         LockedWrapperReceiver(
-            nameWrapper,
-            graveyard,
-            verifiableFactory,
+            ca.nameWrapper,
+            ca.graveyard,
+            ca.verifiableFactory,
             address(this),
-            publicResolverSet,
-            publicResolver
+            ca.publicResolverSet,
+            ca.publicResolver
         )
     {
-        _disableInitializers();
-        V1_RESOLVER = ensV1Resolver;
-        UPGRADE_SET = upgradeSet;
-        URI_RENDERER = uriRenderer;
+        V1_RESOLVER = ca.ensV1Resolver;
+        URI_RENDERER = ca.uriRenderer;
     }
 
     /// @inheritdoc IERC165
@@ -109,13 +108,11 @@ contract WrapperRegistry is
         public
         view
         virtual
-        override(IERC165, AbstractWrapperReceiver, PermissionedRegistry)
+        override(IERC165, AbstractWrapperReceiver, UpgradeablePermissionedRegistry)
         returns (bool)
     {
         return
             type(IWrapperRegistry).interfaceId == interfaceId ||
-            type(UUPSUpgradeable).interfaceId == interfaceId ||
-            type(IProxyAuthorization).interfaceId == interfaceId ||
             type(IWrapperRegistryInitializable).interfaceId == interfaceId ||
             super.supportsInterface(interfaceId);
     }
@@ -145,24 +142,6 @@ contract WrapperRegistry is
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
-    ///      upgrade call, including the wrapper upgrade target allowlist.
-    /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `false` as this is the first implementation of WrapperRegistry with no
-    ///                 valid predecessors.
-    function canUpgradeFrom(
-        address /* previousImplementation */
-    )
-        external
-        pure
-        virtual
-        override
-        returns (bool allowed)
-    {
-        // `allowed` defaults to `false`.
-    }
 
     /// @inheritdoc PermissionedRegistry
     /// @dev Blocks registration of emancipated children.
@@ -268,7 +247,7 @@ contract WrapperRegistry is
                     account == owner ||
                     PermissionedRegistry(parent).isApprovedForAll(owner, account)
                 ) {
-                    return super._getRoles(resource, parent); // replace, instead of OR
+                    account = parent; // replace, instead of OR
                 }
             }
         }
@@ -280,18 +259,6 @@ contract WrapperRegistry is
         return
             (_initialRoleBitmap & RegistryRolesLib.ROLE_REGISTRAR) != 0 &&
             super._canRevive(tokenId, sender);
-    }
-
-    /// @dev Requires `ROLE_UPGRADE` and approval for the target implementation.
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        view
-        override
-        onlyRootRoles(RegistryRolesLib.ROLE_UPGRADE)
-    {
-        if (!UPGRADE_SET.includes(newImplementation)) {
-            revert UpgradeTargetNotApproved(newImplementation);
-        }
     }
 
     /// @inheritdoc LockedWrapperReceiver
