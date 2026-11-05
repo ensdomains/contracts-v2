@@ -46,9 +46,9 @@ contract UpgradeablePermissionedRegistry is
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Upgrade target is not approved for `WrapperRegistry` proxies.
+    /// @notice Upgrade target is not approved.
     /// @dev Error selector: `0xf74d7dd0`
-    /// @param implementation The disallowed implementation address.
+    /// @param implementation Disallowed implementation address.
     error UpgradeTargetNotApproved(address implementation);
 
     ////////////////////////////////////////////////////////////////////////
