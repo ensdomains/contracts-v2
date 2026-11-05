@@ -14,10 +14,11 @@ export default execute(
       account: deployer,
       artifact: Artifact_UserRegistry,
       args: [
-        registryUpgradeSet.address,
         labelStore.address,
-        uriRenderer.address,
         owner,
+        registryUpgradeSet.address,
+        [], // first version
+        uriRenderer.address,
       ],
     });
   },

@@ -33,6 +33,39 @@ contract WrapperRegistry is
     IWrapperRegistryInitializable
 {
     ////////////////////////////////////////////////////////////////////////
+    // Types
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Constructor arguments for `WrapperRegistry`.
+    struct ConstructorArgs {
+        // *** LockedWrapperReceiver ***
+        /// @param nameWrapper ENSv1 `NameWrapper`.
+        INameWrapper nameWrapper;
+        /// @param graveyard ENSv1 `BaseRegistrar` token graveyard.
+        address graveyard;
+        /// @param verifiableFactory The `VerifiableFactory`.
+        IVerifiableFactory verifiableFactory;
+        /// @param publicResolverSet List of replaceable `PublicResolver` contracts.
+        IAddressSet publicResolverSet;
+        /// @param publicResolver Replacement for `PublicResolver`.
+        address publicResolver;
+        // *** AbstractUpgradeablePermissionedRegistry ***
+        /// @param labelStore The shared label database.
+        ILabelStore labelStore;
+        /// @param namer The implementation namer.
+        address namer;
+        /// @param upgradeSet Upgrade target allowlist.
+        IAddressSet upgradeSet;
+        /// @param upgradeable List of upgradeable implementations.
+        address[] upgradeable;
+        // *** WrapperRegistry ***
+        /// @param ensV1Resolver Fallback resolver for ENSv1 resolution.
+        address ensV1Resolver;
+        /// @param uriRenderer Fixed URI renderer.
+        IRegistryURIRenderer uriRenderer;
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
 
@@ -56,40 +89,25 @@ contract WrapperRegistry is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param nameWrapper The ENSv1 NameWrapper.
-    /// @param graveyard The ENSv1 `BaseRegistrar` token graveyard.
-    /// @param verifiableFactory The VerifiableFactory.
-    /// @param ensV1Resolver The ENSv1 resolver.
-    /// @param upgradeSet The upgrade target allowlist.
-    /// @param labelStore The shared label database.
-    /// @param uriRenderer The fixed URI renderer.
-    /// @param publicResolverSet The approved list of `PublicResolver` contracts.
-    /// @param publicResolver The replacement `PublicResolver`.
-    /// @param namer The implementation namer.
-    constructor(
-        INameWrapper nameWrapper,
-        address graveyard,
-        IVerifiableFactory verifiableFactory,
-        address ensV1Resolver,
-        IAddressSet upgradeSet,
-        ILabelStore labelStore,
-        IRegistryURIRenderer uriRenderer,
-        IAddressSet publicResolverSet,
-        address publicResolver,
-        address namer
-    )
-        AbstractUpgradeablePermissionedRegistry(upgradeSet, labelStore, namer)
+    /// @param ca Constructor arguments.
+    constructor(ConstructorArgs memory ca)
+        AbstractUpgradeablePermissionedRegistry(
+            ca.labelStore,
+            ca.namer,
+            ca.upgradeSet,
+            ca.upgradeable
+        )
         LockedWrapperReceiver(
-            nameWrapper,
-            graveyard,
-            verifiableFactory,
+            ca.nameWrapper,
+            ca.graveyard,
+            ca.verifiableFactory,
             address(this),
-            publicResolverSet,
-            publicResolver
+            ca.publicResolverSet,
+            ca.publicResolver
         )
     {
-        V1_RESOLVER = ensV1Resolver;
-        URI_RENDERER = uriRenderer;
+        V1_RESOLVER = ca.ensV1Resolver;
+        URI_RENDERER = ca.uriRenderer;
     }
 
     /// @inheritdoc IERC165
@@ -236,7 +254,7 @@ contract WrapperRegistry is
                     account == owner ||
                     PermissionedRegistry(parent).isApprovedForAll(owner, account)
                 ) {
-                    return super._getRoles(resource, parent); // replace, instead of OR
+                    account = parent; // replace, instead of OR
                 }
             }
         }

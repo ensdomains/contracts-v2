@@ -29,17 +29,19 @@ contract UserRegistry is AbstractUpgradeablePermissionedRegistry, IEACGrantIniti
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param upgradeSet Set of approved upgrade implementations.
     /// @param labelStore The shared label database.
-    /// @param uriRenderer The default URI renderer.
     /// @param namer The implementation namer.
+    /// @param upgradeSet Set of approved upgrade implementations.
+    /// @param upgradeable List of upgradeable implementations.
+    /// @param uriRenderer The default URI renderer.
     constructor(
-        IAddressSet upgradeSet,
         ILabelStore labelStore,
-        IRegistryURIRenderer uriRenderer,
-        address namer
+        address namer,
+        IAddressSet upgradeSet,
+        address[] memory upgradeable,
+        IRegistryURIRenderer uriRenderer
     )
-        AbstractUpgradeablePermissionedRegistry(upgradeSet, labelStore, namer)
+        AbstractUpgradeablePermissionedRegistry(labelStore, namer, upgradeSet, upgradeable)
     {
         URI_RENDERER = uriRenderer;
     }

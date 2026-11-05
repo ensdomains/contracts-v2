@@ -13,7 +13,8 @@ import {PermissionedRegistry} from "./PermissionedRegistry.sol";
 
 /// @dev Abstract upgradeable `PermissionedRegistry`.
 /// 
-/// The constructor disables initializers on the implementation contract.
+/// The constructor disables initializers on the implementation contract and
+/// stores the list of upgradeable implementations in the implementation.
 ///
 /// Upgrades requires `ROLE_UPGRADE` on root and the implementation must
 /// be approved by `_isUpgradeApproved()` which defaults to `UPGRADE_SET`.
@@ -24,6 +25,15 @@ abstract contract AbstractUpgradeablePermissionedRegistry is
     UUPSUpgradeable,
     IProxyAuthorization
 {
+    ////////////////////////////////////////////////////////////////////////
+    // Types
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Internal storage for implementation-use only.
+    struct Storage {
+        mapping(address implementation => bool can) canUpgradeFrom;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Immutables
     ////////////////////////////////////////////////////////////////////////
@@ -44,10 +54,16 @@ abstract contract AbstractUpgradeablePermissionedRegistry is
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
-    /// @param upgradeSet Set of approved upgrade implementations.
     /// @param labelStore The shared label database.
     /// @param namer The implementation namer.
-    constructor(IAddressSet upgradeSet, ILabelStore labelStore, address namer)
+    /// @param upgradeSet Set of approved upgrade implementations.
+    /// @param upgradeable List of upgradeable implementations.
+    constructor(
+        ILabelStore labelStore,
+        address namer,
+        IAddressSet upgradeSet,
+        address[] memory upgradeable
+    )
         PermissionedRegistry(
             labelStore,
             namer,
@@ -56,6 +72,10 @@ abstract contract AbstractUpgradeablePermissionedRegistry is
     {
         _disableInitializers();
         UPGRADE_SET = upgradeSet;
+        Storage storage s = _storage();
+        for (uint256 i; i < upgradeable.length; ++i) {
+            s.canUpgradeFrom[upgradeable[i]] = true;
+        }
     }
 
     /// @inheritdoc PermissionedRegistry
@@ -71,19 +91,18 @@ abstract contract AbstractUpgradeablePermissionedRegistry is
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
-    /// @dev Upgrade authorization is still enforced by the current implementation during the UUPS
-    ///      upgrade call.
-    /// @param {previousImplementation} Ignored.
-    /// @return allowed Always `false` as this is the first implementation
-    function canUpgradeFrom(
-        address /* previousImplementation */
-    )
+    /// @dev Upgrade authorization is also enforced during `_authorizeUpgrade()`.
+    /// @param previousImplementation Previous implementation address.
+    /// @return `true` if `previousImplementation` can be upgraded.
+    function canUpgradeFrom(address previousImplementation)
         external
-        pure
+        view
         virtual
         override
-        returns (bool allowed)
-    {}
+        returns (bool)
+    {
+        return _storage().canUpgradeFrom[previousImplementation];
+    }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
@@ -105,5 +124,14 @@ abstract contract AbstractUpgradeablePermissionedRegistry is
     function _isUpgradeApproved(address newImplementation) internal view virtual returns (bool) {
         IAddressSet upgradeSet = UPGRADE_SET;
         return address(upgradeSet) == address(0) || upgradeSet.includes(newImplementation);
+    }
+
+    /// @dev Access internal storage.
+    ///      Uses slot 1 which is `ERC1155Singleton._operatorApprovals`.
+    ///      This is safe because it is only used by the implementation.
+    function _storage() internal pure returns (Storage storage s) {
+        assembly ("memory-safe") {
+            s.slot := 1
+        }
     }
 }
