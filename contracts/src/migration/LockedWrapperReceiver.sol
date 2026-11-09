@@ -92,7 +92,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
 
     /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() public view virtual returns (bytes memory) {
-        return NAME_WRAPPER.names(getWrappedNode());
+        return _getWrapperName(getWrappedNode());
     }
 
     /// @notice Returns the NameWrapper node (namehash).
@@ -109,6 +109,8 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
     {
         IRegistry parentRegistry = _getRegistry();
         bytes32 parentNode = getWrappedNode();
+        INameWrapper nameWrapper = NAME_WRAPPER;
+        address graveyard = GRAVEYARD;
         for (uint256 i; i < ids.length; ++i) {
             LibMigration.Data memory md = mds[i];
             if (md.owner == address(0)) {
@@ -125,7 +127,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             // see: V1Fixture.t.sol: `test_nameWrapper_labelTooShort()` and `test_nameWrapper_labelTooLong()`.
 
             address resolver = md.resolver;
-            (, uint32 fuses, uint64 expiry) = NAME_WRAPPER.getData(uint256(node));
+            (uint32 fuses, uint64 expiry) = _getWrapperData(node);
 
             // instead of granting token ROLE_RENEW for names in v1 that could extend their own expiry
             // we grant the full expiry and skip token owner needing to invoke `renew(*, max)`
@@ -136,34 +138,20 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
             if (LibMigration.isLocked(fuses)) {
                 if (
                     (fuses & CANNOT_APPROVE) != 0 &&
-                    NAME_WRAPPER.getApproved(uint256(node)) != address(0)
+                    nameWrapper.getApproved(uint256(node)) != address(0)
                 ) {
                     revert LibMigration.FrozenTokenApproval(uint256(node));
                 }
 
                 if ((fuses & CANNOT_SET_RESOLVER) == 0) {
-                    NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
+                    _clearWrapperResolver(nameWrapper, node);
                 } else {
                     resolver = _REGISTRY_V1.resolver(node); // replace with ENSv1 resolver
                     if (resolver != address(0) && PUBLIC_RESOLVER_SET.includes(resolver)) {
                         resolver = PUBLIC_RESOLVER; // replace with new PublicResolver
                     }
                 }
-
-                NAME_WRAPPER.safeTransferFrom(address(this), GRAVEYARD, uint256(node), 1, ""); // transfer to graveyard
-
-                // create subregistry
-                IRegistry subregistry =
-                    IRegistry(
-                        VERIFIABLE_FACTORY.deployProxy(
-                            WRAPPER_REGISTRY_IMPL,
-                            uint256(node),
-                            abi.encodeCall(
-                                IWrapperRegistryInitializable.initialize,
-                                (node, parentRegistry)
-                            )
-                        )
-                    );
+                _transferToGraveyard(nameWrapper, graveyard, node);
 
                 // add name to ENSv2
                 // PermissionedRegistry._register() => CannotSetPastExpiry :: see expiry check
@@ -172,14 +160,14 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                 _inject(
                     md.label,
                     md.owner,
-                    subregistry,
+                    _deployWrapperRegistry(node, parentRegistry),
                     resolver,
                     _tokenRoleBitmapFromFuses(fuses),
                     expiry
                 );
             } else if (LibMigration.isEmancipatedChild(fuses)) {
-                NAME_WRAPPER.setResolver(node, address(0)); // clear ENSv1 resolver
-                NAME_WRAPPER.unwrap(parentNode, labelHash, GRAVEYARD); // unwrap and transfer to graveyard
+                _clearWrapperResolver(nameWrapper, node);
+                _unwrapAndTransferToGraveyard(nameWrapper, graveyard, parentNode, labelHash);
 
                 // add name to ENSv2 (same as UnlockedMigrationController)
                 _inject(
@@ -208,6 +196,55 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         internal
         virtual
         returns (uint256 tokenId);
+
+    /// @dev Transfer `NameWrapper` token to `GRAVEYARD`.
+    function _transferToGraveyard(INameWrapper nameWrapper, address graveyard, bytes32 node)
+        internal
+    {
+        nameWrapper.safeTransferFrom(address(this), graveyard, uint256(node), 1, "");
+    }
+
+    /// @dev Unwrap and transfer `NameWrapper` token to graveyard.
+    function _unwrapAndTransferToGraveyard(
+        INameWrapper nameWrapper,
+        address graveyard,
+        bytes32 parentNode,
+        bytes32 labelHash
+    )
+        internal
+    {
+        nameWrapper.unwrap(parentNode, labelHash, graveyard);
+    }
+
+    /// @dev Clear ENSv1 resolver.
+    function _clearWrapperResolver(INameWrapper nameWrapper, bytes32 node) internal {
+        nameWrapper.setResolver(node, address(0));
+    }
+
+    /// @dev Deploy child `WrapperRegistry`.
+    function _deployWrapperRegistry(bytes32 node, IRegistry parentRegistry)
+        internal
+        returns (IRegistry)
+    {
+        return
+            IRegistry(
+                VERIFIABLE_FACTORY.deployProxy(
+                    WRAPPER_REGISTRY_IMPL,
+                    uint256(node),
+                    abi.encodeCall(IWrapperRegistryInitializable.initialize, (node, parentRegistry))
+                )
+            );
+    }
+
+    /// @dev Convenience for `NameWrapper.names()`.
+    function _getWrapperName(bytes32 node) internal view returns (bytes memory) {
+        return NAME_WRAPPER.names(node);
+    }
+
+    /// @dev Convenience for `NameWrapper.getData()`.
+    function _getWrapperData(bytes32 node) internal view returns (uint32 fuses, uint64 expiry) {
+        (, fuses, expiry) = NAME_WRAPPER.getData(uint256(node));
+    }
 
     /// @dev The ENSv2 registry being migrated to.
     function _getRegistry() internal view virtual returns (IRegistry);
