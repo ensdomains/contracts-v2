@@ -25,6 +25,11 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import type { AccountDefinition, UserConfig } from "rocketh/types";
 import { loadEnvironmentFromFilesWithConfig } from "../rocketh/environment.js";
+import {
+  adhocNamespace,
+  baseNamespace,
+  refreshNetworkAddressDocs,
+} from "./addressDocs.js";
 import { envPrivateKey } from "./migrations/plumbing.js";
 import {
   CONTRACT_REDEPLOY_KIND,
@@ -528,7 +533,7 @@ async function main() {
   if (!opts.verify && (opts.etherscanOnly || opts.sourcifyOnly)) {
     throw new Error("--etherscan-only and --sourcify-only need --verify");
   }
-  const namespace = opts.deploymentNetwork ?? `${opts.network}-adhoc`;
+  const namespace = opts.deploymentNetwork ?? adhocNamespace(opts.network);
 
   const verification = opts.verify
     ? await planVerification(
@@ -581,12 +586,28 @@ async function main() {
     );
   }
   console.log(`record: ${result.recordFile}`);
+
+  // Only a deploy to a real chain, recorded in the canonical tree, touches the
+  // published address pages. A fork shares the real chain's genesis block, so
+  // the RPC is what tells a rehearsal apart.
+  const isLiveRecord =
+    resolve(opts.deploymentsDir) === DEFAULT_DEPLOYMENTS_DIR &&
+    !isLocalRpcUrl(rpcUrl) &&
+    !isTenderlyVirtualRpc(rpcUrl);
+  if (isLiveRecord) {
+    const pages = await refreshNetworkAddressDocs({
+      deploymentsDir: DEFAULT_DEPLOYMENTS_DIR,
+      network: baseNamespace(namespace),
+    });
+    console.log(
+      pages.length
+        ? `address pages: ${pages.join(", ")}`
+        : `address pages: none, as ${baseNamespace(namespace)} has no published page`,
+    );
+  }
+
   if (!verification) {
-    if (
-      resolve(opts.deploymentsDir) === DEFAULT_DEPLOYMENTS_DIR &&
-      !isLocalRpcUrl(rpcUrl) &&
-      !isTenderlyVirtualRpc(rpcUrl)
-    ) {
+    if (isLiveRecord) {
       console.log(
         `verify with: bun run verify --network ${namespace} --contract ${result.record}`,
       );

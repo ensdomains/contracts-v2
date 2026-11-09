@@ -1,5 +1,5 @@
 import { loadDeploymentsFromFiles } from "@rocketh/node";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const DEFAULT_DOCS_DIR = resolve(
@@ -81,6 +81,38 @@ function formatTable(
       addressCell(chainId, address),
     ]),
   ]);
+}
+
+/// Table of one namespace's contracts, or `null` when the namespace holds no
+/// records.
+async function namespaceTable(
+  deploymentsDir: string,
+  namespace: string,
+  chainId: number | undefined,
+): Promise<string | null> {
+  const loaded = await loadDeploymentsFromFiles(
+    deploymentsDir,
+    namespace,
+    false,
+  ).catch(() => null);
+  const contracts = loaded ? loadContractEntries(loaded.deployments) : [];
+  return contracts.length ? formatTable(contracts, chainId) : null;
+}
+
+const ADHOC_SUFFIX = "-adhoc";
+
+/// Namespace that holds the contracts deployed one at a time beside a
+/// deployment, outside the migration.
+export function adhocNamespace(namespace: string): string {
+  return `${namespace}${ADHOC_SUFFIX}`;
+}
+
+/// The deployment namespace an ad-hoc namespace sits beside; any other
+/// namespace is returned as it is.
+export function baseNamespace(namespace: string): string {
+  return namespace.endsWith(ADHOC_SUFFIX)
+    ? namespace.slice(0, -ADHOC_SUFFIX.length)
+    : namespace;
 }
 
 function readJson<T>(path: string): T | null {
@@ -166,15 +198,11 @@ export async function generateAddressMarkdown(
 
   const sections: string[] = [formatTable(contracts, chainId)];
   for (const extra of opts.extraSections ?? []) {
-    const extraDir = resolve(extra.deploymentsDir ?? opts.deploymentsDir);
-    const loaded = await loadDeploymentsFromFiles(
-      extraDir,
+    const table = await namespaceTable(
+      resolve(extra.deploymentsDir ?? opts.deploymentsDir),
       extra.namespace,
-      false,
-    ).catch(() => null);
-    const extraContracts = loaded
-      ? loadContractEntries(loaded.deployments)
-      : [];
+      chainId,
+    );
     // A namespace that was never written is reported rather than omitted, so a
     // missing section reads as a fact about the deployment instead of looking
     // like the table simply forgot it.
@@ -182,9 +210,26 @@ export async function generateAddressMarkdown(
       "",
       `## ${extra.title}`,
       "",
-      extraContracts.length
-        ? formatTable(extraContracts, chainId)
-        : `_No deployments found under \`${extra.namespace}\`._`,
+      table ?? `_No deployments found under \`${extra.namespace}\`._`,
+    );
+  }
+
+  // Contracts deployed one at a time beside this deployment get their own
+  // section. They stay apart from the main table because the same name can
+  // appear in both at different addresses, and the main table is what the
+  // migration tooling resolves.
+  const adhoc = adhocNamespace(opts.namespace);
+  const adhocTable = existsSync(join(deploymentsDir, adhoc))
+    ? await namespaceTable(deploymentsDir, adhoc, chainId)
+    : null;
+  if (adhocTable) {
+    sections.push(
+      "",
+      "## Ad-hoc deployments",
+      "",
+      `Contracts deployed one at a time outside the migration, recorded under \`${adhoc}\`. A name here can also appear in the table above at a different address.`,
+      "",
+      adhocTable,
     );
   }
 
@@ -203,6 +248,44 @@ export async function generateAddressMarkdown(
   const outPath = join(outDir, `${opts.fileName ?? docName}.md`);
   writeFileSync(outPath, body);
   return outPath;
+}
+
+/// Write `<deploymentsDir>/<namespace>/addresses.md`, the address table kept
+/// beside a namespace's own records. Returns the written file path.
+export function writeNamespaceAddressTable(opts: {
+  deploymentsDir: string;
+  namespace: string;
+  extraSections?: GenerateAddressMarkdownOptions["extraSections"];
+}): Promise<string> {
+  return generateAddressMarkdown({
+    deploymentsDir: opts.deploymentsDir,
+    namespace: opts.namespace,
+    outDir: join(opts.deploymentsDir, opts.namespace),
+    fileName: "addresses",
+    generatedBy: "the migration deploy and `bun run deploy:contract`",
+    extraSections: opts.extraSections,
+  });
+}
+
+/// Rewrite both address pages of a network that has a published page: the page
+/// under the docs directory and the table beside the network's records. A
+/// network without a published page is left alone, so a rehearsal or test
+/// namespace never overwrites real pages. Returns the written file paths.
+export async function refreshNetworkAddressDocs(opts: {
+  deploymentsDir: string;
+  network: string;
+}): Promise<string[]> {
+  if (!existsSync(join(DEFAULT_DOCS_DIR, `${opts.network}.md`))) return [];
+  return [
+    await generateAddressMarkdown({
+      deploymentsDir: opts.deploymentsDir,
+      namespace: opts.network,
+    }),
+    await writeNamespaceAddressTable({
+      deploymentsDir: opts.deploymentsDir,
+      namespace: opts.network,
+    }),
+  ];
 }
 
 function capitalize(s: string): string {

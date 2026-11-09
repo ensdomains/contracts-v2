@@ -62,7 +62,11 @@ import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/U
 import { isHCAOnlyDeployment } from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
-import { generateAddressMarkdown, isProxyArtifact } from "./addressDocs.js";
+import {
+  generateAddressMarkdown,
+  isProxyArtifact,
+  writeNamespaceAddressTable,
+} from "./addressDocs.js";
 import {
   addressLabels,
   type ContractControl,
@@ -7856,13 +7860,9 @@ export async function deployV2(opts: DeployV2Options) {
     const includesFreshV1 =
       Boolean(opts.cleanTestnet) && v1Namespace !== undefined;
 
-    const namespacePath = await generateAddressMarkdown({
+    const namespacePath = await writeNamespaceAddressTable({
       deploymentsDir,
       namespace: deploymentNetwork,
-      docName: deploymentNetwork,
-      outDir: join(deploymentsDir, deploymentNetwork),
-      fileName: "addresses",
-      generatedBy: "the deploy that wrote this namespace",
       extraSections: includesFreshV1
         ? [
             {

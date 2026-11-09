@@ -48,3 +48,13 @@
 | UserRegistryImpl | [0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72](https://etherscan.io/address/0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72) |
 | VerifiableFactory | [0x77510ba162dfea3d8989e3f0928a691b345730d2](https://etherscan.io/address/0x77510ba162dfea3d8989e3f0928a691b345730d2) |
 | WrapperRegistryImpl | [0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888](https://etherscan.io/address/0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888) |
+
+## Ad-hoc deployments
+
+Contracts deployed one at a time outside the migration, recorded under `mainnet-adhoc`. A name here can also appear in the table above at a different address.
+
+| Contract | Address |
+| --- | --- |
+| DNSTLDResolver | [0x6695327ee70f41151d2cbadc3abbb6e4a58e739c](https://etherscan.io/address/0x6695327ee70f41151d2cbadc3abbb6e4a58e739c) |
+| TemporaryDNSRegistrar | [0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61](https://etherscan.io/address/0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61) |
+| UserRegistryImpl | [0xc927bcaa77cd7be283518760896be0cf3cfbe08d](https://etherscan.io/address/0xc927bcaa77cd7be283518760896be0cf3cfbe08d) |

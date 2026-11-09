@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import { resolve } from "node:path";
-import { generateAddressMarkdown } from "./addressDocs.js";
+import {
+  generateAddressMarkdown,
+  writeNamespaceAddressTable,
+} from "./addressDocs.js";
 
 const currentPath = new URL(import.meta.url).pathname;
 const defaultDeploymentsDir = resolve(currentPath, "../..", "deployments");
@@ -39,12 +42,23 @@ const opts = program.opts<{
   fileName?: string;
 }>();
 
+const namespace = opts.namespace ?? opts.network;
 const outPath = await generateAddressMarkdown({
   deploymentsDir: opts.deploymentsDir,
-  namespace: opts.namespace ?? opts.network,
+  namespace,
   docName: opts.network,
   outDir: opts.outDir,
   fileName: opts.fileName,
 });
-
 console.log(`Wrote ${outPath}`);
+
+// The network's own namespace also carries its table beside its records. Any
+// other namespace keeps the table its deploy wrote, which can hold sections
+// this command does not know about.
+if (namespace === opts.network) {
+  const tablePath = await writeNamespaceAddressTable({
+    deploymentsDir: opts.deploymentsDir,
+    namespace,
+  });
+  console.log(`Wrote ${tablePath}`);
+}
