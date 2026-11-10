@@ -7,6 +7,8 @@
 - **Deployed at:** 2026-10-26T13:25:02.259Z
 - **First deployed at:** 2026-10-02T15:56:48.580Z
 
+The latest address of each contract. Earlier addresses are in the changelog below.
+
 | Contract | Address |
 | --- | --- |
 | BatchRegistrar | [0xf0ccfbf6dba1e01ccb833ced6d551a8f000e9721](https://etherscan.io/address/0xf0ccfbf6dba1e01ccb833ced6d551a8f000e9721) |
@@ -15,7 +17,7 @@
 | DefaultReverseRegistrarAdapter | [0xd86e32499ecafe9c181dd7410f93a1a9bb61ef0d](https://etherscan.io/address/0xd86e32499ecafe9c181dd7410f93a1a9bb61ef0d) |
 | DNSAliasResolver | [0x13285e928c65befd90904f77a68fe4e7d9a43882](https://etherscan.io/address/0x13285e928c65befd90904f77a68fe4e7d9a43882) |
 | DNSSECGatewayProvider | [0xa646bcee466d77669a087f3379640cb03aca7c3d](https://etherscan.io/address/0xa646bcee466d77669a087f3379640cb03aca7c3d) |
-| DNSTLDResolver | [0xab48304a2520ce420e636aacd48a8bb3e7e485ee](https://etherscan.io/address/0xab48304a2520ce420e636aacd48a8bb3e7e485ee) |
+| DNSTLDResolver | [0x6695327ee70f41151d2cbadc3abbb6e4a58e739c](https://etherscan.io/address/0x6695327ee70f41151d2cbadc3abbb6e4a58e739c) |
 | DNSTXTResolver | [0xbb76e2ae1a61ef91d095ec044abf563e4c464e3e](https://etherscan.io/address/0xbb76e2ae1a61ef91d095ec044abf563e4c464e3e) |
 | ENSURIRenderer | [0x82cac0d801b9a392a4ff217d5e68145801e90a41](https://etherscan.io/address/0x82cac0d801b9a392a4ff217d5e68145801e90a41) |
 | ENSV1Resolver | [0x394d8eb4a4fdf599384deab25f31d111d755c398](https://etherscan.io/address/0x394d8eb4a4fdf599384deab25f31d111d755c398) |
@@ -40,21 +42,72 @@
 | StandaloneHCAFactory | [0x742bf21897a78e2c98cc5f5c5473a370a081e561](https://etherscan.io/address/0x742bf21897a78e2c98cc5f5c5473a370a081e561) |
 | StandaloneHCAImplementation | [0x116f462fa078ec0009e9b25dcd60309e70aac4f4](https://etherscan.io/address/0x116f462fa078ec0009e9b25dcd60309e70aac4f4) |
 | StandardRentPriceOracle | [0x76f29609a363a8a1a2a6abe2e859c0f8916af469](https://etherscan.io/address/0x76f29609a363a8a1a2a6abe2e859c0f8916af469) |
+| TemporaryDNSRegistrar | [0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61](https://etherscan.io/address/0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61) |
 | UniversalHelper | [0x46ae127d14683ac74ef151e46ae2117a1a25c676](https://etherscan.io/address/0x46ae127d14683ac74ef151e46ae2117a1a25c676) |
 | UniversalResolverV1 | [0x804bf0d289c8353a0bafdaaf9069ab14c92b2099](https://etherscan.io/address/0x804bf0d289c8353a0bafdaaf9069ab14c92b2099) |
 | UniversalResolverV2 | [0x06fdd07f007adac667177b46ab2eb9a75132cfd5](https://etherscan.io/address/0x06fdd07f007adac667177b46ab2eb9a75132cfd5) |
 | UnlockedMigrationController | [0xab821ca676cf2e0790fa273526a165cfa86aeb64](https://etherscan.io/address/0xab821ca676cf2e0790fa273526a165cfa86aeb64) |
 | UpgradableUniversalResolverProxy | [0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe) |
-| UserRegistryImpl | [0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72](https://etherscan.io/address/0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72) |
+| UserRegistryImpl | [0xc927bcaa77cd7be283518760896be0cf3cfbe08d](https://etherscan.io/address/0xc927bcaa77cd7be283518760896be0cf3cfbe08d) |
 | VerifiableFactory | [0x77510ba162dfea3d8989e3f0928a691b345730d2](https://etherscan.io/address/0x77510ba162dfea3d8989e3f0928a691b345730d2) |
 | WrapperRegistryImpl | [0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888](https://etherscan.io/address/0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888) |
 
-## Ad-hoc deployments
+## Changelog
 
-Contracts deployed one at a time outside the migration, recorded under `mainnet-adhoc`. A name here can also appear in the table above at a different address.
+Every address of each contract that was replaced or deployed outside the migration, newest first.
 
-| Contract | Address |
-| --- | --- |
-| DNSTLDResolver | [0x6695327ee70f41151d2cbadc3abbb6e4a58e739c](https://etherscan.io/address/0x6695327ee70f41151d2cbadc3abbb6e4a58e739c) |
-| TemporaryDNSRegistrar | [0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61](https://etherscan.io/address/0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61) |
-| UserRegistryImpl | [0xc927bcaa77cd7be283518760896be0cf3cfbe08d](https://etherscan.io/address/0xc927bcaa77cd7be283518760896be0cf3cfbe08d) |
+| Block | Contract | Address | Status | Recorded in |
+| --- | --- | --- | --- | --- |
+| [26333216](https://etherscan.io/block/26333216) | TemporaryDNSRegistrar | [0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61](https://etherscan.io/address/0x9d6d535f08be25a9a2fda1a1c21217d27d81cc61) | Current | `mainnet-adhoc` |
+| [26290500](https://etherscan.io/block/26290500) | UserRegistryImpl | [0x664814f5bd5e6e617742029fa781bbee6c230dc0](https://etherscan.io/address/0x664814f5bd5e6e617742029fa781bbee6c230dc0) | Replaced | `mainnet-adhoc-redeploy-20261109` |
+| [26289466](https://etherscan.io/block/26289466) | DNSTLDResolver | [0x6695327ee70f41151d2cbadc3abbb6e4a58e739c](https://etherscan.io/address/0x6695327ee70f41151d2cbadc3abbb6e4a58e739c) | Current | `mainnet-adhoc` |
+| [26288738](https://etherscan.io/block/26288738) | UserRegistryImpl | [0xc927bcaa77cd7be283518760896be0cf3cfbe08d](https://etherscan.io/address/0xc927bcaa77cd7be283518760896be0cf3cfbe08d) | Current | `mainnet-adhoc` |
+| [26277143](https://etherscan.io/block/26277143) | MigrationHelper | [0x6c8452afc6043b5af32eb345a8135108906f07ee](https://etherscan.io/address/0x6c8452afc6043b5af32eb345a8135108906f07ee) | Current | `mainnet` |
+| [26277139](https://etherscan.io/block/26277139) | LockedMigrationController | [0x3cea18620883a69ed349b23328a3b6302598e51a](https://etherscan.io/address/0x3cea18620883a69ed349b23328a3b6302598e51a) | Current | `mainnet` |
+| [26277138](https://etherscan.io/block/26277138) | WrapperRegistryImpl | [0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888](https://etherscan.io/address/0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888) | Current | `mainnet` |
+| [26277137](https://etherscan.io/block/26277137) | UserRegistryImpl | [0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72](https://etherscan.io/address/0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72) | Replaced | `mainnet` |
+| [26252534](https://etherscan.io/block/26252534) | MigrationHelper | [0xf1aa81ae63a04aebd6c257a3f2c490aad8b4b136](https://etherscan.io/address/0xf1aa81ae63a04aebd6c257a3f2c490aad8b4b136) | Replaced | `mainnet-redeploy-20261026` |
+| [26252533](https://etherscan.io/block/26252533) | LockedMigrationController | [0x811814c098378488f916afa89f43b36baa5425ad](https://etherscan.io/address/0x811814c098378488f916afa89f43b36baa5425ad) | Replaced | `mainnet-redeploy-20261026` |
+| [26252532](https://etherscan.io/block/26252532) | WrapperRegistryImpl | [0x18580394dd1adeed3e9a933ffa7881df403b981d](https://etherscan.io/address/0x18580394dd1adeed3e9a933ffa7881df403b981d) | Replaced | `mainnet-redeploy-20261026` |
+| [26216331](https://etherscan.io/block/26216331) | UniversalResolverV1 | [0x804bf0d289c8353a0bafdaaf9069ab14c92b2099](https://etherscan.io/address/0x804bf0d289c8353a0bafdaaf9069ab14c92b2099) | Current | `mainnet` |
+| [26216330](https://etherscan.io/block/26216330) | UniversalResolverV2 | [0x06fdd07f007adac667177b46ab2eb9a75132cfd5](https://etherscan.io/address/0x06fdd07f007adac667177b46ab2eb9a75132cfd5) | Current | `mainnet` |
+| [26216328](https://etherscan.io/block/26216328) | MigrationHelper | [0x0b92006fa187b4c98d0a7dfc9d3b918b6d243485](https://etherscan.io/address/0x0b92006fa187b4c98d0a7dfc9d3b918b6d243485) | Replaced | `mainnet-redeploy-20261023` |
+| [26216326](https://etherscan.io/block/26216326) | LockedMigrationController | [0xc46bf3b6c7ebcffd4ecfc3b012a1726a2463694d](https://etherscan.io/address/0xc46bf3b6c7ebcffd4ecfc3b012a1726a2463694d) | Replaced | `mainnet-redeploy-20261023` |
+| [26216324](https://etherscan.io/block/26216324) | WrapperRegistryImpl | [0xcf3edb3f5501de63b57254d910b6782ee370039b](https://etherscan.io/address/0xcf3edb3f5501de63b57254d910b6782ee370039b) | Replaced | `mainnet-redeploy-20261023` |
+| [26216323](https://etherscan.io/block/26216323) | PublicResolverV2 | [0x66f9f566ff2f26309c1bd9134388478a801da3e1](https://etherscan.io/address/0x66f9f566ff2f26309c1bd9134388478a801da3e1) | Current | `mainnet` |
+| [26216322](https://etherscan.io/block/26216322) | UniversalHelper | [0x46ae127d14683ac74ef151e46ae2117a1a25c676](https://etherscan.io/address/0x46ae127d14683ac74ef151e46ae2117a1a25c676) | Current | `mainnet` |
+| [26216295](https://etherscan.io/block/26216295) | DNSTLDResolver | [0xab48304a2520ce420e636aacd48a8bb3e7e485ee](https://etherscan.io/address/0xab48304a2520ce420e636aacd48a8bb3e7e485ee) | Replaced | `mainnet` |
+| [26216294](https://etherscan.io/block/26216294) | DNSAliasResolver | [0x13285e928c65befd90904f77a68fe4e7d9a43882](https://etherscan.io/address/0x13285e928c65befd90904f77a68fe4e7d9a43882) | Current | `mainnet` |
+| [26216293](https://etherscan.io/block/26216293) | ENSV2Resolver | [0x3071ad643ce4ed8b3d67b289845b45db82b068a4](https://etherscan.io/address/0x3071ad643ce4ed8b3d67b289845b45db82b068a4) | Current | `mainnet` |
+| [26184011](https://etherscan.io/block/26184011) | UniversalResolverV2 | [0x7c027c9ce787d85ddad999c8601be4139a9ac39d](https://etherscan.io/address/0x7c027c9ce787d85ddad999c8601be4139a9ac39d) | Replaced | `mainnet-redeploy-20261018` |
+| [26184010](https://etherscan.io/block/26184010) | StandaloneHCAImplementation | [0x116f462fa078ec0009e9b25dcd60309e70aac4f4](https://etherscan.io/address/0x116f462fa078ec0009e9b25dcd60309e70aac4f4) | Current | `mainnet` |
+| [26184009](https://etherscan.io/block/26184009) | HCAOwnerAndSessionValidator | [0xa818428ed2f3f949bdc71b8a15bdd7b5d27ce938](https://etherscan.io/address/0xa818428ed2f3f949bdc71b8a15bdd7b5d27ce938) | Current | `mainnet` |
+| [26184008](https://etherscan.io/block/26184008) | MigrationHelper | [0x3760c796fd928d54afaee61174a0f8f37649fbd4](https://etherscan.io/address/0x3760c796fd928d54afaee61174a0f8f37649fbd4) | Replaced | `mainnet-redeploy-20261018` |
+| [26184007](https://etherscan.io/block/26184007) | LockedMigrationController | [0xa19d4d49230200b3e81290a87dd12ea916af7be6](https://etherscan.io/address/0xa19d4d49230200b3e81290a87dd12ea916af7be6) | Replaced | `mainnet-redeploy-20261018` |
+| [26184005](https://etherscan.io/block/26184005) | WrapperRegistryImpl | [0xb0c8e6f3bdc0e225b7cad0d507d191884ee9acfc](https://etherscan.io/address/0xb0c8e6f3bdc0e225b7cad0d507d191884ee9acfc) | Replaced | `mainnet-redeploy-20261018` |
+| [26184003](https://etherscan.io/block/26184003) | PublicResolverV2 | [0x9ca5ed532b262bcfa72b01bd11ed9c0054a0371f](https://etherscan.io/address/0x9ca5ed532b262bcfa72b01bd11ed9c0054a0371f) | Replaced | `mainnet-redeploy-20261018` |
+| [26184001](https://etherscan.io/block/26184001) | ETHRenewerV1 | [0x56c447f308f463a01121c41e72b0e7e7557fcb68](https://etherscan.io/address/0x56c447f308f463a01121c41e72b0e7e7557fcb68) | Current | `mainnet` |
+| [26183999](https://etherscan.io/block/26183999) | ETHRegistrar | [0xd6d8369e55c94ae8afa714e6cf7ab5be54d5cc81](https://etherscan.io/address/0xd6d8369e55c94ae8afa714e6cf7ab5be54d5cc81) | Current | `mainnet` |
+| [26183998](https://etherscan.io/block/26183998) | UniversalHelper | [0x3797c3fcc1c4f4952d115cf2d1b9f94e28581108](https://etherscan.io/address/0x3797c3fcc1c4f4952d115cf2d1b9f94e28581108) | Replaced | `mainnet-redeploy-20261018` |
+| [26183777](https://etherscan.io/block/26183777) | RootBatchRegistrar | [0xe467ae049ddd65a21fb85b5f1de5f7997a8eb164](https://etherscan.io/address/0xe467ae049ddd65a21fb85b5f1de5f7997a8eb164) | Current | `mainnet` |
+| [26183749](https://etherscan.io/block/26183749) | DNSTLDResolver | [0xb16b10b682b9efa73782a10d4dd2f4957d9f9d0a](https://etherscan.io/address/0xb16b10b682b9efa73782a10d4dd2f4957d9f9d0a) | Replaced | `mainnet-redeploy-20261018` |
+| [26183748](https://etherscan.io/block/26183748) | DNSAliasResolver | [0x853ad6e4d8dedb235c3691fc1296d947a4f54073](https://etherscan.io/address/0x853ad6e4d8dedb235c3691fc1296d947a4f54073) | Replaced | `mainnet-redeploy-20261018` |
+| [26183747](https://etherscan.io/block/26183747) | ENSV2Resolver | [0xa6d451c5e283bdd0a7c193910f55db57512aa7b2](https://etherscan.io/address/0xa6d451c5e283bdd0a7c193910f55db57512aa7b2) | Replaced | `mainnet-redeploy-20261018` |
+| [26183742](https://etherscan.io/block/26183742) | RootRegistry | [0x2553c09be6447beffdb86fa622ad41fb8f77a91e](https://etherscan.io/address/0x2553c09be6447beffdb86fa622ad41fb8f77a91e) | Current | `mainnet` |
+| [26105677](https://etherscan.io/block/26105677) | UniversalResolverV1 | [0x9a2f6f40c1032bd77a3be018d87d099044f366b5](https://etherscan.io/address/0x9a2f6f40c1032bd77a3be018d87d099044f366b5) | Replaced | `mainnet-redeploy-20261018` |
+| [26105676](https://etherscan.io/block/26105676) | UniversalResolverV2 | [0xae5b680305a73511e1825e1196b4ed284061ca07](https://etherscan.io/address/0xae5b680305a73511e1825e1196b4ed284061ca07) | Replaced | `mainnet-root-20261013` |
+| [26105673](https://etherscan.io/block/26105673) | StandaloneHCAImplementation | [0x0e03ae22ba5f4f6af8f51ac7a6d84488db33a98a](https://etherscan.io/address/0x0e03ae22ba5f4f6af8f51ac7a6d84488db33a98a) | Replaced | `mainnet-root-20261013` |
+| [26105671](https://etherscan.io/block/26105671) | HCAOwnerAndSessionValidator | [0x51f43691b8eb45b523763275459a870a78c9affe](https://etherscan.io/address/0x51f43691b8eb45b523763275459a870a78c9affe) | Replaced | `mainnet-root-20261013` |
+| [26105668](https://etherscan.io/block/26105668) | MigrationHelper | [0x985252a593484f87098bdecd45f926c49e9f50e2](https://etherscan.io/address/0x985252a593484f87098bdecd45f926c49e9f50e2) | Replaced | `mainnet-root-20261013` |
+| [26105662](https://etherscan.io/block/26105662) | LockedMigrationController | [0x4d5179122a3b811766a409c93466a37704792e17](https://etherscan.io/address/0x4d5179122a3b811766a409c93466a37704792e17) | Replaced | `mainnet-root-20261013` |
+| [26105655](https://etherscan.io/block/26105655) | WrapperRegistryImpl | [0x93b83f7861306dffa2176fd534f9729aa38e89e1](https://etherscan.io/address/0x93b83f7861306dffa2176fd534f9729aa38e89e1) | Replaced | `mainnet-root-20261013` |
+| [26105654](https://etherscan.io/block/26105654) | PublicResolverV2 | [0x6a1b9e7d228b603feb43661354ff621cf71158de](https://etherscan.io/address/0x6a1b9e7d228b603feb43661354ff621cf71158de) | Replaced | `mainnet-root-20261013` |
+| [26105650](https://etherscan.io/block/26105650) | ETHRenewerV1 | [0xe038b778b1fbf47a84018820626afc908c9c62b1](https://etherscan.io/address/0xe038b778b1fbf47a84018820626afc908c9c62b1) | Replaced | `mainnet-root-20261013` |
+| [26105646](https://etherscan.io/block/26105646) | ETHRegistrar | [0xdd86aea86697e9c6d4e50fa210242dd5ef5b02e8](https://etherscan.io/address/0xdd86aea86697e9c6d4e50fa210242dd5ef5b02e8) | Replaced | `mainnet-root-20261013` |
+| [26105644](https://etherscan.io/block/26105644) | UserRegistryImpl | [0x75ff9adbcfce2469b097ac68f6ae650eae1351bb](https://etherscan.io/address/0x75ff9adbcfce2469b097ac68f6ae650eae1351bb) | Replaced | `mainnet-redeploy-20261026` |
+| [26105637](https://etherscan.io/block/26105637) | UniversalHelper | [0x0dbfa10849a549b247dc18bf7529362e9ec49000](https://etherscan.io/address/0x0dbfa10849a549b247dc18bf7529362e9ec49000) | Replaced | `mainnet-root-20261013` |
+| [26105422](https://etherscan.io/block/26105422) | RootBatchRegistrar | [0x4547fe3a831b041aecdfb2f1616d6faae99e6cc1](https://etherscan.io/address/0x4547fe3a831b041aecdfb2f1616d6faae99e6cc1) | Replaced | `mainnet-root-20261013` |
+| [26105302](https://etherscan.io/block/26105302) | DNSTLDResolver | [0x73a2647840f79f15f2f208d985b11ae0c6035664](https://etherscan.io/address/0x73a2647840f79f15f2f208d985b11ae0c6035664) | Replaced | `mainnet-root-20261013` |
+| [26105301](https://etherscan.io/block/26105301) | DNSAliasResolver | [0x553a06ebd55b366dd45fad8e1245eed16ae2faa2](https://etherscan.io/address/0x553a06ebd55b366dd45fad8e1245eed16ae2faa2) | Replaced | `mainnet-root-20261013` |
+| [26105298](https://etherscan.io/block/26105298) | ENSV2Resolver | [0x8486d32948cdef5c24236718318c6326d5d006a9](https://etherscan.io/address/0x8486d32948cdef5c24236718318c6326d5d006a9) | Replaced | `mainnet-root-20261013` |
+| [26105295](https://etherscan.io/block/26105295) | RootRegistry | [0x51bbc58b3dae7d45b14fba8cf31b7c8f7904a750](https://etherscan.io/address/0x51bbc58b3dae7d45b14fba8cf31b7c8f7904a750) | Replaced | `mainnet-root-20261013` |

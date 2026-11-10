@@ -1,5 +1,11 @@
 import { loadDeploymentsFromFiles } from "@rocketh/node";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 
 const DEFAULT_DOCS_DIR = resolve(
@@ -52,6 +58,14 @@ export function loadContractEntries(
 export function explorerUrl(chainId: number, address: string): string | null {
   const base = EXPLORER_BASE[chainId];
   return base ? `${base}/address/${address}` : null;
+}
+
+/// Markdown block cell: the block number, linked to the explorer when the chain
+/// is known, or a dash when the record carries no block.
+function blockCell(chainId: number | undefined, block: bigint | undefined) {
+  if (block === undefined) return "—";
+  const base = chainId === undefined ? undefined : EXPLORER_BASE[chainId];
+  return base ? `[${block}](${base}/block/${block})` : `${block}`;
 }
 
 /// Markdown address cell: an explorer link when the chain is known, otherwise
@@ -115,6 +129,149 @@ export function baseNamespace(namespace: string): string {
     : namespace;
 }
 
+/// One record of a contract in one folder of a deployment's history.
+interface RecordedContract extends ContractEntry {
+  /// Block the record's deploy was mined in, when the record carries a receipt.
+  block?: bigint;
+  /// Folder the record is kept in.
+  folder: string;
+  /// True for a folder whose records are in use, false for an archive of
+  /// replaced records.
+  active: boolean;
+  /// True for a contract deployed one at a time, outside the migration.
+  adhoc: boolean;
+}
+
+/// Archive folders that hold the records replaced in `namespace`, named
+/// `<namespace>-<kind>-<YYYYMMDD>` with an optional `-r<N>` revision. A whole
+/// earlier deployment, archived as `<namespace>-<YYYYMMDD>-r<N>`, is a separate
+/// deployment rather than part of this one's history, and does not match.
+function archiveFolders(deploymentsDir: string, namespace: string): string[] {
+  const escaped = namespace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^${escaped}-[a-z]+-\\d{8}(-r\\d+)?$`);
+  return readdirSync(deploymentsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && pattern.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+async function loadFolder(
+  deploymentsDir: string,
+  folder: string,
+  flags: { active: boolean; adhoc: boolean },
+): Promise<RecordedContract[]> {
+  const { deployments } = await loadDeploymentsFromFiles(
+    deploymentsDir,
+    folder,
+    false,
+  );
+  return Object.entries(deployments).flatMap(([name, deployment]) => {
+    const { address, receipt } = deployment as {
+      address?: string;
+      receipt?: { blockNumber?: string | number };
+    };
+    if (!address) return [];
+    const block =
+      receipt?.blockNumber === undefined
+        ? undefined
+        : BigInt(receipt.blockNumber);
+    return [{ name, address, block, folder, ...flags }];
+  });
+}
+
+/// Every record a deployment has held: the records in its namespace and in the
+/// namespace of its ad-hoc deployments, then those in the archives of either.
+/// Proxy and implementation artifacts collapse into their canonical entry.
+async function loadDeploymentHistory(
+  deploymentsDir: string,
+  namespace: string,
+): Promise<RecordedContract[]> {
+  const adhoc = adhocNamespace(namespace);
+  const sources = [
+    { folder: namespace, adhoc: false },
+    { folder: adhoc, adhoc: true },
+  ];
+  const folders = [
+    { folder: namespace, adhoc: false, active: true },
+    ...(existsSync(join(deploymentsDir, adhoc))
+      ? [{ folder: adhoc, adhoc: true, active: true }]
+      : []),
+    ...sources.flatMap((source) =>
+      archiveFolders(deploymentsDir, source.folder).map((folder) => ({
+        folder,
+        adhoc: source.adhoc,
+        active: false,
+      })),
+    ),
+  ];
+  const records = (
+    await Promise.all(
+      folders.map(({ folder, ...flags }) =>
+        loadFolder(deploymentsDir, folder, flags),
+      ),
+    )
+  ).flat();
+  const names = new Set(records.map((record) => record.name));
+  return records.filter((record) => !isProxyArtifact(record.name, names));
+}
+
+/// Orders records newest first. A record without a block counts as the oldest,
+/// and records from the same block keep their order.
+function newestFirst(a: RecordedContract, b: RecordedContract): number {
+  const blockA = a.block ?? -1n;
+  const blockB = b.block ?? -1n;
+  return blockA === blockB ? 0 : blockA > blockB ? -1 : 1;
+}
+
+/// The latest record of each contract among the records in use, sorted by name.
+/// The migration's record wins a tie with an ad-hoc one.
+function currentContracts(records: RecordedContract[]): RecordedContract[] {
+  const current = new Map<string, RecordedContract>();
+  for (const record of records.filter((r) => r.active).sort(newestFirst)) {
+    if (!current.has(record.name)) current.set(record.name, record);
+  }
+  return [...current.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/// Changelog rows, newest first: every address held by a contract that has had
+/// more than one, or that was deployed outside the migration. An address kept in
+/// more than one folder is listed once, under the folder in use when there is one.
+function changelog(
+  records: RecordedContract[],
+  current: RecordedContract[],
+  chainId: number | undefined,
+): string | null {
+  const unique = new Map<string, RecordedContract>();
+  for (const record of records) {
+    const key = `${record.name}:${record.address.toLowerCase()}`;
+    const kept = unique.get(key);
+    if (!kept || (!kept.active && record.active)) unique.set(key, record);
+  }
+  const addressCount = new Map<string, number>();
+  for (const { name } of unique.values()) {
+    addressCount.set(name, (addressCount.get(name) ?? 0) + 1);
+  }
+  const currentAddress = new Map(
+    current.map(({ name, address }) => [name, address.toLowerCase()]),
+  );
+  const rows = [...unique.values()]
+    .filter((r) => r.adhoc || (addressCount.get(r.name) ?? 0) > 1)
+    .sort((a, b) => newestFirst(a, b) || a.name.localeCompare(b.name));
+  if (rows.length === 0) return null;
+  return markdownTable([
+    ["Block", "Contract", "Address", "Status", "Recorded in"],
+    ...rows.map((r) => [
+      blockCell(chainId, r.block),
+      r.name,
+      addressCell(chainId, r.address),
+      currentAddress.get(r.name) === r.address.toLowerCase()
+        ? "Current"
+        : "Replaced",
+      `\`${r.folder}\``,
+    ]),
+  ]);
+}
+
 function readJson<T>(path: string): T | null {
   try {
     return JSON.parse(readFileSync(path, "utf-8")) as T;
@@ -166,12 +323,8 @@ export async function generateAddressMarkdown(
   const docName = opts.docName ?? opts.namespace;
   const outDir = resolve(opts.outDir ?? DEFAULT_DOCS_DIR);
 
-  const { deployments } = await loadDeploymentsFromFiles(
-    deploymentsDir,
-    opts.namespace,
-    false,
-  );
-  const contracts = loadContractEntries(deployments);
+  const history = await loadDeploymentHistory(deploymentsDir, opts.namespace);
+  const contracts = currentContracts(history);
 
   const namespaceDir = join(deploymentsDir, opts.namespace);
   const chain = readJson<{ chainId?: string | number }>(
@@ -196,7 +349,14 @@ export async function generateAddressMarkdown(
       : null,
   ].filter(Boolean) as string[];
 
-  const sections: string[] = [formatTable(contracts, chainId)];
+  const log = changelog(history, contracts, chainId);
+  const sections: string[] = [
+    log
+      ? "The latest address of each contract. Earlier addresses are in the changelog below."
+      : "The latest address of each contract.",
+    "",
+    formatTable(contracts, chainId),
+  ];
   for (const extra of opts.extraSections ?? []) {
     const table = await namespaceTable(
       resolve(extra.deploymentsDir ?? opts.deploymentsDir),
@@ -214,22 +374,14 @@ export async function generateAddressMarkdown(
     );
   }
 
-  // Contracts deployed one at a time beside this deployment get their own
-  // section. They stay apart from the main table because the same name can
-  // appear in both at different addresses, and the main table is what the
-  // migration tooling resolves.
-  const adhoc = adhocNamespace(opts.namespace);
-  const adhocTable = existsSync(join(deploymentsDir, adhoc))
-    ? await namespaceTable(deploymentsDir, adhoc, chainId)
-    : null;
-  if (adhocTable) {
+  if (log) {
     sections.push(
       "",
-      "## Ad-hoc deployments",
+      "## Changelog",
       "",
-      `Contracts deployed one at a time outside the migration, recorded under \`${adhoc}\`. A name here can also appear in the table above at a different address.`,
+      "Every address of each contract that was replaced or deployed outside the migration, newest first.",
       "",
-      adhocTable,
+      log,
     );
   }
 

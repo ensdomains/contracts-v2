@@ -1392,10 +1392,13 @@ table as [`docs/addresses/<network>.md`](./addresses), which only tracks a netwo
 deployment. A `clean-testnet` namespace also gets a second section listing the ENSv1 contracts it
 deployed, since the v1 stack lives in `deployments/v1/<namespace>`.
 
-Both tables also list the contracts deployed one at a time with `bun run deploy:contract`, which records
-them under `deployments/<namespace>-adhoc`, in an "Ad-hoc deployments" section. After each deploy to a
-live network with a published page (mainnet, sepolia), `deploy:contract` rewrites both of that network's
-tables. To rewrite them by hand, run `bun run docs:addresses --network <network>`.
+Both tables give one address per contract: the latest one, taken from the namespace and from
+`deployments/<namespace>-adhoc`, where `bun run deploy:contract` records the contracts it deploys one at
+a time. A changelog below the table lists every address of each contract that was replaced or deployed
+ad hoc, newest first, including those kept in the archives of replaced records
+(`<namespace>-<kind>-<date>`). After each deploy to a live network with a published page (mainnet,
+sepolia), `deploy:contract` rewrites both of that network's tables. To rewrite them by hand, run
+`bun run docs:addresses --network <network>`.
 
 Beside it, `deployments/<namespace>/roles.md` records who controls the deployment, on any network.
 `phase verify-roles` writes it each time it runs, from the same reads it audits, so the file always
