@@ -335,18 +335,22 @@ contract HCADestinationContractOwnerTest is
         vm.prank(address(hca));
         assertEq(validator.validateUserOp(op, digest), 1);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_destination_cross1() public {
         owner = _delegatedWallet(OWNER_KEY, 1);
         _assertDestination(false, true);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_destination_same1() public {
         owner = _delegatedWallet(OWNER_KEY, 1);
         _assertDestination(true, true);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_destination_cross2() public {
         owner = _delegatedWallet(OWNER_KEY, 2);
         _assertDestination(false, true);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_rootSignaturesAndUserOpsStayValidWithoutWalletReads() public {
         _delegatedWallet(OWNER_KEY, 1);
         bytes32 digest = keccak256("root user operation");
@@ -366,6 +370,7 @@ contract HCADestinationContractOwnerTest is
         assertEq(reads.length, 0);
         assertEq(writes.length, 0);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_sessionProofIsRecheckedAndHcaRevocationStillApplies() public {
         _delegatedWallet(OWNER_KEY, 1);
         (bytes32 digest, bytes memory envelope) = _destinationEnvelope(false, true);
@@ -378,6 +383,7 @@ contract HCADestinationContractOwnerTest is
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
         hca.validate(validator, digest, envelope);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_ownerAcceptsOpaqueProofInAccountStorage() public {
         address implementation = address(new Opaque7702Wallet());
         bytes32 digest = keccak256("opaque signature authorization");
@@ -451,6 +457,7 @@ contract HCADestinationContractOwnerTest is
         hca.validate(validator, digest, bytes.concat(valid, hex"00"));
     }
 
+    /// forge-config: default.evm_version = "prague"
     function test_7702_changingOrClearingDelegationInvalidatesWalletProof() public {
         _delegatedWallet(OWNER_KEY, 1);
         (bytes32 digest, bytes memory envelope) = _destinationEnvelope(false, true);
@@ -530,14 +537,17 @@ contract HCASourceContractOwnerTest is HCAFundingSessionValidatorTest, ContractO
         _sca(2, true);
         _assertSource(true);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_source1() public {
         _delegatedWallet(OWNER_KEY, 1);
         _assertSource(true);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_source2() public {
         _delegatedWallet(OWNER_KEY, 2);
         _assertSource(true);
     }
+    /// forge-config: default.evm_version = "prague"
     function test_7702_sourceProofIsRechecked() public {
         _delegatedWallet(OWNER_KEY, 1);
         (bytes32 digest, bytes memory envelope) = _sourceEnvelope(true);
