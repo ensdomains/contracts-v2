@@ -458,9 +458,9 @@ describe("Standalone HCA", () => {
       ...details.data,
       signature: slice(userSignature, 20),
     });
-    expectVar({ emissarySigner: emissarySigner.toLowerCase() }).not.toStrictEqual(
-      owner.address.toLowerCase(),
-    );
+    expectVar({
+      emissarySigner: emissarySigner.toLowerCase(),
+    }).not.toStrictEqual(owner.address.toLowerCase());
     const ownerV = parsed.v ?? BigInt(27 + (parsed.yParity ?? 0));
     const packedSessions = details.hashesAndChainIds.map(
       ({ chainId, sessionDigest }) =>

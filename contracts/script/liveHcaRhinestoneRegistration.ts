@@ -1240,7 +1240,9 @@ async function main() {
         signature: slice(multiChainSignature, 20),
       });
       if (recoveredOwner.toLowerCase() !== owner.address.toLowerCase()) {
-        throw new Error("multi-chain session authorization uses the wrong domain or owner");
+        throw new Error(
+          "multi-chain session authorization uses the wrong domain or owner",
+        );
       }
       if (
         HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE &&
@@ -1314,7 +1316,9 @@ async function main() {
       signature: slice(sessionAuthorization, 20),
     });
     if (recoveredOwner.toLowerCase() !== owner.address.toLowerCase()) {
-      throw new Error("multi-chain session authorization uses the wrong domain or owner");
+      throw new Error(
+        "multi-chain session authorization uses the wrong domain or owner",
+      );
     }
     destinationEnableData = {
       userSignature: sessionAuthorization,
