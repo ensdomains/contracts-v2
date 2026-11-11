@@ -195,13 +195,14 @@ library HCASmartSessionLib {
                 keccak256(add(chainSessionHashes, 0x20), shl(5, mload(chainSessionHashes)))
         }
         bytes32 structHash = keccak256(abi.encode(MULTI_CHAIN_SESSION_TYPEHASH, chainSessionsHash));
-        bytes32 domainSeparator = keccak256(
-            abi.encode(
-                _AUTHORIZATION_DOMAIN_TYPEHASH,
-                _AUTHORIZATION_NAME_HASH,
-                _AUTHORIZATION_VERSION_HASH
-            )
-        );
+        bytes32 domainSeparator =
+            keccak256(
+                abi.encode(
+                    _AUTHORIZATION_DOMAIN_TYPEHASH,
+                    _AUTHORIZATION_NAME_HASH,
+                    _AUTHORIZATION_VERSION_HASH
+                )
+            );
         return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
     }
 }
