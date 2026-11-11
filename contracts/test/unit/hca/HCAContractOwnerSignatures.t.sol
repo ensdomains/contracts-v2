@@ -10,6 +10,7 @@ import {HCAFundingSessionValidatorTest} from "./HCAFundingSessionValidator.t.sol
 
 import {HCAFundingSessionValidator} from "~src/hca/HCAFundingSessionValidator.sol";
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
 import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
 
 import {MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
@@ -161,7 +162,7 @@ abstract contract ContractOwnerTestSupport is Test {
         pure
         returns (bytes memory result)
     {
-        result = new bytes(envelope.length - 65 + 2 + sig.length);
+        result = new bytes(envelope.length - HCASignatureLib.SIGNATURE_LENGTH + 2 + sig.length);
         for (uint256 i; i < signatureOffset; ++i)
             result[i] = envelope[i];
         result[0] = mode;
@@ -169,8 +170,12 @@ abstract contract ContractOwnerTestSupport is Test {
         result[signatureOffset + 1] = bytes1(uint8(sig.length));
         for (uint256 i; i < sig.length; ++i)
             result[signatureOffset + 2 + i] = sig[i];
-        for (uint256 i = signatureOffset + 65; i < envelope.length; ++i)
-            result[i - 65 + 2 + sig.length] = envelope[i];
+        for (
+            uint256 i = signatureOffset + HCASignatureLib.SIGNATURE_LENGTH;
+            i < envelope.length;
+            ++i
+        )
+            result[i - HCASignatureLib.SIGNATURE_LENGTH + 2 + sig.length] = envelope[i];
     }
     function _prefixSig(bytes32 r, bytes32 s, uint8 v, bytes32 digest)
         internal
@@ -392,7 +397,7 @@ contract HCADestinationContractOwnerTest is
         vm.prank(owner);
         Opaque7702Wallet(owner).approve(digest, keccak256(proof));
         bytes memory envelope = abi.encode(bytes1(0x06), proof);
-        assertGt(proof.length, 65);
+        assertGt(proof.length, HCASignatureLib.SIGNATURE_LENGTH);
         assertEq(hca.validate(validator, digest, envelope), bytes4(0x1626ba7e));
         assertEq(
             Opaque7702Wallet(implementation).isValidSignature(digest, proof),
