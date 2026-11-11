@@ -457,6 +457,24 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(address(registry.getSubregistry(testLabel)), address(0), "subregistry");
     }
 
+    function test_unregister_registered_then_renew() external {
+        uint256 tokenId = this._register();
+        registry.unregister(tokenId);
+        assertEq(
+            uint8(registry.getStatus(tokenId)),
+            uint8(IPermissionedRegistry.Status.AVAILABLE),
+            "unregistered"
+        );
+        registry.renew(tokenId, testExpiry + 1);
+        assertEq(
+            uint8(registry.getStatus(tokenId)),
+            uint8(IPermissionedRegistry.Status.RESERVED),
+            "revived"
+        );
+        assertEq(address(registry.getSubregistry(testLabel)), address(0), "subregistry");
+        assertEq(address(registry.getResolver(testLabel)), address(0), "resolver");
+    }
+
     function test_unregister_reserved() external {
         uint256 tokenId = this._reserve();
         vm.recordLogs();

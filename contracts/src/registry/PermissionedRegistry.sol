@@ -228,13 +228,15 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         (uint256 tokenId, Entry storage entry) =
             _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_UNREGISTER);
         emit LabelUnregistered(tokenId, msg.sender);
-        address owner = super.ownerOf(tokenId);
+        address owner = latestOwnerOf(tokenId);
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
             ++entry.eacVersionId;
             ++entry.tokenVersionId;
         }
         entry.expiry = uint64(block.timestamp);
+        delete entry.resolver;
+        delete entry.subregistry;
     }
 
     /// @inheritdoc IStandardRegistry
@@ -348,13 +350,13 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
 
     /// @inheritdoc IPermissionedRegistry
     function getOwner(uint256 anyId) public view returns (address) {
-        return _isExpired(getExpiry(anyId)) ? address(0) : super.ownerOf(getTokenId(anyId));
+        return _isExpired(getExpiry(anyId)) ? address(0) : latestOwnerOf(getTokenId(anyId));
     }
 
     /// @inheritdoc IPermissionedRegistry
     function getStatus(uint256 anyId) public view returns (Status) {
         Entry storage entry = _entry(anyId);
-        return _constructStatus(entry.expiry, super.ownerOf(_constructTokenId(anyId, entry)));
+        return _constructStatus(entry.expiry, latestOwnerOf(_constructTokenId(anyId, entry)));
     }
 
     /// @inheritdoc IPermissionedRegistry
@@ -365,7 +367,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         uint256 tokenId = _constructTokenId(anyId, entry);
         state.tokenId = tokenId;
         state.resource = _constructResource(anyId, entry);
-        address owner = super.ownerOf(tokenId);
+        address owner = latestOwnerOf(tokenId);
         state.latestOwner = owner;
         state.status = _constructStatus(expiry, owner);
     }
@@ -386,7 +388,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return
             tokenId != _constructTokenId(tokenId, entry) || _isExpired(entry.expiry)
                 ? address(0)
-                : super.ownerOf(tokenId);
+                : latestOwnerOf(tokenId);
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -461,7 +463,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
-        address prevOwner = super.ownerOf(tokenId);
+        address prevOwner = latestOwnerOf(tokenId);
         if (_isExpired(entry.expiry)) {
             if (checkRoles) {
                 _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, msg.sender);
@@ -582,7 +584,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         if (resource != ROOT_RESOURCE) {
             Entry storage entry = _entry(resource);
             uint256 tokenId = _constructTokenId(resource, entry);
-            address owner = super.ownerOf(tokenId); // grant/revoke only on registered
+            address owner = latestOwnerOf(tokenId); // grant/revoke only on registered
             _burn(owner, tokenId, 1);
             ++entry.tokenVersionId;
             uint256 newTokenId = _constructTokenId(tokenId, entry);
