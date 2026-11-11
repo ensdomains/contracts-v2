@@ -30,6 +30,7 @@ import {
   type PublicClient,
   recoverTypedDataAddress,
   size,
+  slice,
   stringToHex,
   zeroAddress,
   zeroHash,
@@ -105,6 +106,10 @@ const HCA_MULTI_CHAIN_SESSION_SIGNATURE = process.env
   .HCA_MULTI_CHAIN_SESSION_SIGNATURE as Hex | undefined;
 const HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE =
   process.env.HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE;
+const HCA_AUTHORIZATION_DOMAIN = {
+  name: "ENS HCA Authorization",
+  version: "1",
+} as const;
 const HCA_WAIT_FOR_SOURCE_USDC = process.env.HCA_WAIT_FOR_SOURCE_USDC === "1";
 const HCA_SOURCE_APPROVAL_TRANSACTION_HASH = process.env
   .HCA_SOURCE_APPROVAL_TRANSACTION_HASH as Hex | undefined;
@@ -1222,7 +1227,23 @@ async function main() {
       }
       const multiChainSignature =
         HCA_MULTI_CHAIN_SESSION_SIGNATURE ??
-        (await candidateAccount.experimental_signEnableSession(sessionDetails));
+        (await candidateAccount.experimental_signEnableSession({
+          ...sessionDetails,
+          data: {
+            ...sessionDetails.data,
+            domain: HCA_AUTHORIZATION_DOMAIN,
+          },
+        }));
+      const recoveredOwner = await recoverTypedDataAddress({
+        ...sessionDetails.data,
+        domain: HCA_AUTHORIZATION_DOMAIN,
+        signature: slice(multiChainSignature, 20),
+      });
+      if (recoveredOwner.toLowerCase() !== owner.address.toLowerCase()) {
+        throw new Error(
+          "multi-chain session authorization uses the wrong domain or owner",
+        );
+      }
       if (
         HCA_MULTI_CHAIN_SESSION_SIGNATURE_FILE &&
         !HCA_MULTI_CHAIN_SESSION_SIGNATURE
@@ -1282,7 +1303,23 @@ async function main() {
       await candidateAccount.experimental_getSessionDetails([sessionConfig]);
     const sessionAuthorization =
       HCA_MULTI_CHAIN_SESSION_SIGNATURE ??
-      (await candidateAccount.experimental_signEnableSession(sessionDetails));
+      (await candidateAccount.experimental_signEnableSession({
+        ...sessionDetails,
+        data: {
+          ...sessionDetails.data,
+          domain: HCA_AUTHORIZATION_DOMAIN,
+        },
+      }));
+    const recoveredOwner = await recoverTypedDataAddress({
+      ...sessionDetails.data,
+      domain: HCA_AUTHORIZATION_DOMAIN,
+      signature: slice(sessionAuthorization, 20),
+    });
+    if (recoveredOwner.toLowerCase() !== owner.address.toLowerCase()) {
+      throw new Error(
+        "multi-chain session authorization uses the wrong domain or owner",
+      );
+    }
     destinationEnableData = {
       userSignature: sessionAuthorization,
       hashesAndChainIds: sessionDetails.hashesAndChainIds,

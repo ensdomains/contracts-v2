@@ -79,18 +79,10 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         keccak256(
             "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,Mandate mandate)Mandate(Target target,uint128 minGas,Op originOps,Op destOps,bytes32 q)Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)Target(address recipient,Token[] tokenOut,uint256 targetChain,uint256 fillExpiry)Token(address token,uint256 amount)TokenPermissions(address token,uint256 amount)"
         );
-    bytes32 constant SMART_SESSION_DOMAIN_TYPEHASH =
-        0xb03948446334eb9b2196d5eb166f69b9d49403eb4a12f36de8d3f9f3cb8e15c3;
-    bytes32 constant SMART_SESSION_NAME_HASH =
-        0x909aaff4c04d02fd420ef163a6d750c002b0a00dc41a031ba039e3fdb4732133;
-    bytes32 constant SMART_SESSION_VERSION_HASH =
-        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6;
     bytes32 constant SIGNED_SESSION_TYPEHASH =
         0x984917e689987af96289e12c5f5e934fcdf1df4186108f69ff7e8c3df950ce33;
     bytes32 constant CHAIN_SESSION_TYPEHASH =
         0xabc350ff4773ba356e85e2d2ee58d7d7511767acdb108b59058f5b4a5afc074b;
-    bytes32 constant MULTI_CHAIN_SESSION_TYPEHASH =
-        0xb4323194e4ca3723804b96dc7a0960bde1afff2b080b8b288fdc264c82e21357;
     bytes32 constant DEFAULT_SIGNED_PERMISSIONS_HASH =
         0x242b79d1322c5e6b12b617584cc2d5766cf18be6feb6acfa469ccf289e11e504;
 
@@ -821,22 +813,7 @@ contract HCAOwnerAndSessionValidatorTest is Test {
                 abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
             );
         }
-        bytes32 structHash =
-            keccak256(
-                abi.encode(
-                    MULTI_CHAIN_SESSION_TYPEHASH,
-                    keccak256(abi.encodePacked(chainSessionHashes))
-                )
-            );
-        bytes32 domainSeparator =
-            keccak256(
-                abi.encode(
-                    SMART_SESSION_DOMAIN_TYPEHASH,
-                    SMART_SESSION_NAME_HASH,
-                    SMART_SESSION_VERSION_HASH
-                )
-            );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        bytes32 digest = HCASmartSessionLib.multiChainDigest(chainSessionHashes);
         (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(OWNER_KEY, digest);
     }
 
