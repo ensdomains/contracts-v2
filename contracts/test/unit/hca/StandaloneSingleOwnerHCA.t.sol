@@ -27,6 +27,8 @@ import {
 } from "nexus/lib/ModeLib.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
 import {ERC1271_MAGICVALUE} from "nexus/types/Constants.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -48,6 +50,7 @@ import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
+import {IStandaloneHCAOwnerFunds} from "~src/hca/interfaces/IStandaloneHCAOwnerFunds.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
@@ -380,6 +383,228 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.prank(owner);
         account.executeByOwner(executions);
         assertEq(firstTarget.value(), 7);
+    }
+
+    function test_ownerFunds_pullsWithPermit() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsToken token = new OwnerFundsToken();
+        token.mint(owner, 100);
+
+        _pullFromOwner(account, IERC20(address(token)), 25, _ownerPermit(token, account, 60));
+
+        assertEq(token.balanceOf(address(account)), 25);
+        assertEq(token.balanceOf(owner), 75);
+        assertEq(token.allowance(owner, address(account)), 35);
+    }
+
+    function test_ownerFunds_pullsAfterPermitWasSubmittedByAnotherCaller() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsToken token = new OwnerFundsToken();
+        token.mint(owner, 100);
+        IStandaloneHCAOwnerFunds.OwnerPermit memory permit = _ownerPermit(token, account, 60);
+
+        vm.prank(makeAddr("front-runner"));
+        token.permit(
+            owner,
+            address(account),
+            permit.value,
+            permit.deadline,
+            permit.v,
+            permit.r,
+            permit.s
+        );
+        vm.expectRevert();
+        token.permit(
+            owner,
+            address(account),
+            permit.value,
+            permit.deadline,
+            permit.v,
+            permit.r,
+            permit.s
+        );
+
+        _pullFromOwner(account, IERC20(address(token)), 25, permit);
+
+        assertEq(token.balanceOf(address(account)), 25);
+        assertEq(token.allowance(owner, address(account)), 35);
+    }
+
+    function test_ownerFunds_pullsFromExistingAllowanceWithoutPermit() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsToken token = new OwnerFundsToken();
+        token.mint(owner, 100);
+        vm.prank(owner);
+        token.approve(address(account), 40);
+        IStandaloneHCAOwnerFunds.OwnerPermit memory noPermit;
+
+        _pullFromOwner(account, IERC20(address(token)), 40, noPermit);
+
+        assertEq(token.balanceOf(address(account)), 40);
+        assertEq(token.allowance(owner, address(account)), 0);
+    }
+
+    function test_ownerFunds_pullRevertsWithoutAllowance() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsToken token = new OwnerFundsToken();
+        token.mint(owner, 100);
+        IStandaloneHCAOwnerFunds.OwnerPermit memory invalidPermit =
+            IStandaloneHCAOwnerFunds.OwnerPermit({value: 60, deadline: block.timestamp + 1 hours, v: 27, r: bytes32(
+                uint256(1)
+            ), s: bytes32(uint256(2))});
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: address(account), value: 0, callData: abi.encodeCall(
+            IStandaloneHCAOwnerFunds.pullFromOwner,
+            (IERC20(address(token)), 25, invalidPermit)
+        )});
+
+        vm.expectRevert();
+        vm.prank(owner);
+        account.executeByOwner(executions);
+        assertEq(token.balanceOf(address(account)), 0);
+    }
+
+    function test_ownerFunds_pullsTokenWithoutPermitOrReturnValues() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsVoidToken token = new OwnerFundsVoidToken();
+        token.mint(owner, 100);
+        vm.prank(owner);
+        token.approve(address(account), 40);
+        IStandaloneHCAOwnerFunds.OwnerPermit memory unusedPermit =
+            IStandaloneHCAOwnerFunds.OwnerPermit({value: 40, deadline: block.timestamp + 1 hours, v: 27, r: bytes32(
+                uint256(1)
+            ), s: bytes32(uint256(2))});
+
+        _pullFromOwner(account, IERC20(address(token)), 40, unusedPermit);
+
+        assertEq(token.balanceOf(address(account)), 40);
+        assertEq(token.balanceOf(owner), 60);
+    }
+
+    function test_ownerFunds_pullStillNeedsAllowanceWhenPermitIsANoOp() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsFallbackToken token = new OwnerFundsFallbackToken();
+        token.mint(owner, 100);
+        IStandaloneHCAOwnerFunds.OwnerPermit memory ignoredPermit =
+            IStandaloneHCAOwnerFunds.OwnerPermit({value: 40, deadline: block.timestamp + 1 hours, v: 27, r: bytes32(
+                uint256(1)
+            ), s: bytes32(uint256(2))});
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: address(account), value: 0, callData: abi.encodeCall(
+            IStandaloneHCAOwnerFunds.pullFromOwner,
+            (IERC20(address(token)), 40, ignoredPermit)
+        )});
+
+        vm.expectRevert();
+        vm.prank(owner);
+        account.executeByOwner(executions);
+        assertEq(token.balanceOf(owner), 100);
+    }
+
+    function test_ownerFunds_returnsBalanceAboveKeep() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsVoidToken token = new OwnerFundsVoidToken();
+        token.mint(address(account), 100);
+
+        _returnToOwner(account, IERC20(address(token)), 30);
+        assertEq(token.balanceOf(owner), 70);
+        assertEq(token.balanceOf(address(account)), 30);
+
+        _returnToOwner(account, IERC20(address(token)), 30);
+        _returnToOwner(account, IERC20(address(token)), 200);
+        assertEq(token.balanceOf(owner), 70);
+        assertEq(token.balanceOf(address(account)), 30);
+
+        _returnToOwner(account, IERC20(address(token)), 0);
+        assertEq(token.balanceOf(owner), 100);
+        assertEq(token.balanceOf(address(account)), 0);
+    }
+
+    function test_ownerFunds_rejectsCallersOtherThanTheAccount() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsToken token = new OwnerFundsToken();
+        IStandaloneHCAOwnerFunds.OwnerPermit memory noPermit;
+
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotAccount.selector);
+        account.pullFromOwner(IERC20(address(token)), 1, noPermit);
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotAccount.selector);
+        vm.prank(owner);
+        account.pullFromOwner(IERC20(address(token)), 1, noPermit);
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotAccount.selector);
+        account.returnToOwner(IERC20(address(token)), 0);
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotAccount.selector);
+        vm.prank(owner);
+        account.returnToOwner(IERC20(address(token)), 0);
+    }
+
+    function _newOwnerFundsAccount() internal returns (StandaloneSingleOwnerHCA) {
+        VerifiableFactory factory = new VerifiableFactory();
+        return
+            StandaloneSingleOwnerHCA(
+                payable(
+                    factory.deployProxy(
+                        address(_newAccount()),
+                        3,
+                        abi.encodeCall(
+                            StandaloneSingleOwnerHCA.initializeAccount,
+                            (abi.encode(owner))
+                        )
+                    )
+                )
+            );
+    }
+
+    function _ownerPermit(OwnerFundsToken token, StandaloneSingleOwnerHCA account, uint256 value)
+        internal
+        view
+        returns (IStandaloneHCAOwnerFunds.OwnerPermit memory permit)
+    {
+        permit.value = value;
+        permit.deadline = block.timestamp + 1 hours;
+        bytes32 structHash =
+            keccak256(
+                abi.encode(
+                    keccak256(
+                        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                    ),
+                    owner,
+                    address(account),
+                    value,
+                    token.nonces(owner),
+                    permit.deadline
+                )
+            );
+        (permit.v, permit.r, permit.s) = vm.sign(
+            ownerKey,
+            keccak256(abi.encodePacked("\x19\x01", token.DOMAIN_SEPARATOR(), structHash))
+        );
+    }
+
+    function _pullFromOwner(
+        StandaloneSingleOwnerHCA account,
+        IERC20 token,
+        uint256 amount,
+        IStandaloneHCAOwnerFunds.OwnerPermit memory permit
+    )
+        internal
+    {
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: address(account), value: 0, callData: abi.encodeCall(
+            IStandaloneHCAOwnerFunds.pullFromOwner,
+            (token, amount, permit)
+        )});
+        vm.prank(owner);
+        account.executeByOwner(executions);
+    }
+
+    function _returnToOwner(StandaloneSingleOwnerHCA account, IERC20 token, uint256 keep) internal {
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: address(account), value: 0, callData: abi.encodeCall(
+            IStandaloneHCAOwnerFunds.returnToOwner,
+            (token, keep)
+        )});
+        vm.prank(owner);
+        account.executeByOwner(executions);
     }
 
     function test_standaloneSingleOwnerHCA_ownerRegistersWithNonzeroSubregistry() public {
@@ -2636,4 +2861,46 @@ contract LegacyDelegatecallHCA is Nexus {
     function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
         return (owner, sessionNonce);
     }
+}
+
+
+/// @dev Standard token with an EIP-2612 permit.
+contract OwnerFundsToken is ERC20Permit {
+    constructor() ERC20("Owner Funds", "FUNDS") ERC20Permit("Owner Funds") {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
+
+
+/// @dev Token without a permit whose transfers return no value.
+contract OwnerFundsVoidToken {
+    mapping(address account => uint256 balance) public balanceOf;
+    mapping(address owner => mapping(address spender => uint256 amount)) public allowance;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external {
+        allowance[msg.sender][spender] = amount;
+    }
+
+    function transfer(address to, uint256 amount) external {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external {
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+    }
+}
+
+
+/// @dev Token without a permit whose fallback accepts any call, as a wrapped native token does.
+contract OwnerFundsFallbackToken is OwnerFundsVoidToken {
+    fallback() external payable {}
 }
