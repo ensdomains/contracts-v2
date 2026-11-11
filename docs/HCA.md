@@ -463,6 +463,39 @@ Rhinestone keeps its existing Smart Session typed data, Permit2 and Across messa
 signature format. The patch transports those values in an HCA-specific compact envelope. The
 frontend must not encode that envelope, call an executor, or call a paymaster directly.
 
+### Contract-owner signatures
+
+A deployed ERC-1271 wallet can own an HCA and authorize owner intents and fixed sessions.
+Set `account.ownerSignatureType` to `"erc1271"` on the standalone HCA configuration.
+The single account in `owners.accounts` must represent the wallet address and expose a
+`signTypedData` callback returning that wallet's complete ERC-1271 proof, including any
+threshold or wallet-specific wrapping. The SDK's `owners.type = "ecdsa"` identifies its
+account callback interface here; it does not restrict the opaque wallet proof to ECDSA.
+Do not substitute the Safe's individual signer address for the Safe owner address.
+
+The patched SDK wraps owner intents in `abi.encode(bytes1(0x06), walletSignature)` and
+keeps that tagged result in the session enable data. It selects mode `0x07` for source
+funding and destination Permit2 sessions, or `0x08` for same-chain sessions. Their proof
+contains a two-byte signature length followed by the unmodified wallet signature; the
+session key's operation signature remains ECDSA. Session owner proofs are limited to
+65,535 bytes. The frontend should retain `enableData.userSignature` without parsing it.
+
+The validators call ERC-1271 at the owner address against the exact authorization digest
+on every use. Wallet signature revocation therefore takes effect without a new HCA nonce;
+the HCA's normal session revocation and expiry checks also apply. A wallet must be deployed
+and support the proof on each chain where its authorization is used. Counterfactual owner
+wallet deployment and native ERC-20 permit support for contract wallets are separate concerns;
+pre-approved funding can be used when a token's permit requires an EOA.
+
+Omitting `ownerSignatureType`, or selecting `"ecdsa"`, preserves the existing signature
+format. This also preserves root-key signing for EIP-7702 accounts. Select `"erc1271"`
+explicitly to use a delegated wallet's verifier at the owner address.
+Contract-owner ERC-4337 UserOperations and generic message signing are not enabled by this
+change; use typed-data intents or direct `executeByOwner` calls from the wallet.
+Deploy the updated validator and an HCA implementation bound to it through the approved
+upgrade process before enabling the new formats in a client. Existing deployment records
+are not evidence that an address supports these formats.
+
 ### Destination account configuration
 
 Create the HCA account with this configuration:

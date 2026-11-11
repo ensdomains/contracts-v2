@@ -2,10 +2,11 @@
 pragma solidity 0.8.27;
 
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title HCA Signature Library
-/// @notice Recovers the signature variants produced by the Rhinestone and Nexus integrations.
-/// @dev Enforces canonical ECDSA recovery for raw and explicitly EIP-191-wrapped digests.
+/// @notice Validates EOA and wallet-defined signatures for the HCA integrations.
+/// @dev Keeps canonical ECDSA recovery separate from opaque ERC-1271 wallet signatures.
 library HCASignatureLib {
     ////////////////////////////////////////////////////////////////////////
     // Constants
@@ -21,6 +22,66 @@ library HCASignatureLib {
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Validates an opaque owner signature using the owner's ERC-1271 implementation.
+    /// @dev Uses a static call and requires the standard ABI-encoded success value.
+    /// @param owner The owner address, including an EOA executing delegated wallet code.
+    /// @param digest The exact authorization digest expected by the protocol.
+    /// @param signature Opaque wallet-specific signature bytes.
+    /// @return valid Whether the owner returned the ERC-1271 success value.
+    function isValidContractSignature(address owner, bytes32 digest, bytes memory signature)
+        internal
+        view
+        returns (bool)
+    {
+        return SignatureChecker.isValidERC1271SignatureNow(owner, digest, signature);
+    }
+
+    /// @notice Validates a tagged ABI envelope containing an opaque contract-owner signature.
+    /// @dev The envelope is abi.encode(bytes1(0x06), signature), distinct from legacy 65-byte signatures.
+    /// @param owner The owner address, including an EOA executing delegated wallet code.
+    /// @param digest The exact authorization digest expected by the protocol.
+    /// @param envelope A tagged ABI-encoded contract signature.
+    /// @return valid Whether decoding and ERC-1271 validation succeeded.
+    function isValidContractEnvelope(address owner, bytes32 digest, bytes calldata envelope)
+        internal
+        view
+        returns (bool)
+    {
+        if (
+            envelope.length < 96 ||
+            bytes32(envelope[:32]) != bytes32(bytes1(0x06)) ||
+            uint256(bytes32(envelope[32:64])) != 64
+        )
+            return false;
+        uint256 length = uint256(bytes32(envelope[64:96]));
+        if (length > envelope.length - 96 || envelope.length != 96 + ((length + 31) & ~uint256(31)))
+            return false;
+        return isValidContractSignature(owner, digest, envelope[96:96 + length]);
+    }
+
+    /// @notice Decodes a length-prefixed contract signature while preserving required trailing data.
+    /// @dev Rejects signatures that consume the required tail or leave no operation data.
+    /// @param data The complete validator envelope.
+    /// @param offset Offset of the two-byte signature length.
+    /// @param tailLength Required bytes after the signature, excluding the nonempty operation.
+    /// @return signature The bounded signature slice.
+    /// @return end Its ending offset, or zero when the envelope is invalid.
+    function decodeContractSignature(bytes calldata data, uint256 offset, uint256 tailLength)
+        internal
+        pure
+        returns (bytes calldata signature, uint256 end)
+    {
+        signature = data[0:0];
+        if (offset + 2 > data.length)
+            return (signature, 0);
+        uint256 length = uint16(bytes2(data[offset:offset + 2]));
+        offset += 2;
+        end = offset + length;
+        if (end + tailLength >= data.length)
+            return (signature, 0);
+        signature = data[offset:end];
+    }
 
     /// @notice Recovers a signer from a Rhinestone-compatible signature.
     /// @dev Values 31 and 32 select EIP-191 wrapping. Values 0, 1, 27, and 28 recover the supplied
