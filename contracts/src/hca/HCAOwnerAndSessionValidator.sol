@@ -663,8 +663,16 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
                 continue;
             }
             if (execution.target == account) {
-                if (selector == IStandaloneHCAOwnerFunds.pullFromOwner.selector) {
-                    _checkOwnerPull(execution.callData, fundingToken, funding);
+                if (
+                    selector == IStandaloneHCAOwnerFunds.pullFromOwner.selector ||
+                    selector == IStandaloneHCAOwnerFunds.pullFromOwnerPermit2.selector
+                ) {
+                    _checkOwnerPull(
+                        execution.callData,
+                        selector == IStandaloneHCAOwnerFunds.pullFromOwnerPermit2.selector,
+                        fundingToken,
+                        funding
+                    );
                     continue;
                 }
                 if (selector != IStandaloneHCAOwnerFunds.returnToOwner.selector) {
@@ -961,18 +969,27 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         state.transferred = true;
     }
 
-    /// @dev Validates the account's own `pullFromOwner` call. A batch can pull the session's
-    ///      token once, and `_checkRegistrationExecutions` caps the amount at what the batch
-    ///      approves in that token, so funds enter the HCA only to be spent by the same batch.
+    /// @dev Validates the account's own owner pull, made through the token or through Permit2.
+    ///      A batch can pull the session's token once, and `_checkRegistrationExecutions` caps
+    ///      the amount at what the batch approves in that token, so funds enter the HCA only to
+    ///      be spent by the same batch. Both pulls encode the token and amount first, and the
+    ///      Permit2 pull ends with a signature of any length, so only its minimum length is
+    ///      checked.
     function _checkOwnerPull(
         bytes memory callData,
+        bool permit2,
         address fundingToken,
         FundingPolicyState memory state
     )
         internal
         pure
     {
-        if (!state.enabled || state.pulled || state.permitted || callData.length != 4 + 7 * 32) {
+        if (
+            !state.enabled ||
+            state.pulled ||
+            state.permitted ||
+            (permit2 ? callData.length < 4 + 9 * 32 : callData.length != 4 + 7 * 32)
+        ) {
             revert PolicyRuleFailed();
         }
         _requireArgAddress(callData, 4, fundingToken);

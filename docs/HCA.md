@@ -252,6 +252,8 @@ The HCA has two calls for moving tokens between the wallet and the HCA. Only the
 
 `pullFromOwner(token, amount, permit)` pulls `amount` from the wallet into the HCA. It first tries the EIP-2612 permit and ignores a failure, so a permit that another caller already submitted does not stop the batch. Set the permit deadline to zero to skip the permit and use an existing allowance. One permit can therefore set the limit for a registration: the commit request pulls its execution-fee limit, and the reveal request pulls the price and its execution-fee limit against the remaining allowance. A token without a permit needs a wallet approval first.
 
+`pullFromOwnerPermit2(token, amount, permit)` does the same through Permit2, for any token the wallet has approved to Permit2. The wallet signs a Permit2 allowance for the HCA with an amount and an expiration, and each pull draws on that allowance. Use it for a token without a permit of its own. Set the signature deadline to zero to skip the permit and use the remaining Permit2 allowance. A wallet that has not approved the token to Permit2 needs that approval first.
+
 `returnToOwner(token, keep)` sends the HCA's balance of `token` above `keep` to the wallet. Put it last in a batch. The executor collects its fee after the batch, so `keep` must cover the batch's signed refund amount when `token` is the refund token. The unused part of that amount stays in the HCA until the next return.
 
 ### Wallet-paid HCA route
@@ -414,7 +416,7 @@ The validator applies these rules:
 - A registrar approval can name only the batch's current root `ROLE_REGISTRAR` holder as spender.
 - An execution-fee approval must match the signed fee and the session limits, or be zero. A zero approval clears the allowance left by an earlier operation, which a token such as USDT requires before it accepts a new nonzero approval.
 - A first same-chain action can use one wallet permit followed by the same-value transfer into the HCA.
-- A batch can call `HCA.pullFromOwner(token, amount, permit)` once for the session's refund token. The amount cannot exceed the total that the batch approves in that token to the registrar and the refund paymaster. A batch cannot combine this call with the token permit and transfer above.
+- A batch can call `HCA.pullFromOwner(token, amount, permit)` or `HCA.pullFromOwnerPermit2(token, amount, permit)` once for the session's refund token. The amount cannot exceed the total that the batch approves in that token to the registrar and the refund paymaster. A batch cannot combine this call with the token permit and transfer above.
 - A batch can call `HCA.returnToOwner(token, keep)` for any token. For the refund token, `keep` must be at least the signed refund amount.
 
 The validator does not store this authorization. Each destination signature carries the reusable proof, and the HCA session nonce invalidates it globally. The session key can select labels, records, and primary-name strings. The owner does not pre-sign one fixed registration. The session can register more than one name before expiry or revocation.

@@ -45,10 +45,12 @@ import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
 import {HCAExecutionLib} from "~src/hca/libraries/HCAExecutionLib.sol";
 import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
+import {HCAPermit2Lib} from "~src/hca/libraries/HCAPermit2Lib.sol";
 import {HCARegistrarPolicyLib} from "~src/hca/libraries/HCARegistrarPolicyLib.sol";
 import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
+import {IPermit2AllowanceTransfer} from "~src/hca/interfaces/IPermit2AllowanceTransfer.sol";
 import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
 import {IStandaloneHCAOwnerFunds} from "~src/hca/interfaces/IStandaloneHCAOwnerFunds.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
@@ -535,6 +537,102 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotAccount.selector);
         vm.prank(owner);
         account.returnToOwner(IERC20(address(token)), 0);
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory noPermit2;
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotAccount.selector);
+        account.pullFromOwnerPermit2(IERC20(address(token)), 1, noPermit2);
+        vm.expectRevert(StandaloneSingleOwnerHCA.CallerNotAccount.selector);
+        vm.prank(owner);
+        account.pullFromOwnerPermit2(IERC20(address(token)), 1, noPermit2);
+    }
+
+    function test_ownerFunds_pullsThroughPermit2WithPermit() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsPermit2 permit2 = _etchPermit2();
+        OwnerFundsVoidToken token = _newPermit2ApprovedToken();
+
+        _pullFromOwnerPermit2(account, token, 25, _ownerPermit2(permit2, token, account, 60));
+
+        assertEq(token.balanceOf(address(account)), 25);
+        assertEq(token.balanceOf(owner), 75);
+        (uint160 amount, , uint48 nonce) =
+            permit2.allowance(owner, address(token), address(account));
+        assertEq(amount, 35);
+        assertEq(nonce, 1);
+    }
+
+    function test_ownerFunds_pullsThroughPermit2AfterPermitWasSubmittedByAnotherCaller() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsPermit2 permit2 = _etchPermit2();
+        OwnerFundsVoidToken token = _newPermit2ApprovedToken();
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory permit =
+            _ownerPermit2(permit2, token, account, 60);
+        IPermit2AllowanceTransfer.PermitSingle memory permitSingle =
+            IPermit2AllowanceTransfer.PermitSingle({details: IPermit2AllowanceTransfer.PermitDetails({token: address(
+                token
+            ), amount: permit.amount, expiration: permit.expiration, nonce: permit.nonce}), spender: address(
+                account
+            ), sigDeadline: permit.sigDeadline});
+
+        vm.prank(makeAddr("front-runner"));
+        permit2.permit(owner, permitSingle, permit.signature);
+        vm.expectRevert(OwnerFundsPermit2.InvalidNonce.selector);
+        permit2.permit(owner, permitSingle, permit.signature);
+
+        _pullFromOwnerPermit2(account, token, 25, permit);
+
+        assertEq(token.balanceOf(address(account)), 25);
+        (uint160 amount, , ) = permit2.allowance(owner, address(token), address(account));
+        assertEq(amount, 35);
+    }
+
+    function test_ownerFunds_pullsFromExistingPermit2AllowanceWithoutPermit() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsPermit2 permit2 = _etchPermit2();
+        OwnerFundsVoidToken token = _newPermit2ApprovedToken();
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory noPermit;
+
+        _pullFromOwnerPermit2(account, token, 25, _ownerPermit2(permit2, token, account, 60));
+        _pullFromOwnerPermit2(account, token, 35, noPermit);
+
+        assertEq(token.balanceOf(address(account)), 60);
+        assertEq(token.balanceOf(owner), 40);
+        (uint160 amount, , ) = permit2.allowance(owner, address(token), address(account));
+        assertEq(amount, 0);
+
+        vm.expectRevert();
+        vm.prank(owner);
+        account.executeByOwner(_permit2PullExecutions(account, token, 1, noPermit));
+    }
+
+    function test_ownerFunds_permit2PullRevertsWithoutAllowance() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsPermit2 permit2 = _etchPermit2();
+        OwnerFundsVoidToken token = _newPermit2ApprovedToken();
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory invalidPermit =
+            _ownerPermit2(permit2, token, account, 60);
+        invalidPermit.amount = 61;
+
+        vm.expectRevert();
+        vm.prank(owner);
+        account.executeByOwner(_permit2PullExecutions(account, token, 25, invalidPermit));
+        assertEq(token.balanceOf(address(account)), 0);
+    }
+
+    function test_ownerFunds_permit2PullRevertsAfterAllowanceExpires() public {
+        StandaloneSingleOwnerHCA account = _newOwnerFundsAccount();
+        OwnerFundsPermit2 permit2 = _etchPermit2();
+        OwnerFundsVoidToken token = _newPermit2ApprovedToken();
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory permit =
+            _ownerPermit2(permit2, token, account, 60);
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory noPermit;
+
+        _pullFromOwnerPermit2(account, token, 25, permit);
+        vm.warp(uint256(permit.expiration) + 1);
+
+        vm.expectRevert();
+        vm.prank(owner);
+        account.executeByOwner(_permit2PullExecutions(account, token, 1, noPermit));
+        assertEq(token.balanceOf(address(account)), 25);
     }
 
     function _newOwnerFundsAccount() internal returns (StandaloneSingleOwnerHCA) {
@@ -595,6 +693,74 @@ contract StandaloneSingleOwnerHCATest is Test {
         )});
         vm.prank(owner);
         account.executeByOwner(executions);
+    }
+
+    function _etchPermit2() internal returns (OwnerFundsPermit2 permit2) {
+        vm.etch(HCAPermit2Lib.PERMIT2, address(new OwnerFundsPermit2()).code);
+        return OwnerFundsPermit2(HCAPermit2Lib.PERMIT2);
+    }
+
+    function _newPermit2ApprovedToken() internal returns (OwnerFundsVoidToken token) {
+        token = new OwnerFundsVoidToken();
+        token.mint(owner, 100);
+        vm.prank(owner);
+        token.approve(HCAPermit2Lib.PERMIT2, type(uint256).max);
+    }
+
+    function _ownerPermit2(
+        OwnerFundsPermit2 permit2,
+        OwnerFundsVoidToken token,
+        StandaloneSingleOwnerHCA account,
+        uint160 amount
+    )
+        internal
+        view
+        returns (IStandaloneHCAOwnerFunds.OwnerPermit2 memory permit)
+    {
+        permit.amount = amount;
+        permit.expiration = uint48(block.timestamp + 1 hours);
+        (, , permit.nonce) = permit2.allowance(owner, address(token), address(account));
+        permit.sigDeadline = block.timestamp + 30 minutes;
+        bytes32 digest =
+            permit2.permitDigest(
+                IPermit2AllowanceTransfer.PermitSingle({details: IPermit2AllowanceTransfer.PermitDetails({token: address(
+                    token
+                ), amount: amount, expiration: permit.expiration, nonce: permit.nonce}), spender: address(
+                    account
+                ), sigDeadline: permit.sigDeadline})
+            );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerKey, digest);
+        permit.signature = abi.encodePacked(r, s, v);
+    }
+
+    function _pullFromOwnerPermit2(
+        StandaloneSingleOwnerHCA account,
+        OwnerFundsVoidToken token,
+        uint160 amount,
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory permit
+    )
+        internal
+    {
+        Execution[] memory executions = _permit2PullExecutions(account, token, amount, permit);
+        vm.prank(owner);
+        account.executeByOwner(executions);
+    }
+
+    function _permit2PullExecutions(
+        StandaloneSingleOwnerHCA account,
+        OwnerFundsVoidToken token,
+        uint160 amount,
+        IStandaloneHCAOwnerFunds.OwnerPermit2 memory permit
+    )
+        internal
+        pure
+        returns (Execution[] memory executions)
+    {
+        executions = new Execution[](1);
+        executions[0] = Execution({target: address(account), value: 0, callData: abi.encodeCall(
+            IStandaloneHCAOwnerFunds.pullFromOwnerPermit2,
+            (IERC20(address(token)), amount, permit)
+        )});
     }
 
     function _returnToOwner(StandaloneSingleOwnerHCA account, IERC20 token, uint256 keep) internal {
@@ -2903,4 +3069,87 @@ contract OwnerFundsVoidToken {
 /// @dev Token without a permit whose fallback accepts any call, as a wrapped native token does.
 contract OwnerFundsFallbackToken is OwnerFundsVoidToken {
     fallback() external payable {}
+}
+
+
+/// @dev Permit2 allowance transfers with the canonical typed data, nonce, and expiry rules.
+contract OwnerFundsPermit2 is IPermit2AllowanceTransfer {
+    struct Allowance {
+        uint160 amount;
+        uint48 expiration;
+        uint48 nonce;
+    }
+
+    bytes32 internal constant _DETAILS_TYPEHASH =
+        keccak256("PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)");
+    bytes32 internal constant _SINGLE_TYPEHASH =
+        keccak256(
+            "PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)"
+        );
+
+    mapping(address owner => mapping(address token => mapping(address spender => Allowance))) public allowance;
+
+    error SignatureExpired();
+    error InvalidSigner();
+    error InvalidNonce();
+    error AllowanceExpired();
+    error InsufficientAllowance();
+
+    function permit(address owner, PermitSingle calldata permitSingle, bytes calldata signature)
+        external
+        override
+    {
+        if (block.timestamp > permitSingle.sigDeadline) {
+            revert SignatureExpired();
+        }
+        (bytes32 r, bytes32 s) = abi.decode(signature, (bytes32, bytes32));
+        if (ecrecover(permitDigest(permitSingle), uint8(signature[64]), r, s) != owner) {
+            revert InvalidSigner();
+        }
+        Allowance storage allowed =
+            allowance[owner][permitSingle.details.token][permitSingle.spender];
+        if (allowed.nonce != permitSingle.details.nonce) {
+            revert InvalidNonce();
+        }
+        allowed.amount = permitSingle.details.amount;
+        allowed.expiration = permitSingle.details.expiration;
+        ++allowed.nonce;
+    }
+
+    function transferFrom(address from, address to, uint160 amount, address token)
+        external
+        override
+    {
+        Allowance storage allowed = allowance[from][token][msg.sender];
+        if (block.timestamp > allowed.expiration) {
+            revert AllowanceExpired();
+        }
+        if (amount > allowed.amount) {
+            revert InsufficientAllowance();
+        }
+        allowed.amount -= amount;
+        OwnerFundsVoidToken(token).transferFrom(from, to, amount);
+    }
+
+    function permitDigest(PermitSingle memory permitSingle) public view returns (bytes32) {
+        bytes32 domainSeparator =
+            keccak256(
+                abi.encode(
+                    HCAPermit2Lib.EIP712_DOMAIN_TYPEHASH,
+                    HCAPermit2Lib.PERMIT2_NAME_HASH,
+                    block.chainid,
+                    address(this)
+                )
+            );
+        bytes32 structHash =
+            keccak256(
+                abi.encode(
+                    _SINGLE_TYPEHASH,
+                    keccak256(abi.encode(_DETAILS_TYPEHASH, permitSingle.details)),
+                    permitSingle.spender,
+                    permitSingle.sigDeadline
+                )
+            );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+    }
 }
