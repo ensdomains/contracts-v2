@@ -962,8 +962,8 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     }
 
     /// @dev Validates the account's own `pullFromOwner` call. A batch can pull the session's
-    ///      token once, and `_checkRegistrationExecutions` caps the amount at what the batch
-    ///      approves in that token, so funds enter the HCA only to be spent by the same batch.
+    ///      token once, up to what the batch approves in that token. The owner's allowance to
+    ///      the HCA, not this rule, limits what a session can pull in total.
     function _checkOwnerPull(
         bytes memory callData,
         address fundingToken,

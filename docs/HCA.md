@@ -254,6 +254,8 @@ The HCA has two calls for moving tokens between the wallet and the HCA. Only the
 
 `returnToOwner(token, keep)` sends the HCA's balance of `token` above `keep` to the wallet. Put it last in a batch. The executor collects its fee after the batch, so `keep` must cover the batch's signed refund amount when `token` is the refund token. The unused part of that amount stays in the HCA until the next return.
 
+The wallet's allowance to the HCA is the session's spending limit. The session policy does not cap the total, and a session can pull against any allowance that remains, including one left by an earlier registration. Request the exact amount the registration needs: the price and both execution-fee limits. Do not request an unlimited approval to the HCA.
+
 ### Wallet-paid HCA route
 
 The wallet can call `HCA.executeByOwner(executions)` directly. This call makes the HCA an atomic, owner-controlled multicaller. The wallet transaction is the owner authorization. Do not request a second HCA signature.
@@ -414,7 +416,7 @@ The validator applies these rules:
 - A registrar approval can name only the batch's current root `ROLE_REGISTRAR` holder as spender.
 - An execution-fee approval must match the signed fee and the session limits, or be zero. A zero approval clears the allowance left by an earlier operation, which a token such as USDT requires before it accepts a new nonzero approval.
 - A first same-chain action can use one wallet permit followed by the same-value transfer into the HCA.
-- A batch can call `HCA.pullFromOwner(token, amount, permit)` once for the session's refund token. The amount cannot exceed the total that the batch approves in that token to the registrar and the refund paymaster. A batch cannot combine this call with the token permit and transfer above.
+- A batch can call `HCA.pullFromOwner(token, amount, permit)` once for the session's refund token. The amount cannot exceed the total that the batch approves in that token to the registrar and the refund paymaster. This rule does not limit the total across batches: the wallet's allowance to the HCA does. A batch cannot combine this call with the token permit and transfer above.
 - A batch can call `HCA.returnToOwner(token, keep)` for any token. For the refund token, `keep` must be at least the signed refund amount.
 
 The validator does not store this authorization. Each destination signature carries the reusable proof, and the HCA session nonce invalidates it globally. The session key can select labels, records, and primary-name strings. The owner does not pre-sign one fixed registration. The session can register more than one name before expiry or revocation.
