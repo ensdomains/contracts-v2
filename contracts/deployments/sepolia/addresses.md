@@ -6,7 +6,7 @@
 - **Chain ID:** 11155111
 - **Deployed at:** 2026-10-01T07:55:02.016Z
 
-The latest deployed address of each contract. A new deployment can need a DAO vote, or an upgrade of the contracts that use it, before it is in use.
+The latest deployed address of each contract.
 
 | Contract | Address |
 | --- | --- |

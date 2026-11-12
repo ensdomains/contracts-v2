@@ -298,7 +298,6 @@ export async function loadLatestAddresses(
 /// block times.
 async function changelog(
   records: RecordedContract[],
-  latest: RecordedContract[],
   chainId: number | undefined,
   blockTimes: BlockTimeLookup | undefined,
 ): Promise<string | null> {
@@ -312,9 +311,6 @@ async function changelog(
   for (const { name } of unique.values()) {
     addressCount.set(name, (addressCount.get(name) ?? 0) + 1);
   }
-  const latestAddress = new Map(
-    latest.map(({ name, address }) => [name, address.toLowerCase()]),
-  );
   const rows = [...unique.values()]
     .filter((r) => r.adhoc || (addressCount.get(r.name) ?? 0) > 1)
     .sort((a, b) => newestFirst(a, b) || a.name.localeCompare(b.name));
@@ -333,7 +329,7 @@ async function changelog(
     ),
   );
   return markdownTable([
-    ["Deployed (UTC)", "Contract", "Address", "Status", "Recorded in"],
+    ["Deployed (UTC)", "Contract", "Address", "Recorded in"],
     ...rows.map((r) => [
       deployedCell(
         chainId,
@@ -342,9 +338,6 @@ async function changelog(
       ),
       r.name,
       addressCell(chainId, r.address),
-      latestAddress.get(r.name) === r.address.toLowerCase()
-        ? "Latest"
-        : "Superseded",
       `\`${r.folder}\``,
     ]),
   ]);
@@ -430,12 +423,11 @@ export async function generateAddressMarkdown(
       : null,
   ].filter(Boolean) as string[];
 
-  const log = await changelog(history, contracts, chainId, opts.blockTimes);
+  const log = await changelog(history, chainId, opts.blockTimes);
   const sections: string[] = [
-    [
-      "The latest deployed address of each contract. A new deployment can need a DAO vote, or an upgrade of the contracts that use it, before it is in use.",
-      log ? " Earlier addresses are in the changelog below." : "",
-    ].join(""),
+    log
+      ? "The latest deployed address of each contract. Earlier addresses are in the changelog below."
+      : "The latest deployed address of each contract.",
     "",
     formatTable(contracts, chainId),
   ];
@@ -461,7 +453,7 @@ export async function generateAddressMarkdown(
       "",
       "## Changelog",
       "",
-      "Every address of each contract that was superseded or deployed outside the migration, newest first.",
+      "Every address of each contract that was deployed more than once, or deployed outside the migration, newest first.",
       "",
       log,
     );

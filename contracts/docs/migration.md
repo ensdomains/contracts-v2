@@ -1396,8 +1396,8 @@ Both tables give one address per contract: the latest deployed one, taken from t
 `deployments/<namespace>-adhoc`, where `bun run deploy:contract` records the contracts it deploys one at
 a time. The latest deployment is not necessarily in use: some contracts take a DAO vote, or an upgrade
 of the contracts that use them, first. To drop a deployment that will not be used, move its record into an
-archive. A changelog below the table lists every address of each contract that was superseded or deployed
-ad hoc, newest first, including those kept in the archives of replaced records
+archive. A changelog below the table lists every address of each contract that was deployed more than once
+or deployed ad hoc, newest first, including those kept in the archives of replaced records
 (`<namespace>-<kind>-<date>`). Each changelog row gives the UTC time its block was mined, read from the
 chain. After each deploy to a live network with a published page (mainnet, sepolia), `deploy:contract`
 rewrites both of that network's tables. To rewrite them by hand, run

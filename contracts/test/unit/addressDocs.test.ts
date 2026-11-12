@@ -82,7 +82,7 @@ describe("address pages", () => {
     expect(changelog).toBe("");
   });
 
-  it("lists the newest ad-hoc deployment as current and the replaced one in the changelog", async () => {
+  it("puts the newest ad-hoc deployment in the table and every address of the contract in the changelog", async () => {
     writeRecords(adhocNamespace("mainnet"), {
       Resolver: [address("3"), 200],
       Registrar: [address("4"), 201],
@@ -91,9 +91,9 @@ describe("address pages", () => {
     expect(table).toContain(address("3"));
     expect(table).not.toContain(address("2"));
     expect(table).toContain(address("4"));
-    expect(changelogRow(changelog, address("3"))).toContain("Latest");
-    expect(changelogRow(changelog, address("2"))).toContain("Superseded");
-    expect(changelogRow(changelog, address("4"))).toContain("Latest");
+    expect(changelogRow(changelog, address("3"))).toBeDefined();
+    expect(changelogRow(changelog, address("2"))).toBeDefined();
+    expect(changelogRow(changelog, address("4"))).toBeDefined();
     expect(changelogRow(changelog, address("1"))).toBeUndefined();
   });
 
@@ -124,10 +124,10 @@ describe("address pages", () => {
     const { table, changelog } = await render();
     expect(table).toContain(address("2"));
     expect(table).not.toContain(address("3"));
-    expect(changelogRow(changelog, address("3"))).toContain("Superseded");
+    expect(changelogRow(changelog, address("3"))).toBeDefined();
   });
 
-  it("lists archived records as replaced, newest first", async () => {
+  it("lists archived records in the changelog, newest first", async () => {
     writeRecords("mainnet-redeploy-20261001", {
       Resolver: [address("5"), 90],
     });
@@ -143,8 +143,8 @@ describe("address pages", () => {
     );
     expect(rows.every((index) => index > 0)).toBe(true);
     expect(rows).toEqual([...rows].sort((a, b) => a - b));
-    expect(changelogRow(changelog, address("6"))).toContain("Superseded");
-    expect(changelogRow(changelog, address("5"))).toContain("Superseded");
+    expect(changelogRow(changelog, address("6"))).toBeDefined();
+    expect(changelogRow(changelog, address("5"))).toBeDefined();
   });
 
   it("leaves out an archive of a whole earlier deployment", async () => {
@@ -167,7 +167,7 @@ describe("address pages", () => {
     const [, changelog = ""] = (await Bun.file(path).text()).split(
       "## Changelog",
     );
-    expect(changelogRow(changelog, address("3"))).toContain("Latest");
+    expect(changelogRow(changelog, address("3"))).toBeDefined();
   });
 });
 
