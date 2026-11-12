@@ -1396,9 +1396,10 @@ Both tables give one address per contract: the latest one, taken from the namesp
 `deployments/<namespace>-adhoc`, where `bun run deploy:contract` records the contracts it deploys one at
 a time. A changelog below the table lists every address of each contract that was replaced or deployed
 ad hoc, newest first, including those kept in the archives of replaced records
-(`<namespace>-<kind>-<date>`). After each deploy to a live network with a published page (mainnet,
-sepolia), `deploy:contract` rewrites both of that network's tables. To rewrite them by hand, run
-`bun run docs:addresses --network <network>`.
+(`<namespace>-<kind>-<date>`). Each changelog row gives the UTC time its block was mined, read from the
+chain. After each deploy to a live network with a published page (mainnet, sepolia), `deploy:contract`
+rewrites both of that network's tables. To rewrite them by hand, run
+`bun run docs:addresses --network <network>` with `--rpc-url`, or with `<NETWORK>_RPC_URL` set.
 
 Beside it, `deployments/<namespace>/roles.md` records who controls the deployment, on any network.
 `phase verify-roles` writes it each time it runs, from the same reads it audits, so the file always

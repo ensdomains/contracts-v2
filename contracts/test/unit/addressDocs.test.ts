@@ -13,6 +13,11 @@ import {
 
 const address = (digit: string) => `0x${digit.repeat(40)}`;
 
+/// Block times one day apart from the start of 2026, so each block's time is
+/// easy to work out.
+const START_OF_2026 = 1767225600n;
+const blockTimes = async (block: bigint) => START_OF_2026 + block * 86_400n;
+
 let root: string;
 let deploymentsDir: string;
 let outDir: string;
@@ -43,6 +48,7 @@ async function render(): Promise<{ table: string; changelog: string }> {
     deploymentsDir,
     namespace: "mainnet",
     outDir,
+    blockTimes,
   });
   const [table, changelog = ""] = (await Bun.file(path).text()).split(
     "## Changelog",
@@ -91,6 +97,26 @@ describe("address pages", () => {
     expect(changelogRow(changelog, address("1"))).toBeUndefined();
   });
 
+  it("gives the deploy time of each changelog row, linked to its block", async () => {
+    writeRecords(adhocNamespace("mainnet"), {
+      Resolver: [address("3"), 2],
+    });
+    const { changelog } = await render();
+    expect(changelog).toContain("| Deployed (UTC) |");
+    expect(changelogRow(changelog, address("3"))).toContain(
+      "[2026-01-03 00:00:00](https://etherscan.io/block/2)",
+    );
+  });
+
+  it("refuses to write a changelog without block times", async () => {
+    writeRecords(adhocNamespace("mainnet"), {
+      Resolver: [address("3"), 200],
+    });
+    await expect(
+      generateAddressMarkdown({ deploymentsDir, namespace: "mainnet", outDir }),
+    ).rejects.toThrow("deploy times are read from the chain");
+  });
+
   it("keeps the migration's record when an ad-hoc one is older", async () => {
     writeRecords(adhocNamespace("mainnet"), {
       Resolver: [address("3"), 50],
@@ -135,6 +161,7 @@ describe("address pages", () => {
     const path = await writeNamespaceAddressTable({
       deploymentsDir,
       namespace: "mainnet",
+      blockTimes,
     });
     expect(path).toBe(join(deploymentsDir, "mainnet", "addresses.md"));
     const [, changelog = ""] = (await Bun.file(path).text()).split(

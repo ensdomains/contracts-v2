@@ -31,6 +31,7 @@ import {
   adhocNamespace,
   baseNamespace,
   refreshNetworkAddressDocs,
+  rpcBlockTimes,
 } from "./addressDocs.js";
 import { envPrivateKey } from "./migrations/plumbing.js";
 import {
@@ -664,6 +665,7 @@ async function main() {
     const pages = await refreshNetworkAddressDocs({
       deploymentsDir: DEFAULT_DEPLOYMENTS_DIR,
       network: baseNamespace(namespace),
+      blockTimes: rpcBlockTimes(httpRpcProvider(rpcUrl)),
     });
     console.log(
       pages.length

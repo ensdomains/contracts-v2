@@ -7,7 +7,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { type Address, getAddress } from "viem";
+import { type Address, getAddress, numberToHex } from "viem";
+import type { RpcProvider } from "./migrations/plumbing.js";
 
 const DEFAULT_DOCS_DIR = resolve(
   new URL(import.meta.url).pathname,
@@ -61,12 +62,46 @@ export function explorerUrl(chainId: number, address: string): string | null {
   return base ? `${base}/address/${address}` : null;
 }
 
-/// Markdown block cell: the block number, linked to the explorer when the chain
-/// is known, or a dash when the record carries no block.
-function blockCell(chainId: number | undefined, block: bigint | undefined) {
-  if (block === undefined) return "—";
+/// Looks up the time a block was mined, in seconds since the Unix epoch.
+export type BlockTimeLookup = (block: bigint) => Promise<bigint>;
+
+/// Block times read from a chain through its RPC. Each block is read once, so
+/// the lookup can be shared by every page written from the same records.
+export function rpcBlockTimes(provider: RpcProvider): BlockTimeLookup {
+  const times = new Map<bigint, Promise<bigint>>();
+  const read = async (block: bigint) => {
+    const result = (await provider.request({
+      method: "eth_getBlockByNumber",
+      params: [numberToHex(block), false],
+    })) as { timestamp?: string } | null;
+    if (!result?.timestamp) throw new Error(`the RPC has no block ${block}`);
+    return BigInt(result.timestamp);
+  };
+  return (block) => {
+    let time = times.get(block);
+    if (!time) {
+      time = read(block);
+      times.set(block, time);
+    }
+    return time;
+  };
+}
+
+/// Markdown deploy-time cell: the UTC time the block was mined, linked to the
+/// block on the explorer when the chain is known, or a dash when the record
+/// carries no block.
+function deployedCell(
+  chainId: number | undefined,
+  block: bigint | undefined,
+  time: bigint | undefined,
+) {
+  if (block === undefined || time === undefined) return "—";
+  const text = new Date(Number(time) * 1000)
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, "");
   const base = chainId === undefined ? undefined : EXPLORER_BASE[chainId];
-  return base ? `[${block}](${base}/block/${block})` : `${block}`;
+  return base ? `[${text}](${base}/block/${block})` : text;
 }
 
 /// Markdown address cell: an explorer link when the chain is known, otherwise
@@ -254,14 +289,17 @@ export async function loadCurrentAddresses(
   );
 }
 
-/// Changelog rows, newest first: every address held by a contract that has had
+/// The changelog, newest first: every address held by a contract that has had
 /// more than one, or that was deployed outside the migration. An address kept in
 /// more than one folder is listed once, under the folder in use when there is one.
-function changelog(
+/// Each row gives the time its block was mined, so a changelog needs a lookup of
+/// block times.
+async function changelog(
   records: RecordedContract[],
   current: RecordedContract[],
   chainId: number | undefined,
-): string | null {
+  blockTimes: BlockTimeLookup | undefined,
+): Promise<string | null> {
   const unique = new Map<string, RecordedContract>();
   for (const record of records) {
     const key = `${record.name}:${record.address.toLowerCase()}`;
@@ -279,10 +317,27 @@ function changelog(
     .filter((r) => r.adhoc || (addressCount.get(r.name) ?? 0) > 1)
     .sort((a, b) => newestFirst(a, b) || a.name.localeCompare(b.name));
   if (rows.length === 0) return null;
+  const blocks = [
+    ...new Set(rows.flatMap((r) => (r.block === undefined ? [] : [r.block]))),
+  ];
+  if (blocks.length > 0 && !blockTimes) {
+    throw new Error(
+      "the address page has a changelog, whose deploy times are read from the chain; pass an RPC (for `bun run docs:addresses`, pass --rpc-url or set <NETWORK>_RPC_URL)",
+    );
+  }
+  const times = new Map(
+    await Promise.all(
+      blocks.map(async (block) => [block, await blockTimes!(block)] as const),
+    ),
+  );
   return markdownTable([
-    ["Block", "Contract", "Address", "Status", "Recorded in"],
+    ["Deployed (UTC)", "Contract", "Address", "Status", "Recorded in"],
     ...rows.map((r) => [
-      blockCell(chainId, r.block),
+      deployedCell(
+        chainId,
+        r.block,
+        r.block === undefined ? undefined : times.get(r.block),
+      ),
       r.name,
       addressCell(chainId, r.address),
       currentAddress.get(r.name) === r.address.toLowerCase()
@@ -321,6 +376,9 @@ export interface GenerateAddressMarkdownOptions {
   /// Line telling a reader how the file is produced. Defaults to the canonical
   /// docs command; a deploy that writes its own table names itself instead.
   generatedBy?: string;
+  /// Reads the times blocks were mined, for the changelog. A page that has a
+  /// changelog cannot be written without it.
+  blockTimes?: BlockTimeLookup;
   /// Further namespaces to tabulate under their own headings, after the main
   /// one. A clean testnet deploys its own v1 stack into a separate tree, and
   /// those addresses are as much a part of the deployment as the v2 ones — a
@@ -370,7 +428,7 @@ export async function generateAddressMarkdown(
       : null,
   ].filter(Boolean) as string[];
 
-  const log = changelog(history, contracts, chainId);
+  const log = await changelog(history, contracts, chainId, opts.blockTimes);
   const sections: string[] = [
     log
       ? "The latest address of each contract. Earlier addresses are in the changelog below."
@@ -425,18 +483,17 @@ export async function generateAddressMarkdown(
 
 /// Write `<deploymentsDir>/<namespace>/addresses.md`, the address table kept
 /// beside a namespace's own records. Returns the written file path.
-export function writeNamespaceAddressTable(opts: {
-  deploymentsDir: string;
-  namespace: string;
-  extraSections?: GenerateAddressMarkdownOptions["extraSections"];
-}): Promise<string> {
+export function writeNamespaceAddressTable(
+  opts: Pick<
+    GenerateAddressMarkdownOptions,
+    "deploymentsDir" | "namespace" | "blockTimes" | "extraSections"
+  >,
+): Promise<string> {
   return generateAddressMarkdown({
-    deploymentsDir: opts.deploymentsDir,
-    namespace: opts.namespace,
+    ...opts,
     outDir: join(opts.deploymentsDir, opts.namespace),
     fileName: "addresses",
     generatedBy: "the migration deploy and `bun run deploy:contract`",
-    extraSections: opts.extraSections,
   });
 }
 
@@ -447,17 +504,17 @@ export function writeNamespaceAddressTable(opts: {
 export async function refreshNetworkAddressDocs(opts: {
   deploymentsDir: string;
   network: string;
+  blockTimes: BlockTimeLookup;
 }): Promise<string[]> {
   if (!existsSync(join(DEFAULT_DOCS_DIR, `${opts.network}.md`))) return [];
+  const page = {
+    deploymentsDir: opts.deploymentsDir,
+    namespace: opts.network,
+    blockTimes: opts.blockTimes,
+  };
   return [
-    await generateAddressMarkdown({
-      deploymentsDir: opts.deploymentsDir,
-      namespace: opts.network,
-    }),
-    await writeNamespaceAddressTable({
-      deploymentsDir: opts.deploymentsDir,
-      namespace: opts.network,
-    }),
+    await generateAddressMarkdown(page),
+    await writeNamespaceAddressTable(page),
   ];
 }
 

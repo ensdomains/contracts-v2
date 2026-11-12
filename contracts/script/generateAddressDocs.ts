@@ -3,8 +3,10 @@ import { Command } from "commander";
 import { resolve } from "node:path";
 import {
   generateAddressMarkdown,
+  rpcBlockTimes,
   writeNamespaceAddressTable,
 } from "./addressDocs.js";
+import { httpRpcProvider } from "./migrations/rpc.js";
 
 const currentPath = new URL(import.meta.url).pathname;
 const defaultDeploymentsDir = resolve(currentPath, "../..", "deployments");
@@ -31,6 +33,10 @@ const program = new Command()
   .option(
     "--file-name <name>",
     "Basename of the generated file, without the extension (defaults to the network name)",
+  )
+  .option(
+    "--rpc-url <url>",
+    "RPC endpoint the changelog's deploy times are read from (default: <NETWORK>_RPC_URL)",
   );
 
 program.parse(process.argv);
@@ -40,15 +46,22 @@ const opts = program.opts<{
   deploymentsDir: string;
   outDir?: string;
   fileName?: string;
+  rpcUrl?: string;
 }>();
 
 const namespace = opts.namespace ?? opts.network;
+const rpcEnvVar = `${opts.network.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_RPC_URL`;
+const rpcUrl = opts.rpcUrl ?? process.env[rpcEnvVar];
+// A page without a changelog reads nothing from the chain, so the RPC is only
+// required once the writer asks for a block time.
+const blockTimes = rpcUrl ? rpcBlockTimes(httpRpcProvider(rpcUrl)) : undefined;
 const outPath = await generateAddressMarkdown({
   deploymentsDir: opts.deploymentsDir,
   namespace,
   docName: opts.network,
   outDir: opts.outDir,
   fileName: opts.fileName,
+  blockTimes,
 });
 console.log(`Wrote ${outPath}`);
 
@@ -59,6 +72,7 @@ if (namespace === opts.network) {
   const tablePath = await writeNamespaceAddressTable({
     deploymentsDir: opts.deploymentsDir,
     namespace,
+    blockTimes,
   });
   console.log(`Wrote ${tablePath}`);
 }

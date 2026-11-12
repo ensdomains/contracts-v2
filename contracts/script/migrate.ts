@@ -65,6 +65,7 @@ import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environ
 import {
   generateAddressMarkdown,
   isProxyArtifact,
+  rpcBlockTimes,
   writeNamespaceAddressTable,
 } from "./addressDocs.js";
 import {
@@ -7822,6 +7823,7 @@ export async function deployV2(opts: DeployV2Options) {
   // other namespace — a `-fork` rehearsal, a `-clean-` run, a custom
   // `--deployment-network` — or from a scratch deployments directory overwrites the
   // real network's published addresses with throwaway ones.
+  const blockTimes = rpcBlockTimes(provider);
   if (persist) {
     if (
       deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR) &&
@@ -7831,6 +7833,7 @@ export async function deployV2(opts: DeployV2Options) {
         deploymentsDir,
         namespace: deploymentNetwork,
         docName: opts.network,
+        blockTimes,
       });
       console.log(`address docs: ${docPath}`);
     } else {
@@ -7863,6 +7866,7 @@ export async function deployV2(opts: DeployV2Options) {
     const namespacePath = await writeNamespaceAddressTable({
       deploymentsDir,
       namespace: deploymentNetwork,
+      blockTimes,
       extraSections: includesFreshV1
         ? [
             {
