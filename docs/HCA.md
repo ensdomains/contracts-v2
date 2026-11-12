@@ -487,6 +487,13 @@ and support the proof on each chain where its authorization is used. Counterfact
 wallet deployment and native ERC-20 permit support for contract wallets are separate concerns;
 pre-approved funding can be used when a token's permit requires an EOA.
 
+The signature format is a property of each request, not of the HCA. The validator applies the
+ERC-1271 check to any request that uses that format, and nothing on-chain records the client's
+choice. An HCA therefore trusts whatever the code at its owner address accepts as a signature.
+For a contract wallet, that is every signer its `isValidSignature` accepts. For an EIP-7702
+account, it is the delegated wallet's verifier as well as the root key, for as long as the
+delegation is in place.
+
 Omitting `ownerSignatureType`, or selecting `"ecdsa"`, preserves the existing signature
 format. This also preserves root-key signing for EIP-7702 accounts. Select `"erc1271"`
 explicitly to use a delegated wallet's verifier at the owner address.
