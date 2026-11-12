@@ -63,10 +63,11 @@ import { isHCAOnlyDeployment } from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import {
-  generateAddressMarkdown,
+  type BlockTimeLookup,
   isProxyArtifact,
   rpcBlockTimes,
   writeNamespaceAddressTable,
+  writeNetworkAddressPages,
 } from "./addressDocs.js";
 import {
   addressLabels,
@@ -7714,6 +7715,67 @@ async function deployV1(opts: DeployV1Options) {
   return env;
 }
 
+/// Writes the address pages of a persisted deploy. A deploy into the network's
+/// canonical namespace inside the canonical tree writes both of the network's
+/// pages: the published one, named after the network, and the table beside its
+/// records. Any other deploy — a `-fork` rehearsal, a `-clean-` run, a custom
+/// `--deployment-network`, or a scratch deployments directory — writes only the
+/// table beside its own records, so it never overwrites the network's published
+/// addresses with throwaway ones.
+async function writeDeploymentAddressPages(args: {
+  opts: DeployV2Options;
+  deploymentsDir: string;
+  deploymentNetwork: string;
+  environment: string;
+  blockTimes: BlockTimeLookup;
+}) {
+  const { opts, deploymentsDir, deploymentNetwork, blockTimes } = args;
+  if (
+    deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR) &&
+    deploymentNetwork === opts.network
+  ) {
+    const paths = await writeNetworkAddressPages({
+      deploymentsDir,
+      network: deploymentNetwork,
+      blockTimes,
+    });
+    console.log(`address pages: ${paths.join(", ")}`);
+    return;
+  }
+  // A clean testnet deploys its own v1 stack into a separate tree, and those
+  // addresses belong in the same table: given only the v2 half, a reader
+  // cannot reach the registry the migrated names actually live in. A run
+  // against an existing v1 has nothing extra to record.
+  const v1Namespace =
+    opts.v1DeploymentNetwork ??
+    (opts.deploymentNetwork ? args.environment : undefined);
+  const v1Root = opts.v1DeploymentsDir
+    ? resolve(opts.v1DeploymentsDir)
+    : join(deploymentsDir, "v1");
+  // Keyed on the run having deployed v1 itself, not on the two namespaces
+  // coinciding: a canonical deploy given an explicit `--deployment-network`
+  // also matches, and its v1 is the network's real one, not this run's.
+  const includesFreshV1 =
+    Boolean(opts.cleanTestnet) && v1Namespace !== undefined;
+  const path = await writeNamespaceAddressTable({
+    deploymentsDir,
+    namespace: deploymentNetwork,
+    blockTimes,
+    extraSections: includesFreshV1
+      ? [
+          {
+            title: "ENSv1 contracts (deployed by this testnet)",
+            deploymentsDir: v1Root,
+            namespace: v1Namespace,
+          },
+        ]
+      : undefined,
+  });
+  console.log(
+    `address pages: ${path} (namespace ${deploymentNetwork} in ${deploymentsDir} is not the canonical ${opts.network} deployment, so its published page is left alone)`,
+  );
+}
+
 export async function deployV2(opts: DeployV2Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
@@ -7817,67 +7879,23 @@ export async function deployV2(opts: DeployV2Options) {
     "StandaloneHCAImplementation",
   ]);
 
-  // Refresh the generated address table, but only for a deploy into the network's
-  // canonical namespace inside the canonical tree. The doc is named after the
-  // network while its contents come from the namespace, so generating it for any
-  // other namespace — a `-fork` rehearsal, a `-clean-` run, a custom
-  // `--deployment-network` — or from a scratch deployments directory overwrites the
-  // real network's published addresses with throwaway ones.
-  const blockTimes = rpcBlockTimes(provider);
   if (persist) {
-    if (
-      deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR) &&
-      deploymentNetwork === opts.network
-    ) {
-      const docPath = await generateAddressMarkdown({
+    try {
+      await writeDeploymentAddressPages({
+        opts,
         deploymentsDir,
-        namespace: deploymentNetwork,
-        docName: opts.network,
-        blockTimes,
+        deploymentNetwork,
+        environment: network.environment,
+        blockTimes: rpcBlockTimes(provider),
       });
-      console.log(`address docs: ${docPath}`);
-    } else {
-      console.log(
-        `address docs: skipped (namespace ${deploymentNetwork} in ${deploymentsDir} is not the canonical ${opts.network} deployment)`,
+    } catch (error) {
+      // Every contract is deployed and recorded by now, so a page that cannot be
+      // written, such as when the RPC refuses the reads of block times, must not
+      // stop the steps that follow the deploy.
+      console.warn(
+        `address pages: not written (${error instanceof Error ? error.message : error}); write them with \`bun run docs:addresses --network ${deploymentNetwork}\``,
       );
     }
-  }
-
-  // Every persisted deploy also carries its address table next to its own
-  // artifacts. A throwaway namespace never reaches the canonical docs above, so
-  // without this its addresses would live only in the individual artifact JSON.
-  if (persist) {
-    // A clean testnet deploys its own v1 stack into a separate tree, and those
-    // addresses belong in the same table: given only the v2 half, a reader
-    // cannot reach the registry the migrated names actually live in. A run
-    // against an existing v1 has nothing extra to record.
-    const v1Namespace =
-      opts.v1DeploymentNetwork ??
-      (opts.deploymentNetwork ? network.environment : undefined);
-    const v1Root = opts.v1DeploymentsDir
-      ? resolve(opts.v1DeploymentsDir)
-      : join(deploymentsDir, "v1");
-    // Keyed on the run having deployed v1 itself, not on the two namespaces
-    // coinciding: a canonical deploy given an explicit `--deployment-network`
-    // also matches, and its v1 is the network's real one, not this run's.
-    const includesFreshV1 =
-      Boolean(opts.cleanTestnet) && v1Namespace !== undefined;
-
-    const namespacePath = await writeNamespaceAddressTable({
-      deploymentsDir,
-      namespace: deploymentNetwork,
-      blockTimes,
-      extraSections: includesFreshV1
-        ? [
-            {
-              title: "ENSv1 contracts (deployed by this testnet)",
-              deploymentsDir: v1Root,
-              namespace: v1Namespace,
-            },
-          ]
-        : undefined,
-    });
-    console.log(`deployment address table: ${namespacePath}`);
   }
 
   return env;

@@ -1394,14 +1394,29 @@ deployed, since the v1 stack lives in `deployments/v1/<namespace>`.
 
 Both tables give one address per contract: the latest deployed one, taken from the namespace and from
 `deployments/<namespace>-adhoc`, where `bun run deploy:contract` records the contracts it deploys one at
-a time. The latest deployment is not necessarily in use: some contracts take a DAO vote, or an upgrade
-of the contracts that use them, first. To drop a deployment that will not be used, move its record into an
-archive. A changelog below the table lists every address of each contract that was deployed more than once
-or deployed ad hoc, newest first, including those kept in the archives of replaced records
-(`<namespace>-<kind>-<date>`). Each changelog row gives the UTC time its block was mined, read from the
-chain. After each deploy to a live network with a published page (mainnet, sepolia), `deploy:contract`
-rewrites both of that network's tables. To rewrite them by hand, run
-`bun run docs:addresses --network <network>` with `--rpc-url`, or with `<NETWORK>_RPC_URL` set.
+a time. Archived records are left out. The latest deployment is not necessarily in use: some contracts
+take a DAO vote, or an upgrade of the contracts that use them, first.
+
+A changelog below the table lists every address of each contract that was deployed more than once or
+deployed ad hoc, newest first, including the archived ones. Each row gives the UTC time its block was
+mined, read from the chain. Archives of replaced records are named `<namespace>-<kind>-<YYYYMMDD>`, with
+`-r<N>` added when the name is taken, where the kind is `redeploy` or `root`; `deploy:contract` and the
+redeploy phases write them.
+
+To drop a deployment that will not be used, archive its record by hand:
+
+1. Create `deployments/<namespace>-redeploy-<YYYYMMDD>` (for example `mainnet-adhoc-redeploy-20261109`).
+2. Move the record `<Name>.json` into it, copy `.chain` from `<namespace>`, and copy
+   `build-info/<buildInfoId>.json`, so the archived contract can still be verified.
+3. Run `bun run docs:addresses --network <network>`. The table then shows the previous record of the
+   contract, and the changelog keeps the dropped address.
+
+After each deploy to a public chain recorded in the canonical tree, `deploy:contract` rewrites both
+tables of a network with a published page (mainnet, sepolia). If the RPC refuses the reads of block
+times, the deploy still succeeds and prints the command that rewrites them. `deploy:contract` refuses to
+record into such a network's namespaces through a local node, a virtual testnet or a development node such
+as a fork; pass `--deployments-dir` or another `--deployment-network` to rehearse. To rewrite the tables by
+hand, run `bun run docs:addresses --network <network>` with `--rpc-url`, or with `<NETWORK>_RPC_URL` set.
 
 Beside it, `deployments/<namespace>/roles.md` records who controls the deployment, on any network.
 `phase verify-roles` writes it each time it runs, from the same reads it audits, so the file always

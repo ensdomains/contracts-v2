@@ -89,6 +89,18 @@ export const ROOT_REDEPLOY: RedeploySet = {
 /// The archive kind of a contract redeploy.
 export const CONTRACT_REDEPLOY_KIND = "redeploy";
 
+/// True for an archive that `nextArchiveName` names for records replaced in
+/// `namespace`, of either kind. An archive of a whole earlier deployment, or of
+/// another namespace that shares the prefix, does not match.
+export function isRecordArchiveOf(namespace: string, folder: string): boolean {
+  if (!folder.startsWith(`${namespace}-`)) return false;
+  const [kind, ...rest] = folder.slice(namespace.length + 1).split("-");
+  return (
+    [ROOT_REDEPLOY.kind, CONTRACT_REDEPLOY_KIND].includes(kind) &&
+    /^\d{8}(-r\d+)?$/.test(rest.join("-"))
+  );
+}
+
 type DeploymentRecord = {
   address?: Address;
   contractName?: string;

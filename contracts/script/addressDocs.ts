@@ -7,14 +7,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type Address, getAddress, numberToHex } from "viem";
 import type { RpcProvider } from "./migrations/plumbing.js";
+import { isRecordArchiveOf } from "./migrations/redeploy.js";
 
-const DEFAULT_DOCS_DIR = resolve(
-  new URL(import.meta.url).pathname,
-  "../..",
-  "docs",
-  "addresses",
+const DEFAULT_DOCS_DIR = fileURLToPath(
+  new URL("../docs/addresses", import.meta.url),
 );
 
 /// Block explorer base URLs keyed by chain id. Chains absent from this map
@@ -178,17 +177,25 @@ interface RecordedContract extends ContractEntry {
   adhoc: boolean;
 }
 
-/// Archive folders that hold the records replaced in `namespace`, named
-/// `<namespace>-<kind>-<YYYYMMDD>` with an optional `-r<N>` revision. A whole
+/// Archive folders that hold the records replaced in `namespace`. A whole
 /// earlier deployment, archived as `<namespace>-<YYYYMMDD>-r<N>`, is a separate
 /// deployment rather than part of this one's history, and does not match.
 function archiveFolders(deploymentsDir: string, namespace: string): string[] {
-  const escaped = namespace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`^${escaped}-[a-z]+-\\d{8}(-r\\d+)?$`);
   return readdirSync(deploymentsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && pattern.test(entry.name))
+    .filter(
+      (entry) =>
+        entry.isDirectory() && isRecordArchiveOf(namespace, entry.name),
+    )
     .map((entry) => entry.name)
     .sort();
+}
+
+/// The chain a folder of records belongs to, from its `.chain` file.
+function readChain(
+  deploymentsDir: string,
+  folder: string,
+): { chainId?: string | number; genesisHash?: string } | null {
+  return readJson(join(deploymentsDir, folder, ".chain"));
 }
 
 async function loadFolder(
@@ -217,7 +224,9 @@ async function loadFolder(
 
 /// Every record a deployment has held: the records in its namespace and in the
 /// namespace of its ad-hoc deployments, then those in the archives of either.
-/// Proxy and implementation artifacts collapse into their canonical entry.
+/// Proxy and implementation artifacts collapse into their canonical entry. Each
+/// folder must carry a `.chain` file of the deployment's chain, so records of
+/// another chain never mix into the deployment's history.
 async function loadDeploymentHistory(
   deploymentsDir: string,
   namespace: string,
@@ -240,6 +249,24 @@ async function loadDeploymentHistory(
       })),
     ),
   ];
+  const chain = readChain(deploymentsDir, namespace);
+  for (const { folder } of folders.slice(1)) {
+    const folderChain = readChain(deploymentsDir, folder);
+    if (!folderChain) {
+      throw new Error(
+        `${join(deploymentsDir, folder)} has no .chain file; copy the one in ${namespace} into it`,
+      );
+    }
+    if (
+      chain?.genesisHash &&
+      folderChain.genesisHash &&
+      chain.genesisHash.toLowerCase() !== folderChain.genesisHash.toLowerCase()
+    ) {
+      throw new Error(
+        `${join(deploymentsDir, folder)} holds records of another chain than ${namespace} (genesis block ${folderChain.genesisHash}, not ${chain.genesisHash})`,
+      );
+    }
+  }
   const records = (
     await Promise.all(
       folders.map(({ folder, ...flags }) =>
@@ -259,11 +286,15 @@ function newestFirst(a: RecordedContract, b: RecordedContract): number {
   return blockA === blockB ? 0 : blockA > blockB ? -1 : 1;
 }
 
-/// The latest record of each contract among the records that are not archived, sorted by name.
-/// The migration's record wins a tie with an ad-hoc one.
+/// The latest record of each contract among the records that are not archived,
+/// sorted by name. The migration's record wins a tie with an ad-hoc one.
 function latestContracts(records: RecordedContract[]): RecordedContract[] {
   const latest = new Map<string, RecordedContract>();
-  for (const record of records.filter((r) => r.active).sort(newestFirst)) {
+  const newestMigrationFirst = (a: RecordedContract, b: RecordedContract) =>
+    newestFirst(a, b) || Number(a.adhoc) - Number(b.adhoc);
+  for (const record of records
+    .filter((r) => r.active)
+    .sort(newestMigrationFirst)) {
     if (!latest.has(record.name)) latest.set(record.name, record);
   }
   return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -292,8 +323,9 @@ export async function loadLatestAddresses(
 
 /// The changelog, newest first: every address held by a contract that has had
 /// more than one, or that was deployed outside the migration. An address kept in
-/// more than one folder is listed once, under a folder that is not an archive
-/// when there is one.
+/// more than one folder is listed once, under the first folder that holds it;
+/// the folders in use load before the archives, so that is one in use when there
+/// is one.
 /// Each row gives the time its block was mined, so a changelog needs a lookup of
 /// block times.
 async function changelog(
@@ -304,8 +336,7 @@ async function changelog(
   const unique = new Map<string, RecordedContract>();
   for (const record of records) {
     const key = `${record.name}:${record.address.toLowerCase()}`;
-    const kept = unique.get(key);
-    if (!kept || (!kept.active && record.active)) unique.set(key, record);
+    if (!unique.has(key)) unique.set(key, record);
   }
   const addressCount = new Map<string, number>();
   for (const { name } of unique.values()) {
@@ -368,9 +399,6 @@ export interface GenerateAddressMarkdownOptions {
   /// the file is found by a fixed name while the heading still names the
   /// network.
   fileName?: string;
-  /// Line telling a reader how the file is produced. Defaults to the canonical
-  /// docs command; a deploy that writes its own table names itself instead.
-  generatedBy?: string;
   /// Reads the times blocks were mined, for the changelog. A page that has a
   /// changelog cannot be written without it.
   blockTimes?: BlockTimeLookup;
@@ -389,7 +417,7 @@ export interface GenerateAddressMarkdownOptions {
 }
 
 /// Generate a markdown address table for a deployment namespace and write it to
-/// `<outDir>/<docName>.md`. Returns the written file path.
+/// `<outDir>/<fileName or docName>.md`. Returns the written file path.
 export async function generateAddressMarkdown(
   opts: GenerateAddressMarkdownOptions,
 ): Promise<string> {
@@ -424,13 +452,7 @@ export async function generateAddressMarkdown(
   ].filter(Boolean) as string[];
 
   const log = await changelog(history, chainId, opts.blockTimes);
-  const sections: string[] = [
-    log
-      ? "The latest deployed address of each contract. Earlier addresses are in the changelog below."
-      : "The latest deployed address of each contract.",
-    "",
-    formatTable(contracts, chainId),
-  ];
+  const sections: string[] = [formatTable(contracts, chainId)];
   for (const extra of opts.extraSections ?? []) {
     const table = await namespaceTable(
       resolve(extra.deploymentsDir ?? opts.deploymentsDir),
@@ -462,7 +484,7 @@ export async function generateAddressMarkdown(
   const body = [
     title,
     "",
-    `> Auto-generated by ${opts.generatedBy ?? "`bun run docs:addresses`"}. Do not edit by hand.`,
+    "> Auto-generated by `bun run docs:addresses`. Do not edit by hand.",
     "",
     ...meta,
     "",
@@ -488,29 +510,48 @@ export function writeNamespaceAddressTable(
     ...opts,
     outDir: join(opts.deploymentsDir, opts.namespace),
     fileName: "addresses",
-    generatedBy: "the migration deploy and `bun run deploy:contract`",
   });
 }
 
-/// Rewrite both address pages of a network that has a published page: the page
-/// under the docs directory and the table beside the network's records. A
-/// network without a published page is left alone, so a rehearsal or test
-/// namespace never overwrites real pages. Returns the written file paths.
-export async function refreshNetworkAddressDocs(opts: {
+/// True when a network has a page in the docs directory.
+export function hasPublishedPage(
+  network: string,
+  docsDir = DEFAULT_DOCS_DIR,
+): boolean {
+  return existsSync(join(docsDir, `${network}.md`));
+}
+
+/// Write both address pages of a network: the page in the docs directory and the
+/// table beside the network's records. Returns the written file paths.
+export async function writeNetworkAddressPages(opts: {
   deploymentsDir: string;
   network: string;
-  blockTimes: BlockTimeLookup;
+  blockTimes?: BlockTimeLookup;
+  docsDir?: string;
 }): Promise<string[]> {
-  if (!existsSync(join(DEFAULT_DOCS_DIR, `${opts.network}.md`))) return [];
   const page = {
     deploymentsDir: opts.deploymentsDir,
     namespace: opts.network,
     blockTimes: opts.blockTimes,
   };
   return [
-    await generateAddressMarkdown(page),
+    await generateAddressMarkdown({ ...page, outDir: opts.docsDir }),
     await writeNamespaceAddressTable(page),
   ];
+}
+
+/// Rewrite both address pages of a network that already has a published page,
+/// and return their paths. A network without one is left alone and gives no
+/// paths. Whether the records may reach the published pages at all, rather than
+/// being a rehearsal's, is for the caller to decide.
+export async function refreshNetworkAddressDocs(opts: {
+  deploymentsDir: string;
+  network: string;
+  blockTimes: BlockTimeLookup;
+  docsDir?: string;
+}): Promise<string[]> {
+  if (!hasPublishedPage(opts.network, opts.docsDir)) return [];
+  return writeNetworkAddressPages(opts);
 }
 
 function capitalize(s: string): string {

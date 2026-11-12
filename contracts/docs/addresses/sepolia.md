@@ -6,8 +6,6 @@
 - **Chain ID:** 11155111
 - **Deployed at:** 2026-10-01T07:55:02.016Z
 
-The latest deployed address of each contract.
-
 | Contract | Address |
 | --- | --- |
 | BatchRegistrar | [0x4a4c8b7cdab6b19dc2cdb417cdb53a2ccbaf5322](https://sepolia.etherscan.io/address/0x4a4c8b7cdab6b19dc2cdb417cdb53a2ccbaf5322) |

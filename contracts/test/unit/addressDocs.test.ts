@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAddress } from "viem";
@@ -8,6 +14,8 @@ import {
   baseNamespace,
   generateAddressMarkdown,
   loadLatestAddresses,
+  refreshNetworkAddressDocs,
+  rpcBlockTimes,
   writeNamespaceAddressTable,
 } from "../../script/addressDocs.js";
 
@@ -27,10 +35,11 @@ let outDir: string;
 function writeRecords(
   namespace: string,
   records: Record<string, [address: string, block: number]>,
+  chain: object | null = { chainId: "1" },
 ) {
   const dir = join(deploymentsDir, namespace);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, ".chain"), JSON.stringify({ chainId: "1" }));
+  if (chain) writeFileSync(join(dir, ".chain"), JSON.stringify(chain));
   for (const [name, [addr, block]] of Object.entries(records)) {
     writeFileSync(
       join(dir, `${name}.json`),
@@ -78,7 +87,6 @@ describe("address pages", () => {
     const { table, changelog } = await render();
     expect(table).toContain(address("1"));
     expect(table).toContain(address("2"));
-    expect(table).not.toContain("changelog below");
     expect(changelog).toBe("");
   });
 
@@ -154,6 +162,46 @@ describe("address pages", () => {
     expect(changelog).toBe("");
   });
 
+  it("leaves out the archives of other namespaces that share the prefix", async () => {
+    writeRecords("mainnet-fork-20261101-r1", { Resolver: [address("7"), 10] });
+    writeRecords("mainnet-adhoc-20261101-r1", { Resolver: [address("8"), 11] });
+    const { changelog } = await render();
+    expect(changelog).toBe("");
+  });
+
+  it("keeps the migration's record when an ad-hoc one is from the same block", async () => {
+    writeRecords(adhocNamespace("mainnet"), { Resolver: [address("3"), 101] });
+    const { table } = await render();
+    expect(table).toContain(address("2"));
+    expect(table).not.toContain(address("3"));
+  });
+
+  it("names an archive that has no .chain file", async () => {
+    writeRecords(
+      "mainnet-redeploy-20261001",
+      { Resolver: [address("5"), 90] },
+      null,
+    );
+    await expect(render()).rejects.toThrow(
+      "mainnet-redeploy-20261001 has no .chain file",
+    );
+  });
+
+  it("refuses records of another chain beside the deployment", async () => {
+    const genesis = (digit: string) => `0x${digit.repeat(64)}`;
+    writeRecords(
+      "mainnet",
+      { Registry: [address("1"), 100] },
+      { chainId: "1", genesisHash: genesis("a") },
+    );
+    writeRecords(
+      adhocNamespace("mainnet"),
+      { Resolver: [address("3"), 200] },
+      { chainId: "1", genesisHash: genesis("b") },
+    );
+    await expect(render()).rejects.toThrow("records of another chain");
+  });
+
   it("writes the same tables beside the records", async () => {
     writeRecords(adhocNamespace("mainnet"), {
       Resolver: [address("3"), 200],
@@ -168,6 +216,56 @@ describe("address pages", () => {
       "## Changelog",
     );
     expect(changelogRow(changelog, address("3"))).toBeDefined();
+  });
+});
+
+describe("refreshNetworkAddressDocs", () => {
+  it("rewrites both pages of a network with a published page, and leaves others alone", async () => {
+    mkdirSync(outDir, { recursive: true });
+    expect(
+      await refreshNetworkAddressDocs({
+        deploymentsDir,
+        network: "mainnet",
+        blockTimes,
+        docsDir: outDir,
+      }),
+    ).toEqual([]);
+    expect(existsSync(join(outDir, "mainnet.md"))).toBe(false);
+
+    writeFileSync(join(outDir, "mainnet.md"), "");
+    expect(
+      await refreshNetworkAddressDocs({
+        deploymentsDir,
+        network: "mainnet",
+        blockTimes,
+        docsDir: outDir,
+      }),
+    ).toEqual([
+      join(outDir, "mainnet.md"),
+      join(deploymentsDir, "mainnet", "addresses.md"),
+    ]);
+    expect(await Bun.file(join(outDir, "mainnet.md")).text()).toContain(
+      address("1"),
+    );
+  });
+});
+
+describe("rpcBlockTimes", () => {
+  it("reads each block once, and refuses a block the RPC does not have", async () => {
+    const requests: unknown[] = [];
+    const lookup = rpcBlockTimes({
+      request: async (args: { method: string; params?: unknown }) => {
+        requests.push(args);
+        const [block] = args.params as [string];
+        return block === "0x2" ? null : { timestamp: "0x10" };
+      },
+    } as any);
+    expect(await lookup(1n)).toBe(16n);
+    expect(await lookup(1n)).toBe(16n);
+    expect(requests).toEqual([
+      { method: "eth_getBlockByNumber", params: ["0x1", false] },
+    ]);
+    await expect(lookup(2n)).rejects.toThrow("the RPC has no block 2");
   });
 });
 

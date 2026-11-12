@@ -7,8 +7,6 @@
 - **Deployed at:** 2026-10-26T13:25:02.259Z
 - **First deployed at:** 2026-10-02T15:56:48.580Z
 
-The latest deployed address of each contract. Earlier addresses are in the changelog below.
-
 | Contract | Address |
 | --- | --- |
 | BatchRegistrar | [0xf0ccfbf6dba1e01ccb833ced6d551a8f000e9721](https://etherscan.io/address/0xf0ccfbf6dba1e01ccb833ced6d551a8f000e9721) |

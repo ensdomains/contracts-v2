@@ -30,11 +30,13 @@ import { loadEnvironmentFromFilesWithConfig } from "../rocketh/environment.js";
 import {
   adhocNamespace,
   baseNamespace,
+  hasPublishedPage,
   refreshNetworkAddressDocs,
   rpcBlockTimes,
 } from "./addressDocs.js";
 import { envPrivateKey } from "./migrations/plumbing.js";
 import {
+  bytecodeWithoutAnyMetadata,
   CONTRACT_REDEPLOY_KIND,
   nextArchiveName,
 } from "./migrations/redeploy.js";
@@ -43,6 +45,8 @@ import {
   isLocalRpcUrl,
   isTenderlyVirtualRpc,
   privateKeySignerProtocol,
+  rpcEnvVarFor,
+  rpcUrlFor,
 } from "./migrations/rpc.js";
 import { createV2Clients } from "./scriptUtils.js";
 import { backendsForChain, verifyDeployments, type Backend } from "./verify.js";
@@ -235,27 +239,78 @@ async function assertRecordsMatchChain(
   }
 }
 
-/// Runtime code with every immutable value zeroed, so code deployed with any
-/// immutable values compares equal to the build's runtime code.
-function withoutImmutables(
+/// Why no public explorer can see the RPC's state: a node on this machine, a
+/// virtual testnet, or a development node such as a fork elsewhere. Undefined for
+/// the RPC of a public chain.
+export async function privateChainReason(
+  rpcUrl: string,
+): Promise<string | undefined> {
+  if (isLocalRpcUrl(rpcUrl) || isTenderlyVirtualRpc(rpcUrl)) {
+    return "the RPC is a local node or a virtual testnet, which no explorer can see";
+  }
+  const { publicClient } = await createV2Clients({ rpcUrl });
+  const clientVersion = await publicClient
+    .request({ method: "web3_clientVersion" })
+    .catch(() => "");
+  return DEV_NODE_CLIENTS.test(clientVersion)
+    ? `the RPC is a development node (${clientVersion}), which no explorer can see`
+    : undefined;
+}
+
+/// The network whose published address pages a deploy's records feed: set when
+/// the records are in the canonical tree, in a namespace of a network with a
+/// published page.
+function publishedNetwork(
+  deploymentsDir: string,
+  namespace: string,
+  docsDir?: string,
+): string | undefined {
+  const network = baseNamespace(namespace);
+  return resolve(deploymentsDir) === DEFAULT_DEPLOYMENTS_DIR &&
+    hasPublishedPage(network, docsDir)
+    ? network
+    : undefined;
+}
+
+/// The network whose published address pages a finished deploy refreshes, or
+/// undefined when it refreshes none: records outside the canonical tree, a
+/// network without a published page, or a chain no explorer can see.
+export function addressPagesToRefresh(opts: {
+  deploymentsDir: string;
+  namespace: string;
+  privateReason: string | undefined;
+  docsDir?: string;
+}): string | undefined {
+  return opts.privateReason
+    ? undefined
+    : publishedNetwork(opts.deploymentsDir, opts.namespace, opts.docsDir);
+}
+
+/// Runtime code as compared with a build: every immutable value zeroed, so code
+/// deployed with any immutable values matches, and every compiler metadata
+/// trailer removed, so a change that alters only the metadata, such as an edited
+/// comment, does not count as changed code. The migration's redeploy check
+/// ignores metadata in the same way.
+function comparableRuntimeCode(
   code: Hex,
   references: DeployableArtifact["immutableReferences"],
-): Hex {
+): string {
   const bytes = hexToBytes(code);
   for (const ranges of Object.values(references ?? {})) {
     for (const { start, length } of ranges) {
       bytes.fill(0, start, start + length);
     }
   }
-  return bytesToHex(bytes);
+  return bytecodeWithoutAnyMetadata(bytesToHex(bytes));
 }
 
-/// True when the contract a record names holds this build's code on the chain
-/// and was deployed with these constructor arguments. The code is read from the
+/// True when the contract a record names holds this build's code on the chain,
+/// and the record's constructor arguments are these. The code is read from the
 /// chain, because the deploy tool's own check assumes that compiler metadata
 /// ends the creation code. A contract that carries data after its metadata
 /// breaks that assumption, and the check then takes changed code for unchanged
-/// code.
+/// code. The arguments are compared with the record only: the code on the
+/// chain does not show them once immutable values are left out.
 async function isDeployedAsRecorded(
   publicClient: PublicClient,
   address: Address,
@@ -267,8 +322,11 @@ async function isDeployedAsRecorded(
   const code = await publicClient.getCode({ address });
   if (!code || code === "0x") return false;
   return (
-    withoutImmutables(code, artifact.immutableReferences) ===
-    withoutImmutables(artifact.deployedBytecode, artifact.immutableReferences)
+    comparableRuntimeCode(code, artifact.immutableReferences) ===
+    comparableRuntimeCode(
+      artifact.deployedBytecode,
+      artifact.immutableReferences,
+    )
   );
 }
 
@@ -358,7 +416,23 @@ export async function deployContract(
   const { chain, publicClient } = await createV2Clients({
     rpcUrl: opts.rpcUrl,
   });
+  // A fork has the real chain's genesis block, so the RPC is what tells a
+  // rehearsal apart. Its records must not join the records a published page is
+  // written from.
+  const network = publishedNetwork(deploymentsDir, opts.namespace);
+  const privateReason = network && (await privateChainReason(opts.rpcUrl));
+  if (privateReason) {
+    throw new Error(
+      `${privateReason}, so its contracts must not be recorded beside the records of ${network}, which feed the published address pages; pass --deployments-dir or another --deployment-network`,
+    );
+  }
   await assertRecordsMatchChain(namespaceDir, publicClient);
+  // An ad-hoc namespace joins its deployment's history, so both must be records
+  // of this chain.
+  const base = baseNamespace(opts.namespace);
+  if (base !== opts.namespace) {
+    await assertRecordsMatchChain(join(deploymentsDir, base), publicClient);
+  }
 
   const deployData = encodeDeployData({
     abi: artifact.abi,
@@ -466,23 +540,9 @@ export async function planVerification(
   rpcUrl: string,
   requested: readonly Backend[],
 ): Promise<VerificationPlan> {
-  if (isLocalRpcUrl(rpcUrl) || isTenderlyVirtualRpc(rpcUrl)) {
-    return {
-      backends: [],
-      skipped:
-        "the RPC is a local node or a virtual testnet, which no explorer can see",
-    };
-  }
-  const { chain, publicClient } = await createV2Clients({ rpcUrl });
-  const clientVersion = await publicClient
-    .request({ method: "web3_clientVersion" })
-    .catch(() => "");
-  if (DEV_NODE_CLIENTS.test(clientVersion)) {
-    return {
-      backends: [],
-      skipped: `the RPC is a development node (${clientVersion}), which no explorer can see`,
-    };
-  }
+  const skipped = await privateChainReason(rpcUrl);
+  if (skipped) return { backends: [], skipped };
+  const { chain } = await createV2Clients({ rpcUrl });
   const backends = await backendsForChain(chain.id, requested);
   if (backends.length === 0) {
     return {
@@ -546,11 +606,30 @@ type CliOptions = {
   yes: boolean;
 };
 
+/// Rewrites a network's published address pages after a deploy. The deploy is
+/// already recorded, so a failure here, such as an RPC that refuses the reads of
+/// block times, is reported with the command that rewrites the pages, and the
+/// run goes on.
+async function refreshAddressPages(network: string, rpcUrl: string) {
+  try {
+    const pages = await refreshNetworkAddressDocs({
+      deploymentsDir: DEFAULT_DEPLOYMENTS_DIR,
+      network,
+      blockTimes: rpcBlockTimes(httpRpcProvider(rpcUrl)),
+    });
+    console.log(`address pages: ${pages.join(", ")}`);
+  } catch (error) {
+    console.warn(
+      `address pages: not rewritten (${error instanceof Error ? error.message : error}); rewrite them with \`bun run docs:addresses --network ${network}\``,
+    );
+  }
+}
+
 async function main() {
   const program = new Command()
     .name("deploy:contract")
     .description(
-      "Deploy one contract from the Hardhat build to any chain, outside the migration flow; deploy-and-verify:contract also verifies its source",
+      "Deploy one contract from the Hardhat build to any chain, outside the migration flow; deploy-and-verify:contract also verifies its source. A record that names this build's code on the chain, with the same constructor arguments, is reused; otherwise it is replaced, and the old record archived. After a deploy to a public chain, recorded in the canonical tree, the network's published address pages are rewritten. A local, virtual or development node cannot record into a namespace of a network with published pages.",
     )
     .argument(
       "<contract>",
@@ -587,9 +666,10 @@ async function main() {
   const contract = program.args[0];
   const opts = program.opts<CliOptions>();
 
-  const rpcEnvVar = `${opts.network.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_RPC_URL`;
-  const rpcUrl = opts.rpcUrl ?? process.env[rpcEnvVar];
-  if (!rpcUrl) throw new Error(`pass --rpc-url or set ${rpcEnvVar}`);
+  const rpcUrl = rpcUrlFor(opts.network, opts.rpcUrl);
+  if (!rpcUrl) {
+    throw new Error(`pass --rpc-url or set ${rpcEnvVarFor(opts.network)}`);
+  }
   const privateKey = opts.privateKey ?? envPrivateKey("DEPLOYER_KEY");
   if (!privateKey) throw new Error("pass --private-key or set DEPLOYER_KEY");
   const args = JSON.parse(opts.args);
@@ -649,33 +729,26 @@ async function main() {
     }
   } else {
     console.log(
-      `${contract} is already deployed at ${result.address} with this code and these arguments; nothing sent. Pass --name to deploy another copy.`,
+      `${contract} is already deployed at ${result.address} with this code, and its record has these arguments; nothing sent. Pass --name to deploy another copy.`,
     );
   }
   console.log(`record: ${result.recordFile}`);
 
-  // Only a deploy to a real chain, recorded in the canonical tree, touches the
-  // published address pages. A fork shares the real chain's genesis block, so
-  // the RPC is what tells a rehearsal apart.
-  const isLiveRecord =
-    resolve(opts.deploymentsDir) === DEFAULT_DEPLOYMENTS_DIR &&
-    !isLocalRpcUrl(rpcUrl) &&
-    !isTenderlyVirtualRpc(rpcUrl);
-  if (isLiveRecord) {
-    const pages = await refreshNetworkAddressDocs({
-      deploymentsDir: DEFAULT_DEPLOYMENTS_DIR,
-      network: baseNamespace(namespace),
-      blockTimes: rpcBlockTimes(httpRpcProvider(rpcUrl)),
-    });
-    console.log(
-      pages.length
-        ? `address pages: ${pages.join(", ")}`
-        : `address pages: none, as ${baseNamespace(namespace)} has no published page`,
-    );
-  }
+  // A fork shares the real chain's genesis block, so the RPC is what tells a
+  // rehearsal apart from a deploy whose records feed the published pages.
+  const privateReason = await privateChainReason(rpcUrl);
+  const pagesNetwork = addressPagesToRefresh({
+    deploymentsDir: opts.deploymentsDir,
+    namespace,
+    privateReason,
+  });
+  if (pagesNetwork) await refreshAddressPages(pagesNetwork, rpcUrl);
 
   if (!verification) {
-    if (isLiveRecord) {
+    if (
+      !privateReason &&
+      resolve(opts.deploymentsDir) === DEFAULT_DEPLOYMENTS_DIR
+    ) {
       console.log(
         `verify with: bun run verify --network ${namespace} --contract ${result.record}`,
       );
