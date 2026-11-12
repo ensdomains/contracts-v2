@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { zeroAddress } from "viem";
+import { encodeFunctionData } from "viem/utils";
 import { forkAndAttach } from "./forkedFixture.js";
 import { expectVar } from "../utils/expectVar.js";
 import { bundleCalls, makeResolutions } from "../utils/resolutions.js";
@@ -17,39 +18,59 @@ const { connection, forkedFixture } = await forkAndAttach();
 async function fixture() {
   const F = await forkedFixture();
 
-  const TemporaryDNSRegistrar = await connection.viem.deployContract(
-    "TemporaryDNSRegistrar",
-    [
-      DAO_WALLET,
-      F.RootRegistry.address,
-      DAO_TOKEN_SAFE,
-      F.SimplePublicSuffixList.address,
-      F.DNSTLDResolver.address,
-    ],
-  );
+  let TemporaryDNSRegistrar = F.TemporaryDNSRegistrar;
+  if (process.env.NEW) {
+    console.log("Using new TemporaryDNSRegistrar");
+    TemporaryDNSRegistrar = await connection.viem.deployContract(
+      "TemporaryDNSRegistrar",
+      [
+        DAO_WALLET,
+        F.RootRegistry.address,
+        DAO_TOKEN_SAFE,
+        F.SimplePublicSuffixList.address,
+        F.DNSTLDResolver.address,
+      ],
+    );
+  }
 
-  // DAO #1: grant TemporaryDNSRegistrar roles on RootRegistry
-  await F.RootRegistry.write.grantRootRoles(
-    [
+  if (
+    !(await F.RootRegistry.read.hasRootRoles([
       DEPLOYMENT_ROLES.TEMPORARY_DNS_REGISTRAR_ROOT,
       TemporaryDNSRegistrar.address,
-    ],
-    { account: F.namedAccounts.DAO_WALLET },
-  );
+    ]))
+  ) {
+    await F.executeDAO({
+      reason: "grant TemporaryDNSRegistrar roles on RootRegistry",
+      contract: F.RootRegistry,
+      functionName: "grantRootRoles",
+      args: [
+        DEPLOYMENT_ROLES.TEMPORARY_DNS_REGISTRAR_ROOT,
+        TemporaryDNSRegistrar.address,
+      ],
+    });
 
-  // DAO #2: grant TemporaryDNSRegistrar approval of tokens owned by DAOTokenSafe
-  // note: this needs routed through SafeProxy.execTransaction()
-  await F.RootRegistry.write.setApprovalForAll(
-    [TemporaryDNSRegistrar.address, true],
-    { account: F.namedAccounts.DAO_TOKEN_SAFE },
-  );
+    await F.executeDAO({
+      reason:
+        "grant TemporaryDNSRegistrar approval of tokens owned by DAOTokenSafe",
+      contract: F.DAOTokenSafe,
+      functionName: "execTransaction",
+      args: F.safeProxyCallArguments(
+        F.RootRegistry.address,
+        encodeFunctionData({
+          abi: F.RootRegistry.abi,
+          functionName: "setApprovalForAll",
+          args: [TemporaryDNSRegistrar.address, true],
+        }),
+      ),
+    });
+  }
 
   return { ...F, TemporaryDNSRegistrar };
 }
 
 const loadFixture = () => connection.networkHelpers.loadFixture(fixture);
 
-describe("TemporaryDNSRegistrar (before activation)", () => {
+describe("TemporaryDNSRegistrar", () => {
   it("syncTLD", async () => {
     const F = await loadFixture();
 

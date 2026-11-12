@@ -9,27 +9,28 @@ const { connection, forkedFixture } = await forkAndAttach();
 async function fixture() {
   const F = await forkedFixture();
 
-  const newDNSTLDResolver = await connection.viem.deployContract(
-    "DNSTLDResolver",
-    [
+  let DNSTLDResolver = F.DNSTLDResolver;
+  if (process.env.NEW) {
+    console.log("Using new DNSTLDResolver");
+    DNSTLDResolver = await connection.viem.deployContract("DNSTLDResolver", [
       F.v1.ENSRegistry.address,
       F.RootRegistry.address,
       F.DNSSECImpl.address,
       F.DNSSECGatewayProvider.address,
       F.BatchGatewayProvider.address,
       F.ContractNamer.address,
-    ],
-  );
+    ]);
+  }
 
-  return { ...F, newDNSTLDResolver };
+  return { ...F, DNSTLDResolver };
 }
 
-describe("DNSTLDResolver (new)", () => {
-  for (const kp of KNOWN_DNS.reverse()) {
+describe("DNSTLDResolver", () => {
+  for (const kp of KNOWN_DNS) {
     it(kp.name, async () => {
       const F = await connection.networkHelpers.loadFixture(fixture);
       const bundle = bundleCalls(makeResolutions(kp));
-      const answer = await F.newDNSTLDResolver.read.resolve([
+      const answer = await F.DNSTLDResolver.read.resolve([
         dnsEncodeName(kp.name),
         bundle.call,
       ]);
