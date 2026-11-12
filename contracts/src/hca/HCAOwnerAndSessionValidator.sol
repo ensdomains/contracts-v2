@@ -20,6 +20,7 @@ import {
 
 import {HCAValidatorBase} from "./HCAValidatorBase.sol";
 import {IStandaloneHCAOwner} from "./interfaces/IStandaloneHCAOwner.sol";
+import {IStandaloneHCAOwnerFunds} from "./interfaces/IStandaloneHCAOwnerFunds.sol";
 import {HCAExecutionLib} from "./libraries/HCAExecutionLib.sol";
 import {HCAOperationHashLib} from "./libraries/HCAOperationHashLib.sol";
 import {HCAPermit2Lib} from "./libraries/HCAPermit2Lib.sol";
@@ -73,8 +74,11 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         bool enabled;
         bool permitted;
         bool transferred;
+        bool pulled;
         uint256 permitIndex;
         uint256 permittedAmount;
+        uint256 pulledAmount;
+        uint256 approvedAmount;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -638,7 +642,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     {
         RegistrationPolicyState memory state;
         FundingPolicyState memory funding =
-            FundingPolicyState({account: account, owner: owner, enabled: fundingToken != address(0), permitted: false, transferred: false, permitIndex: 0, permittedAmount: 0});
+            FundingPolicyState({account: account, owner: owner, enabled: fundingToken != address(0), permitted: false, transferred: false, pulled: false, permitIndex: 0, permittedAmount: 0, pulledAmount: 0, approvedAmount: 0});
         uint256 actionCount;
 
         for (uint256 i; i < executions.length; ++i) {
@@ -656,6 +660,18 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
                     selector == IERC20.transferFrom.selector)
             ) {
                 _checkFundingCall(execution, selector, i, funding);
+                continue;
+            }
+            if (execution.target == account) {
+                if (selector == IStandaloneHCAOwnerFunds.pullFromOwner.selector) {
+                    _checkOwnerPull(execution.callData, fundingToken, funding);
+                    continue;
+                }
+                if (selector != IStandaloneHCAOwnerFunds.returnToOwner.selector) {
+                    revert ActionNotAllowed(execution.target, selector);
+                }
+                _checkOwnerReturn(execution.callData, gasRefund);
+                ++actionCount;
                 continue;
             }
             ++actionCount;
@@ -739,12 +755,22 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
 
             if (selector == IERC20.approve.selector) {
                 _checkPaymentTokenApproval(execution.target, execution.callData, gasRefund, state);
+                if (funding.enabled && execution.target == fundingToken) {
+                    funding.approvedAmount = _saturatingAdd(
+                        funding.approvedAmount,
+                        _readUint(execution.callData, 4 + 32)
+                    );
+                }
                 continue;
             }
 
             revert ActionNotAllowed(execution.target, selector);
         }
-        if (funding.permitted != funding.transferred || (requireAction && actionCount == 0)) {
+        if (
+            funding.permitted != funding.transferred ||
+            funding.pulledAmount > funding.approvedAmount ||
+            (requireAction && actionCount == 0)
+        ) {
             revert PolicyRuleFailed();
         }
         _checkResolverBinding(allowedResolver, state);
@@ -792,7 +818,9 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     }
 
     /// @dev Allows payment approvals to registry-authorized registrars whose rent price oracle
-    ///      accepts the approved token, and exact, signed executor-refund approvals.
+    ///      accepts the approved token, and exact, signed executor-refund approvals. A refund
+    ///      approval can also be zero, so a batch can clear the allowance left by an earlier
+    ///      refund for tokens that reject a change between two nonzero allowances.
     function _checkPaymentTokenApproval(
         address token,
         bytes memory callData,
@@ -809,11 +837,11 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         ) {
             return;
         }
-        if (
-            spender != GAS_REFUND_PAYMASTER ||
-            gasRefund.token != token ||
-            _readUint(callData, 4 + 32) != gasRefund.overhead >> 128
-        ) {
+        if (spender != GAS_REFUND_PAYMASTER || gasRefund.token != token) {
+            revert PolicyRuleFailed();
+        }
+        uint256 amount = _readUint(callData, 4 + 32);
+        if (amount != 0 && amount != gasRefund.overhead >> 128) {
             revert PolicyRuleFailed();
         }
     }
@@ -899,6 +927,9 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         internal
         pure
     {
+        if (state.pulled) {
+            revert PolicyRuleFailed();
+        }
         if (selector == IERC20Permit.permit.selector) {
             if (state.permitted || execution.callData.length != 4 + 7 * 32) {
                 revert PolicyRuleFailed();
@@ -928,6 +959,53 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
             revert PolicyRuleFailed();
         }
         state.transferred = true;
+    }
+
+    /// @dev Validates the account's own `pullFromOwner` call. A batch can pull the session's
+    ///      token once, up to what the batch approves in that token. The owner's allowance to
+    ///      the HCA, not this rule, limits what a session can pull in total.
+    function _checkOwnerPull(
+        bytes memory callData,
+        address fundingToken,
+        FundingPolicyState memory state
+    )
+        internal
+        pure
+    {
+        if (!state.enabled || state.pulled || state.permitted || callData.length != 4 + 7 * 32) {
+            revert PolicyRuleFailed();
+        }
+        _requireArgAddress(callData, 4, fundingToken);
+        state.pulledAmount = _readUint(callData, 4 + 32);
+        if (state.pulledAmount == 0) {
+            revert PolicyRuleFailed();
+        }
+        state.pulled = true;
+    }
+
+    /// @dev Validates the account's own `returnToOwner` call. Any token can be returned because
+    ///      the account sends it only to its owner. A return of the refund token must leave the
+    ///      signed refund amount, which the executor collects after the batch.
+    function _checkOwnerReturn(bytes memory callData, GasRefund memory gasRefund) internal pure {
+        if (callData.length != 4 + 2 * 32) {
+            revert PolicyRuleFailed();
+        }
+        if (
+            _readAddress(callData, 4) == gasRefund.token &&
+            _readUint(callData, 4 + 32) < gasRefund.overhead >> 128
+        ) {
+            revert PolicyRuleFailed();
+        }
+    }
+
+    /// @dev Adds two amounts, returning the maximum value instead of reverting on overflow.
+    function _saturatingAdd(uint256 a, uint256 b) internal pure returns (uint256 sum) {
+        unchecked {
+            sum = a + b;
+            if (sum < a) {
+                sum = type(uint256).max;
+            }
+        }
     }
 
     /// @dev Hashes the fixed HCA fields stored in the standard Smart Session salt.
