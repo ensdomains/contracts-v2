@@ -165,7 +165,9 @@ contract WrapperRegistry is
     }
 
     /// @inheritdoc PermissionedRegistry
-    /// @dev Blocks registration of emancipated children.
+    /// @dev Blocks registration while an emancipated child still holds a wrapped token, since only the
+    ///      migration path may move it. A child whose token was burned by `unwrap()` has nothing left
+    ///      to migrate, so its ENSv1 owner may recreate the label as itself.
     function register(
         string memory label,
         address owner,
@@ -179,7 +181,14 @@ contract WrapperRegistry is
         returns (uint256 tokenId)
     {
         if (_isMigratableChild(label)) {
-            revert LibMigration.NameRequiresMigration();
+            bytes32 node = NameCoder.namehash(_node, bytes32(LibLabel.id(label)));
+            if (
+                NAME_WRAPPER.ownerOf(uint256(node)) != address(0) ||
+                msg.sender != _REGISTRY_V1.owner(node)
+            ) {
+                revert LibMigration.NameRequiresMigration();
+            }
+            return _register(label, msg.sender, registry, resolver, roleBitmap, expiry, false);
         }
         return super.register(label, owner, registry, resolver, roleBitmap, expiry);
     }
