@@ -6,7 +6,7 @@
 - **Chain ID:** 11155111
 - **Deployed at:** 2026-10-01T07:55:02.016Z
 
-The latest address of each contract.
+The latest address of each contract. Earlier addresses are in the changelog below.
 
 | Contract | Address |
 | --- | --- |
@@ -47,6 +47,15 @@ The latest address of each contract.
 | UniversalResolverV2 | [0x24e1d8e068620b647ca097f961a61055f4f42d72](https://sepolia.etherscan.io/address/0x24e1d8e068620b647ca097f961a61055f4f42d72) |
 | UnlockedMigrationController | [0x2a35b94df22cc7354570be2284655e2cdc0e64a2](https://sepolia.etherscan.io/address/0x2a35b94df22cc7354570be2284655e2cdc0e64a2) |
 | UpgradableUniversalResolverProxy | [0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://sepolia.etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe) |
-| UserRegistryImpl | [0x9bd8a88719068d09ecee662f36c0e3856708366a](https://sepolia.etherscan.io/address/0x9bd8a88719068d09ecee662f36c0e3856708366a) |
+| UserRegistryImpl | [0x0822d199699f0a9d378617817a1439663234a126](https://sepolia.etherscan.io/address/0x0822d199699f0a9d378617817a1439663234a126) |
 | VerifiableFactory | [0xda70306c98e97ece36f997a21368e53298572991](https://sepolia.etherscan.io/address/0xda70306c98e97ece36f997a21368e53298572991) |
 | WrapperRegistryImpl | [0xbe768b63e5fbbfbb0ae97e9064e0002df8001880](https://sepolia.etherscan.io/address/0xbe768b63e5fbbfbb0ae97e9064e0002df8001880) |
+
+## Changelog
+
+Every address of each contract that was replaced or deployed outside the migration, newest first.
+
+| Block | Contract | Address | Status | Recorded in |
+| --- | --- | --- | --- | --- |
+| [12115047](https://sepolia.etherscan.io/block/12115047) | UserRegistryImpl | [0x0822d199699f0a9d378617817a1439663234a126](https://sepolia.etherscan.io/address/0x0822d199699f0a9d378617817a1439663234a126) | Current | `sepolia-adhoc` |
+| [11820439](https://sepolia.etherscan.io/block/11820439) | UserRegistryImpl | [0x9bd8a88719068d09ecee662f36c0e3856708366a](https://sepolia.etherscan.io/address/0x9bd8a88719068d09ecee662f36c0e3856708366a) | Replaced | `sepolia` |
