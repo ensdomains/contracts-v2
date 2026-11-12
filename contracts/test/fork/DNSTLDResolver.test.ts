@@ -12,7 +12,7 @@ const { connection, forkedFixture } = await forkAndAttach();
 async function fixture() {
   const F = await forkedFixture();
 
-  let DNSTLDResolver = F.DNSTLDResolver;
+  let { DNSTLDResolver } = F;
   if (process.env.NEW) {
     console.log("Using new DNSTLDResolver");
     DNSTLDResolver = await connection.viem.deployContract("DNSTLDResolver", [

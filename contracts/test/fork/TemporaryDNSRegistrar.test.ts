@@ -21,7 +21,7 @@ const { connection, forkedFixture } = await forkAndAttach();
 async function fixture() {
   const F = await forkedFixture();
 
-  let TemporaryDNSRegistrar = F.TemporaryDNSRegistrar;
+  let { TemporaryDNSRegistrar } = F;
   if (process.env.NEW) {
     console.log("Using new TemporaryDNSRegistrar");
     TemporaryDNSRegistrar = await connection.viem.deployContract(
