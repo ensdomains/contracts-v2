@@ -7,7 +7,7 @@ import {
   adhocNamespace,
   baseNamespace,
   generateAddressMarkdown,
-  loadCurrentAddresses,
+  loadLatestAddresses,
   writeNamespaceAddressTable,
 } from "../../script/addressDocs.js";
 
@@ -91,9 +91,9 @@ describe("address pages", () => {
     expect(table).toContain(address("3"));
     expect(table).not.toContain(address("2"));
     expect(table).toContain(address("4"));
-    expect(changelogRow(changelog, address("3"))).toContain("Current");
-    expect(changelogRow(changelog, address("2"))).toContain("Replaced");
-    expect(changelogRow(changelog, address("4"))).toContain("Current");
+    expect(changelogRow(changelog, address("3"))).toContain("Latest");
+    expect(changelogRow(changelog, address("2"))).toContain("Superseded");
+    expect(changelogRow(changelog, address("4"))).toContain("Latest");
     expect(changelogRow(changelog, address("1"))).toBeUndefined();
   });
 
@@ -124,7 +124,7 @@ describe("address pages", () => {
     const { table, changelog } = await render();
     expect(table).toContain(address("2"));
     expect(table).not.toContain(address("3"));
-    expect(changelogRow(changelog, address("3"))).toContain("Replaced");
+    expect(changelogRow(changelog, address("3"))).toContain("Superseded");
   });
 
   it("lists archived records as replaced, newest first", async () => {
@@ -143,8 +143,8 @@ describe("address pages", () => {
     );
     expect(rows.every((index) => index > 0)).toBe(true);
     expect(rows).toEqual([...rows].sort((a, b) => a - b));
-    expect(changelogRow(changelog, address("6"))).toContain("Replaced");
-    expect(changelogRow(changelog, address("5"))).toContain("Replaced");
+    expect(changelogRow(changelog, address("6"))).toContain("Superseded");
+    expect(changelogRow(changelog, address("5"))).toContain("Superseded");
   });
 
   it("leaves out an archive of a whole earlier deployment", async () => {
@@ -167,11 +167,11 @@ describe("address pages", () => {
     const [, changelog = ""] = (await Bun.file(path).text()).split(
       "## Changelog",
     );
-    expect(changelogRow(changelog, address("3"))).toContain("Current");
+    expect(changelogRow(changelog, address("3"))).toContain("Latest");
   });
 });
 
-describe("loadCurrentAddresses", () => {
+describe("loadLatestAddresses", () => {
   it("returns the addresses of the main table, keyed by contract name", async () => {
     writeRecords(adhocNamespace("mainnet"), {
       Resolver: [address("3"), 200],
@@ -180,7 +180,7 @@ describe("loadCurrentAddresses", () => {
     writeRecords("mainnet-redeploy-20261001", {
       Registry: [address("5"), 300],
     });
-    expect(await loadCurrentAddresses(deploymentsDir, "mainnet")).toEqual({
+    expect(await loadLatestAddresses(deploymentsDir, "mainnet")).toEqual({
       Registrar: getAddress(address("4")),
       Registry: getAddress(address("1")),
       Resolver: getAddress(address("3")),

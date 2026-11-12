@@ -1392,9 +1392,11 @@ table as [`docs/addresses/<network>.md`](./addresses), which only tracks a netwo
 deployment. A `clean-testnet` namespace also gets a second section listing the ENSv1 contracts it
 deployed, since the v1 stack lives in `deployments/v1/<namespace>`.
 
-Both tables give one address per contract: the latest one, taken from the namespace and from
+Both tables give one address per contract: the latest deployed one, taken from the namespace and from
 `deployments/<namespace>-adhoc`, where `bun run deploy:contract` records the contracts it deploys one at
-a time. A changelog below the table lists every address of each contract that was replaced or deployed
+a time. The latest deployment is not necessarily in use: some contracts take a DAO vote, or an upgrade
+of the contracts that use them, first. To drop a deployment that will not be used, move its record into an
+archive. A changelog below the table lists every address of each contract that was superseded or deployed
 ad hoc, newest first, including those kept in the archives of replaced records
 (`<namespace>-<kind>-<date>`). Each changelog row gives the UTC time its block was mined, read from the
 chain. After each deploy to a live network with a published page (mainnet, sepolia), `deploy:contract`

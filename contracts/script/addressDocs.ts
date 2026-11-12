@@ -171,7 +171,7 @@ interface RecordedContract extends ContractEntry {
   block?: bigint;
   /// Folder the record is kept in.
   folder: string;
-  /// True for a folder whose records are in use, false for an archive of
+  /// True for a folder whose records are not archived, false for an archive of
   /// replaced records.
   active: boolean;
   /// True for a contract deployed one at a time, outside the migration.
@@ -259,21 +259,22 @@ function newestFirst(a: RecordedContract, b: RecordedContract): number {
   return blockA === blockB ? 0 : blockA > blockB ? -1 : 1;
 }
 
-/// The latest record of each contract among the records in use, sorted by name.
+/// The latest record of each contract among the records that are not archived, sorted by name.
 /// The migration's record wins a tie with an ad-hoc one.
-function currentContracts(records: RecordedContract[]): RecordedContract[] {
-  const current = new Map<string, RecordedContract>();
+function latestContracts(records: RecordedContract[]): RecordedContract[] {
+  const latest = new Map<string, RecordedContract>();
   for (const record of records.filter((r) => r.active).sort(newestFirst)) {
-    if (!current.has(record.name)) current.set(record.name, record);
+    if (!latest.has(record.name)) latest.set(record.name, record);
   }
-  return [...current.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/// The latest address of each contract in a deployment, keyed by contract name.
+/// The latest deployed address of each contract in a deployment, keyed by
+/// contract name. A latest deployment is not necessarily in use yet.
 /// These are the addresses in the main table of the address pages: the records
 /// of the deployment and of its ad-hoc deployments are reconciled, and the
 /// newest record of each contract wins.
-export async function loadCurrentAddresses(
+export async function loadLatestAddresses(
   deploymentsDir: string,
   namespace: string,
 ): Promise<Record<string, Address>> {
@@ -282,7 +283,7 @@ export async function loadCurrentAddresses(
     namespace,
   );
   return Object.fromEntries(
-    currentContracts(history).map(({ name, address }) => [
+    latestContracts(history).map(({ name, address }) => [
       name,
       getAddress(address),
     ]),
@@ -291,12 +292,13 @@ export async function loadCurrentAddresses(
 
 /// The changelog, newest first: every address held by a contract that has had
 /// more than one, or that was deployed outside the migration. An address kept in
-/// more than one folder is listed once, under the folder in use when there is one.
+/// more than one folder is listed once, under a folder that is not an archive
+/// when there is one.
 /// Each row gives the time its block was mined, so a changelog needs a lookup of
 /// block times.
 async function changelog(
   records: RecordedContract[],
-  current: RecordedContract[],
+  latest: RecordedContract[],
   chainId: number | undefined,
   blockTimes: BlockTimeLookup | undefined,
 ): Promise<string | null> {
@@ -310,8 +312,8 @@ async function changelog(
   for (const { name } of unique.values()) {
     addressCount.set(name, (addressCount.get(name) ?? 0) + 1);
   }
-  const currentAddress = new Map(
-    current.map(({ name, address }) => [name, address.toLowerCase()]),
+  const latestAddress = new Map(
+    latest.map(({ name, address }) => [name, address.toLowerCase()]),
   );
   const rows = [...unique.values()]
     .filter((r) => r.adhoc || (addressCount.get(r.name) ?? 0) > 1)
@@ -340,9 +342,9 @@ async function changelog(
       ),
       r.name,
       addressCell(chainId, r.address),
-      currentAddress.get(r.name) === r.address.toLowerCase()
-        ? "Current"
-        : "Replaced",
+      latestAddress.get(r.name) === r.address.toLowerCase()
+        ? "Latest"
+        : "Superseded",
       `\`${r.folder}\``,
     ]),
   ]);
@@ -403,7 +405,7 @@ export async function generateAddressMarkdown(
   const outDir = resolve(opts.outDir ?? DEFAULT_DOCS_DIR);
 
   const history = await loadDeploymentHistory(deploymentsDir, opts.namespace);
-  const contracts = currentContracts(history);
+  const contracts = latestContracts(history);
 
   const namespaceDir = join(deploymentsDir, opts.namespace);
   const chain = readJson<{ chainId?: string | number }>(
@@ -430,9 +432,10 @@ export async function generateAddressMarkdown(
 
   const log = await changelog(history, contracts, chainId, opts.blockTimes);
   const sections: string[] = [
-    log
-      ? "The latest address of each contract. Earlier addresses are in the changelog below."
-      : "The latest address of each contract.",
+    [
+      "The latest deployed address of each contract. A new deployment can need a DAO vote, or an upgrade of the contracts that use it, before it is in use.",
+      log ? " Earlier addresses are in the changelog below." : "",
+    ].join(""),
     "",
     formatTable(contracts, chainId),
   ];
@@ -458,7 +461,7 @@ export async function generateAddressMarkdown(
       "",
       "## Changelog",
       "",
-      "Every address of each contract that was replaced or deployed outside the migration, newest first.",
+      "Every address of each contract that was superseded or deployed outside the migration, newest first.",
       "",
       log,
     );
