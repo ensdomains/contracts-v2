@@ -4,6 +4,9 @@ import { dnsEncodeName } from "../utils/utils.js";
 import { bundleCalls, makeResolutions } from "../utils/resolutions.js";
 import { KNOWN_DNS } from "./knownDNS.js";
 
+// USAGE: bun run test:hardhat test/fork/DNSTLDResolver.test.ts
+//   env: NEW=<any> => deploys a DNSTLDResolver instead of using latest.
+
 const { connection, forkedFixture } = await forkAndAttach();
 
 async function fixture() {

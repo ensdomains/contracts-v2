@@ -13,6 +13,9 @@ import {
 } from "../../script/deploy-constants.js";
 import { KNOWN_DNS } from "./knownDNS.js";
 
+// USAGE: bun run test:hardhat test/fork/TemporaryDNSRegistrar.test.ts
+//   env: NEW=<any> => deploys a TemporaryDNSRegistrar instead of using latest.
+
 const { connection, forkedFixture } = await forkAndAttach();
 
 async function fixture() {

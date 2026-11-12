@@ -47,22 +47,6 @@ export async function forkAndAttach(network = "mainnet") {
 
   const connection = await hre.network.connect(`${network}Fork`);
 
-  // const { deployments } = await loadDeploymentsFromFiles(
-  //   join(import.meta.dirname, "../../deployments/"),
-  //   network,
-  //   true,
-  // );
-
-  // process.stdout.write(
-  //   Bun.inspect.table(
-  //     Object.entries(deployments)
-  //       .flatMap(([contract, { address }]) =>
-  //         contract.startsWith(".") ? [] : { contract, address },
-  //       )
-  //       .sort((a, b) => a.contract.localeCompare(b.contract)),
-  //   ),
-  // );
-
   const forkedFixture = async () => {
     const ENSRegistry = await connection.viem.getContractAt(
       "ENSRegistry",
