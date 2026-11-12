@@ -122,9 +122,7 @@ export function toRequiredGrantRevokeRoles(roleBitmap: bigint) {
 // child registry or resolver, unregistering it, letting its owner transfer it, and
 // upgrading the registry, each with its admin role. A registry where nobody holds
 // any of them at the root leaves its names emancipated. This is
-// RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP plus the upgrade roles, which only an
-// upgradeable registry counts (see: UserRegistry.isEmancipated); nobody is meant to
-// hold them on any registry.
+// RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP.
 export const DANGEROUS_ROOT_ROLES =
   ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
   ROLES.REGISTRY.SET_SUBREGISTRY |
@@ -132,9 +130,7 @@ export const DANGEROUS_ROOT_ROLES =
   ROLES.REGISTRY.SET_RESOLVER |
   ROLES.ADMIN.REGISTRY.SET_RESOLVER |
   ROLES.REGISTRY.UNREGISTER |
-  ROLES.ADMIN.REGISTRY.UNREGISTER |
-  ROLES.REGISTRY.UPGRADE |
-  ROLES.ADMIN.REGISTRY.UPGRADE;
+  ROLES.ADMIN.REGISTRY.UNREGISTER;
 
 // Every root role outside the dangerous set, each with its admin role: registering
 // names and reserved names, setting the parent, renewing, setting the metadata URI,
@@ -151,7 +147,9 @@ const SAFE_ROOT_ROLES =
   ROLES.REGISTRY.CAN_NAME |
   ROLES.ADMIN.REGISTRY.CAN_NAME |
   ROLES.REGISTRY.SET_URI |
-  ROLES.ADMIN.REGISTRY.SET_URI;
+  ROLES.ADMIN.REGISTRY.SET_URI |
+  ROLES.REGISTRY.UPGRADE |
+  ROLES.ADMIN.REGISTRY.UPGRADE;
 
 // Role bitmaps for static deployment per README Static Deployment Permissions.
 export const DEPLOYMENT_ROLES = {

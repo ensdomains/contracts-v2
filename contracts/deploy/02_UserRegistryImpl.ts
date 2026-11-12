@@ -1,21 +1,29 @@
 import { execute } from "@rocketh";
+import type { Abi_IAddressSet } from "generated/abis/IAddressSet.js";
 import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
-import type { Abi_IRegistryURIRenderer } from "generated/abis/IRegistryURIRenderer.ts";
+import type { Abi_IRegistryURIRenderer } from "generated/abis/IRegistryURIRenderer.js";
 import { Artifact_UserRegistry } from "generated/artifacts/UserRegistry.js";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
+    const registryUpgradeSet = get<Abi_IAddressSet>("RegistryUpgradeSet");
     const labelStore = get<Abi_ILabelStore>("LabelStore");
     const uriRenderer = get<Abi_IRegistryURIRenderer>("BoxedENSURIRenderer");
 
     await deploy("UserRegistryImpl", {
       account: deployer,
       artifact: Artifact_UserRegistry,
-      args: [labelStore.address, uriRenderer.address, owner],
+      args: [
+        labelStore.address,
+        owner,
+        registryUpgradeSet.address,
+        [], // first version
+        uriRenderer.address,
+      ],
     });
   },
   {
     tags: ["UserRegistryImpl", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["LabelStore", "BoxedENSURIRenderer"],
+    dependencies: ["LabelStore", "BoxedENSURIRenderer", "RegistryUpgradeSet"],
   },
 );
