@@ -18,6 +18,8 @@ import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
 import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
 import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
 import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
+import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
+import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
@@ -708,6 +710,45 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         executions[0] = _ownerReturn(paymentToken, proof.maxRefundAmount);
 
         _assertInitialRefundPolicySuccess(permissionId, proof, 110, _encodeExecutions(executions));
+    }
+
+    function test_validator_acceptsOwnerPullWhenBatchApprovalsExceedTheMaximum() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        address oracle = makeAddr("rent-price-oracle");
+        vm.etch(ethRegistrar, hex"00");
+        vm.etch(oracle, hex"00");
+        vm.mockCall(
+            ethRegistrar,
+            abi.encodeCall(IRentPriceOracleProvider.rentPriceOracle, ()),
+            abi.encode(oracle)
+        );
+        vm.mockCall(
+            oracle,
+            abi.encodeCall(IRentPriceOracle.isPaymentToken, (IERC20(paymentToken))),
+            abi.encode(true)
+        );
+        Execution[] memory executions =
+            _withoutExecution(
+                _withRefundApproval(
+                    _initialRefundExecutions(permissionId, proof),
+                    paymentToken,
+                    ethRegistrar,
+                    type(uint256).max
+                ),
+                0
+            );
+        executions[0] = _ownerPull(paymentToken, type(uint256).max);
+
+        _assertInitialRefundPolicySuccess(permissionId, proof, 112, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerReturnWithTrailingCalldata() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = _ownerReturn(paymentToken, proof.maxRefundAmount);
+        executions[0].callData = bytes.concat(executions[0].callData, bytes32(0));
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 113, _encodeExecutions(executions));
     }
 
     function test_validator_rejectsOtherCallsToTheAccount() public {
