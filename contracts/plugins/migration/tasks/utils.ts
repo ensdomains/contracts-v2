@@ -1,7 +1,7 @@
 import { getAddress, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { isTenderlyVirtualRpc } from "../../../script/migration.js";
+import { isTenderlyVirtualRpc } from "../../../script/migrate.js";
 
 export { isTenderlyVirtualRpc };
 
@@ -52,7 +52,6 @@ export function requireHttpNetwork(
   }
   return networkConfig as HttpNetworkConfig;
 }
-
 
 export async function defaultHardhatAccount(
   provider: RpcAccountProvider,

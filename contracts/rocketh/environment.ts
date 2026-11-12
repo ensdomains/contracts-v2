@@ -10,6 +10,7 @@ import {
 const {
   loadAndExecuteDeploymentsFromFiles,
   loadAndExecuteDeploymentsFromFilesWithConfig,
+  loadEnvironmentFromFilesWithConfig,
 } = setupEnvironmentFromFiles<Extensions, Accounts, Data>(extensions);
 const { loadEnvironmentFromHardhat } = setupHardhatDeploy<
   Extensions,
@@ -24,5 +25,6 @@ export type Environment = Awaited<
 export {
   loadAndExecuteDeploymentsFromFiles,
   loadAndExecuteDeploymentsFromFilesWithConfig,
+  loadEnvironmentFromFilesWithConfig,
   loadEnvironmentFromHardhat,
 };

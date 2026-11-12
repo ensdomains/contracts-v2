@@ -58,12 +58,16 @@ export async function deployV2Fixture(
     [rootRegistry.address, batchGatewayProvider.address, contractNamer.address],
     { client: { public: publicClient } },
   );
+  const universalHelper = await network.viem.deployContract("UniversalHelper", [
+    rootRegistry.address,
+    contractNamer.address,
+  ]);
   await rootRegistry.write.register([
     "eth",
     walletClient.account.address,
     ethRegistry.address,
     zeroAddress,
-    DEPLOYMENT_ROLES.ETH_TOKEN,
+    DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
     MAX_EXPIRY,
   ]);
   await ethRegistry.write.setParent([rootRegistry.address, "eth"]);
@@ -89,6 +93,7 @@ export async function deployV2Fixture(
     ethRegistry,
     batchGatewayProvider,
     universalResolver,
+    universalHelper,
     deployPermissionedResolver,
     setupName,
   };
@@ -109,7 +114,7 @@ export async function deployV2Fixture(
       implAddress: PermissionedResolverImpl.address,
       abi: PermissionedResolverImpl.abi,
       functionName: "initialize",
-      args: [walletClient.account.address, roles, setters],
+      args: [[[walletClient.account.address, roles]], setters],
       salt,
     });
   }
