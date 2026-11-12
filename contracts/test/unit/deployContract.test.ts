@@ -421,21 +421,37 @@ describe("deployContract", () => {
     expect(await publicClient.getBlockNumber()).toBe(blockBefore);
   });
 
-  it("reuses the record when only the compiler metadata on the chain differs", async () => {
+  it("reuses the record when only the compiler metadata differs", async () => {
     const namespace = "metadata-adhoc";
     const original = await deploy({ namespace });
+    const metadataHashes = /(?<=a264697066735822)[0-9a-f]{68}/gi;
     const code = await publicClient.getCode({ address: original!.address });
-    const [, metadataHash] = /a264697066735822([0-9a-f]{68})/i.exec(code!)!;
     await publicClient.request({
       method: "anvil_setCode" as any,
       params: [
         original!.address,
-        code!.replace(metadataHash, "11".repeat(34)),
+        code!.replace(metadataHashes, "11".repeat(34)),
       ] as any,
     });
+    const record = JSON.parse(readFileSync(original!.recordFile, "utf8"));
+    record.bytecode = record.bytecode.replace(metadataHashes, "22".repeat(34));
+    writeFileSync(original!.recordFile, JSON.stringify(record));
+
     const again = await deploy({ namespace });
     expect(again?.newlyDeployed).toBe(false);
     expect(again!.address).toBe(original!.address);
+  });
+
+  it("replaces the record when its creation code differs from the build", async () => {
+    const namespace = "constructor-adhoc";
+    const original = await deploy({ namespace });
+    const record = JSON.parse(readFileSync(original!.recordFile, "utf8"));
+    record.bytecode = `0xfe${record.bytecode.slice(4)}`;
+    writeFileSync(original!.recordFile, JSON.stringify(record));
+
+    const replaced = await deploy({ namespace });
+    expect(replaced?.newlyDeployed).toBe(true);
+    expect(replaced!.replaced?.address).toBe(original!.address);
   });
 
   it("refuses to record a local node's contracts beside a published network's records", async () => {

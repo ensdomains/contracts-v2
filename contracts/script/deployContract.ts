@@ -304,22 +304,35 @@ function comparableRuntimeCode(
   return bytecodeWithoutAnyMetadata(bytesToHex(bytes));
 }
 
-/// True when the contract a record names holds this build's code on the chain,
-/// and the record's constructor arguments are these. The code is read from the
-/// chain, because the deploy tool's own check assumes that compiler metadata
-/// ends the creation code. A contract that carries data after its metadata
-/// breaks that assumption, and the check then takes changed code for unchanged
-/// code. The arguments are compared with the record only: the code on the
-/// chain does not show them once immutable values are left out.
+/// The parts of a record the reuse check compares with a build.
+type ComparedRecord = { address: string; bytecode?: Hex; argsData?: Hex };
+
+/// True when a record was deployed from this build, with these constructor
+/// arguments, and its address holds that build's code on the chain. The record's
+/// creation code must match the build's, which covers constructor logic that
+/// leaves no trace in the runtime code, such as initial storage. The code on the
+/// chain must match the build's runtime code, which proves the address holds it.
+/// Both comparisons leave out every compiler metadata trailer, wherever it sits,
+/// so an edit to comments alone matches. The deploy tool's own check instead
+/// assumes the metadata ends the creation code, and a contract that carries data
+/// after its metadata makes it take changed code for unchanged code.
 async function isDeployedAsRecorded(
   publicClient: PublicClient,
-  address: Address,
+  record: ComparedRecord,
   artifact: DeployableArtifact,
   argsData: Hex,
-  recordedArgsData: Hex | undefined,
 ): Promise<boolean> {
-  if (recordedArgsData?.toLowerCase() !== argsData.toLowerCase()) return false;
-  const code = await publicClient.getCode({ address });
+  if (record.argsData?.toLowerCase() !== argsData.toLowerCase()) return false;
+  if (
+    !record.bytecode ||
+    bytecodeWithoutAnyMetadata(record.bytecode.toLowerCase()) !==
+      bytecodeWithoutAnyMetadata(artifact.bytecode.toLowerCase())
+  ) {
+    return false;
+  }
+  const code = await publicClient.getCode({
+    address: getAddress(record.address),
+  });
   if (!code || code === "0x") return false;
   return (
     comparableRuntimeCode(code, artifact.immutableReferences) ===
@@ -409,7 +422,7 @@ export async function deployContract(
     ? readFileSync(recordFile, "utf8")
     : undefined;
   const existing = existingRecord
-    ? (JSON.parse(existingRecord) as { address: string; argsData?: Hex })
+    ? (JSON.parse(existingRecord) as ComparedRecord)
     : undefined;
   const existingAddress = existing ? getAddress(existing.address) : undefined;
 
@@ -441,14 +454,9 @@ export async function deployContract(
   });
   const argsData: Hex = `0x${deployData.slice(artifact.bytecode.length)}`;
   if (
+    existing &&
     existingAddress &&
-    (await isDeployedAsRecorded(
-      publicClient,
-      existingAddress,
-      artifact,
-      argsData,
-      existing?.argsData,
-    ))
+    (await isDeployedAsRecorded(publicClient, existing, artifact, argsData))
   ) {
     return {
       address: existingAddress,
@@ -577,7 +585,7 @@ async function askToProceed(summary: DeploySummary): Promise<boolean> {
   );
   if (summary.existingAddress) {
     console.log(
-      `record:         "${summary.record}" names ${summary.existingAddress}, whose code on the chain or constructor arguments differ from this build; it is replaced, with the old record archived`,
+      `record:         "${summary.record}" names ${summary.existingAddress}, whose code or constructor arguments differ from this build, or whose code is not on the chain; it is replaced, with the old record archived`,
     );
   }
   const prompt = createInterface({
