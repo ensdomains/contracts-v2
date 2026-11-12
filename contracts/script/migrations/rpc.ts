@@ -643,6 +643,21 @@ export function installRpcCompatibility(debugRpc: boolean): void {
   };
 }
 
+/// The environment variable that holds a network's RPC URL, such as
+/// `MAINNET_RPC_URL`.
+export function rpcEnvVarFor(network: string): string {
+  return `${network.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_RPC_URL`;
+}
+
+/// A network's RPC URL: the one given, or else the one in its environment
+/// variable.
+export function rpcUrlFor(
+  network: string,
+  rpcUrl?: string,
+): string | undefined {
+  return rpcUrl ?? process.env[rpcEnvVarFor(network)];
+}
+
 export function isLocalRpcUrl(rpcUrl: string): boolean {
   return /^https?:\/\/(127\.0\.0\.1|localhost)(?::|\/|$)/i.test(rpcUrl);
 }
