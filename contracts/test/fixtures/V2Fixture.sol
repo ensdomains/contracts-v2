@@ -5,16 +5,17 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
-import {CloneProxyBytecode} from "@ensdomains/verifiable-factory/CloneProxyBytecode.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
-import {UniversalHelper} from "~src/universalResolver/UniversalHelper.sol";
+import {BoxedURIRenderer} from "~src/registry/BoxedURIRenderer.sol";
+import {MockURIRenderer} from "~test/mocks/MockURIRenderer.sol";
 
 /// @dev Reusable testing fixture for ENSv2 with a basic ".eth" deployment.
 abstract contract V2Fixture is Test, ERC1155Holder {
@@ -25,7 +26,8 @@ abstract contract V2Fixture is Test, ERC1155Holder {
     PermissionedRegistry ethRegistry;
     GatewayProvider batchGatewayProvider;
     UniversalResolverV2 universalResolver;
-    UniversalHelper universalHelper;
+    PermissionedAddressSet trustedRegistrySet;
+    BoxedURIRenderer boxedRenderer;
 
     /// @dev Role bitmaps matching README Static Deployment Permissions.
     function _rootRegistryRootRoles() internal pure returns (uint256) {
@@ -90,21 +92,13 @@ abstract contract V2Fixture is Test, ERC1155Holder {
             batchGatewayProvider,
             contractNamer
         );
-        universalHelper = new UniversalHelper(rootRegistry, contractNamer);
+        trustedRegistrySet = new PermissionedAddressSet(address(this));
+        trustedRegistrySet.approve(address(rootRegistry), true);
+        trustedRegistrySet.approve(address(ethRegistry), true);
+        boxedRenderer = new BoxedURIRenderer(address(this), new MockURIRenderer("mock"));
     }
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {
         (resolver, , ) = universalResolver.findResolver(name);
-    }
-
-    function _computeVerifiableFactoryAddress(address deployer, uint256 salt)
-        internal
-        view
-        returns (address)
-    {
-        bytes32 outerSalt = keccak256(abi.encode(deployer, salt));
-        bytes memory bytecode =
-            CloneProxyBytecode.creationCode(verifiableFactory.proxyLogic(), outerSalt);
-        return vm.computeCreate2Address(outerSalt, keccak256(bytecode), address(verifiableFactory));
     }
 }
