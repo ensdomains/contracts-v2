@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getAddress } from "viem";
 import {
   adhocNamespace,
   baseNamespace,
   generateAddressMarkdown,
+  loadCurrentAddresses,
   writeNamespaceAddressTable,
 } from "../../script/addressDocs.js";
 
@@ -139,6 +141,23 @@ describe("address pages", () => {
       "## Changelog",
     );
     expect(changelogRow(changelog, address("3"))).toContain("Current");
+  });
+});
+
+describe("loadCurrentAddresses", () => {
+  it("returns the addresses of the main table, keyed by contract name", async () => {
+    writeRecords(adhocNamespace("mainnet"), {
+      Resolver: [address("3"), 200],
+      Registrar: [address("4"), 201],
+    });
+    writeRecords("mainnet-redeploy-20261001", {
+      Registry: [address("5"), 300],
+    });
+    expect(await loadCurrentAddresses(deploymentsDir, "mainnet")).toEqual({
+      Registrar: getAddress(address("4")),
+      Registry: getAddress(address("1")),
+      Resolver: getAddress(address("3")),
+    });
   });
 });
 

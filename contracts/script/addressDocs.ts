@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { type Address, getAddress } from "viem";
 
 const DEFAULT_DOCS_DIR = resolve(
   new URL(import.meta.url).pathname,
@@ -231,6 +232,26 @@ function currentContracts(records: RecordedContract[]): RecordedContract[] {
     if (!current.has(record.name)) current.set(record.name, record);
   }
   return [...current.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/// The latest address of each contract in a deployment, keyed by contract name.
+/// These are the addresses in the main table of the address pages: the records
+/// of the deployment and of its ad-hoc deployments are reconciled, and the
+/// newest record of each contract wins.
+export async function loadCurrentAddresses(
+  deploymentsDir: string,
+  namespace: string,
+): Promise<Record<string, Address>> {
+  const history = await loadDeploymentHistory(
+    resolve(deploymentsDir),
+    namespace,
+  );
+  return Object.fromEntries(
+    currentContracts(history).map(({ name, address }) => [
+      name,
+      getAddress(address),
+    ]),
+  );
 }
 
 /// Changelog rows, newest first: every address held by a contract that has had

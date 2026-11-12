@@ -13,9 +13,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import {
+  bytesToHex,
   encodeDeployData,
   formatEther,
   getAddress,
+  hexToBytes,
   type Abi,
   type AbiParameter,
   type Address,
@@ -61,7 +63,18 @@ const DEV_NODE_CLIENTS = /anvil|hardhat|ganache|tenderly/i;
 const VERIFY_ATTEMPTS = 5;
 const VERIFY_RETRY_DELAY_MS = 20_000;
 
-type DeployableArtifact = { abi: Abi; bytecode: Hex; sourceName?: string };
+type DeployableArtifact = {
+  abi: Abi;
+  bytecode: Hex;
+  deployedBytecode: Hex;
+  /// Byte ranges of the runtime code that the constructor fills with immutable
+  /// values, keyed by the immutable's AST id.
+  immutableReferences?: Record<
+    string,
+    readonly { start: number; length: number }[]
+  >;
+  sourceName?: string;
+};
 
 /// Splits `path/File.sol:Name` into its source path and contract name; a bare
 /// name has no source path.
@@ -221,6 +234,43 @@ async function assertRecordsMatchChain(
   }
 }
 
+/// Runtime code with every immutable value zeroed, so code deployed with any
+/// immutable values compares equal to the build's runtime code.
+function withoutImmutables(
+  code: Hex,
+  references: DeployableArtifact["immutableReferences"],
+): Hex {
+  const bytes = hexToBytes(code);
+  for (const ranges of Object.values(references ?? {})) {
+    for (const { start, length } of ranges) {
+      bytes.fill(0, start, start + length);
+    }
+  }
+  return bytesToHex(bytes);
+}
+
+/// True when the contract a record names holds this build's code on the chain
+/// and was deployed with these constructor arguments. The code is read from the
+/// chain, because the deploy tool's own check assumes that compiler metadata
+/// ends the creation code. A contract that carries data after its metadata
+/// breaks that assumption, and the check then takes changed code for unchanged
+/// code.
+async function isDeployedAsRecorded(
+  publicClient: PublicClient,
+  address: Address,
+  artifact: DeployableArtifact,
+  argsData: Hex,
+  recordedArgsData: Hex | undefined,
+): Promise<boolean> {
+  if (recordedArgsData?.toLowerCase() !== argsData.toLowerCase()) return false;
+  const code = await publicClient.getCode({ address });
+  if (!code || code === "0x") return false;
+  return (
+    withoutImmutables(code, artifact.immutableReferences) ===
+    withoutImmutables(artifact.deployedBytecode, artifact.immutableReferences)
+  );
+}
+
 export type DeploySummary = {
   chainId: number;
   contract: string;
@@ -299,27 +349,45 @@ export async function deployContract(
   const existingRecord = existsSync(recordFile)
     ? readFileSync(recordFile, "utf8")
     : undefined;
-  const existingAddress = existingRecord
-    ? getAddress(JSON.parse(existingRecord).address)
+  const existing = existingRecord
+    ? (JSON.parse(existingRecord) as { address: string; argsData?: Hex })
     : undefined;
+  const existingAddress = existing ? getAddress(existing.address) : undefined;
 
   const { chain, publicClient } = await createV2Clients({
     rpcUrl: opts.rpcUrl,
   });
   await assertRecordsMatchChain(namespaceDir, publicClient);
 
+  const deployData = encodeDeployData({
+    abi: artifact.abi,
+    bytecode: artifact.bytecode,
+    args,
+  });
+  const argsData: Hex = `0x${deployData.slice(artifact.bytecode.length)}`;
+  if (
+    existingAddress &&
+    (await isDeployedAsRecorded(
+      publicClient,
+      existingAddress,
+      artifact,
+      argsData,
+      existing?.argsData,
+    ))
+  ) {
+    return {
+      address: existingAddress,
+      newlyDeployed: false,
+      record,
+      recordFile,
+    };
+  }
+
   const deployer = privateKeyToAccount(opts.privateKey).address;
   if (opts.confirm) {
     const [balance, gas, fees] = await Promise.all([
       publicClient.getBalance({ address: deployer }),
-      publicClient.estimateGas({
-        account: deployer,
-        data: encodeDeployData({
-          abi: artifact.abi,
-          bytecode: artifact.bytecode,
-          args,
-        }),
-      }),
+      publicClient.estimateGas({ account: deployer, data: deployData }),
       publicClient.estimateFeesPerGas(),
     ]);
     const proceed = await opts.confirm({
@@ -357,24 +425,22 @@ export async function deployContract(
     },
     config,
   );
-  const deployment = await env.deploy(record, {
-    account: env.namedAccounts.deployer,
-    artifact,
-    args,
-  } as any);
+  // The record was checked against the chain above, so the deploy tool's own
+  // reuse check is skipped.
+  const deployment = await env.deploy(
+    record,
+    { account: env.namedAccounts.deployer, artifact, args } as any,
+    { alwaysOverride: true },
+  );
 
-  const address = getAddress(deployment.address);
   return {
-    address,
+    address: getAddress(deployment.address),
     transactionHash: deployment.transaction?.hash,
-    newlyDeployed: deployment.newlyDeployed,
+    newlyDeployed: true,
     record,
     recordFile,
     replaced:
-      deployment.newlyDeployed &&
-      existingRecord &&
-      existingAddress &&
-      existingAddress !== address
+      existingRecord && existingAddress
         ? {
             address: existingAddress,
             archive: archiveReplacedRecord(
@@ -450,7 +516,7 @@ async function askToProceed(summary: DeploySummary): Promise<boolean> {
   );
   if (summary.existingAddress) {
     console.log(
-      `record:         "${summary.record}" already names ${summary.existingAddress}; it is reused if the code and arguments match, and otherwise replaced, with the old record archived`,
+      `record:         "${summary.record}" names ${summary.existingAddress}, whose code on the chain or constructor arguments differ from this build; it is replaced, with the old record archived`,
     );
   }
   const prompt = createInterface({

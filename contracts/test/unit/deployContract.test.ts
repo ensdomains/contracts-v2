@@ -410,6 +410,26 @@ describe("deployContract", () => {
     });
   });
 
+  it("replaces the record when the code on the chain differs from the build", async () => {
+    const namespace = "changed-code-adhoc";
+    const original = await deploy({ namespace });
+    const code = await publicClient.getCode({ address: original!.address });
+    for (const changed of [`${code!.slice(0, -2)}00`, "0x"]) {
+      const current = await deploy({ namespace });
+      await publicClient.request({
+        method: "anvil_setCode" as any,
+        params: [current!.address, changed] as any,
+      });
+      const replaced = await deploy({ namespace });
+      expect(replaced?.newlyDeployed).toBe(true);
+      expect(replaced!.replaced?.address).toBe(current!.address);
+      expect(await readToken(replaced!.address)).toEqual({
+        symbol: "TST",
+        decimals: 6,
+      });
+    }
+  });
+
   it("sends nothing when the confirmation is declined", async () => {
     const blockBefore = await publicClient.getBlockNumber();
     let summary: any;
