@@ -29,6 +29,9 @@ library HCAPermit2Lib {
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
+    /// @dev Canonical Permit2 deployment.
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
     /// @dev Length of the fixed Permit2 claim encoding.
     uint256 internal constant CLAIM_DATA_LENGTH = 410;
 

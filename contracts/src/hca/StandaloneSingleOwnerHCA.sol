@@ -27,8 +27,10 @@ import {Execution} from "nexus/types/DataTypes.sol";
 
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
+import {IPermit2AllowanceTransfer} from "./interfaces/IPermit2AllowanceTransfer.sol";
 import {IStandaloneHCAFactory} from "./interfaces/IStandaloneHCAFactory.sol";
 import {IStandaloneHCAOwnerFunds} from "./interfaces/IStandaloneHCAOwnerFunds.sol";
+import {HCAPermit2Lib} from "./libraries/HCAPermit2Lib.sol";
 
 /// @title Standalone Single Owner HCA
 /// @notice Nexus account whose owner is set once during account initialization.
@@ -272,6 +274,35 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization, IStandaloneHCAO
             ) {} catch {}
         }
         SafeERC20.safeTransferFrom(token, owner_, address(this), amount);
+    }
+
+    /// @inheritdoc IStandaloneHCAOwnerFunds
+    /// @dev Callable only by the account itself, from a session batch or `executeByOwner`.
+    ///      The transfer, not the permit, enforces the allowance: Permit2 moves the tokens only
+    ///      within the owner's unexpired allowance to this account.
+    function pullFromOwnerPermit2(IERC20 token, uint160 amount, OwnerPermit2 calldata permit)
+        external
+        override
+        onlyAccount
+    {
+        address owner_ = _accountOwner();
+        if (permit.sigDeadline != 0) {
+            try IPermit2AllowanceTransfer(HCAPermit2Lib.PERMIT2).permit(
+                owner_,
+                IPermit2AllowanceTransfer.PermitSingle({details: IPermit2AllowanceTransfer.PermitDetails({token: address(
+                    token
+                ), amount: permit.amount, expiration: permit.expiration, nonce: permit.nonce}), spender: address(
+                    this
+                ), sigDeadline: permit.sigDeadline}),
+                permit.signature
+            ) {} catch {}
+        }
+        IPermit2AllowanceTransfer(HCAPermit2Lib.PERMIT2).transferFrom(
+            owner_,
+            address(this),
+            amount,
+            address(token)
+        );
     }
 
     /// @inheritdoc IStandaloneHCAOwnerFunds

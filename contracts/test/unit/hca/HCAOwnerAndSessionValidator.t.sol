@@ -15,6 +15,7 @@ import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAOwnerFunds} from "~src/hca/interfaces/IStandaloneHCAOwnerFunds.sol";
 import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
+import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
 import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
 import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
@@ -613,6 +614,64 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         _assertInitialRefundPolicyFailure(permissionId, proof, 106, _encodeExecutions(executions));
     }
 
+    function test_validator_acceptsOwnerPermit2PullWithinBatchApprovals() public view {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPermit2Pull(paymentToken, proof.maxRefundAmount);
+
+        _assertInitialRefundPolicySuccess(permissionId, proof, 120, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPermit2PullAboveBatchApprovals() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPermit2Pull(paymentToken, proof.maxRefundAmount + 1);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 121, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPermit2PullOfAnotherToken() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPermit2Pull(sourceToken, 1);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 122, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPermit2PullWithZeroAmount() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPermit2Pull(paymentToken, 0);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 123, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPullCombinedWithOwnerPermit2Pull() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
+        executions[0] = _ownerPull(paymentToken, 1);
+        executions[1] = _ownerPermit2Pull(paymentToken, 1);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 124, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPermit2PullWithoutPermitEncoding() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = Execution({target: address(hca), value: 0, callData: abi.encodeWithSelector(
+            IStandaloneHCAOwnerFunds.pullFromOwnerPermit2.selector,
+            paymentToken,
+            proof.maxRefundAmount
+        )});
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 125, _encodeExecutions(executions));
+    }
+
     function test_validator_acceptsOwnerReturnThatKeepsTheRefund() public view {
         (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
         Execution[] memory executions =
@@ -732,6 +791,26 @@ contract HCAOwnerAndSessionValidatorTest is Test {
                     amount,
                     IStandaloneHCAOwnerFunds.OwnerPermit({value: 60_000_000, deadline: block.timestamp +
                     1 hours, v: 27, r: bytes32(uint256(1)), s: bytes32(uint256(2))})
+                )
+            )});
+    }
+
+    function _ownerPermit2Pull(address token, uint160 amount)
+        internal
+        view
+        returns (Execution memory)
+    {
+        return
+            Execution({target: address(hca), value: 0, callData: abi.encodeCall(
+                IStandaloneHCAOwnerFunds.pullFromOwnerPermit2,
+                (
+                    IERC20(token),
+                    amount,
+                    IStandaloneHCAOwnerFunds.OwnerPermit2({amount: 60_000_000, expiration: uint48(
+                        block.timestamp + 1 hours
+                    ), nonce: 0, sigDeadline: block.timestamp + 1 hours, signature: new bytes(
+                        HCASignatureLib.SIGNATURE_LENGTH
+                    )})
                 )
             )});
     }
