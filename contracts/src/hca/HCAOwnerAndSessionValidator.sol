@@ -970,9 +970,9 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     }
 
     /// @dev Validates the account's own owner pull, through the token or through Permit2. A batch
-    ///      can pull the session's token once, and `_checkRegistrationExecutions` caps it at what
-    ///      the batch approves in that token, so pulled funds are spent by the same batch. The
-    ///      Permit2 pull ends with a signature of any length, so only a minimum length is checked.
+    ///      can pull the session's token once, up to what the batch approves in that token. The
+    ///      owner's allowance to the HCA, not this rule, limits what a session can pull in total.
+    ///      The Permit2 pull ends with a signature of any length, so only a minimum length is checked.
     function _checkOwnerPull(
         bytes memory callData,
         bool permit2,
