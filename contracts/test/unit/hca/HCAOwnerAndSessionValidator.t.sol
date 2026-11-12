@@ -18,7 +18,7 @@ import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
-import {MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
+import {MockERC1271Owner, MockStandaloneHCA} from "../../mocks/MockStandaloneHCAStack.sol";
 
 /// @title HCA Owner and Session Validator Tests
 /// @notice Exercises owner signatures, session permissions, and registration policies.
@@ -335,30 +335,55 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         view
     {
         (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
-        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
-            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
-                    proof.maxRefundAmount
-                ) <<
-                128) |
-            proof.maxRefundGasOverhead});
-        bytes memory operationData = _initialRefundCommitOperation(permissionId, proof);
-        uint256 nonce = 71;
-        bytes32 digest =
-            validator.singleChainDigestWithRefundHarness(
-                address(hca),
-                nonce,
-                operationData,
-                gasRefund
-            );
+        (bytes32 digest, bytes memory envelope) = _sameChainRoute(proof, permissionId);
 
-        assertEq(
-            hca.validate(
-                validator,
-                digest,
-                _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest)
-            ),
-            ERC1271_MAGICVALUE
-        );
+        assertEq(hca.validate(validator, digest, envelope), ERC1271_MAGICVALUE);
+    }
+
+    function test_validator_acceptsSameChainSessionAuthorizedByContractOwner() public {
+        MockERC1271Owner wallet = _useContractOwner();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        _signOwnerAuthorization(proof, wallet, OWNER_KEY);
+        (bytes32 digest, bytes memory envelope) = _sameChainRoute(proof, permissionId);
+
+        assertEq(hca.validate(validator, digest, envelope), ERC1271_MAGICVALUE);
+    }
+
+    function test_validator_rejectsSameChainSessionWhenContractOwnerRejects() public {
+        MockERC1271Owner wallet = _useContractOwner();
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        _signOwnerAuthorization(proof, wallet, 0xBAD);
+        (bytes32 digest, bytes memory envelope) = _sameChainRoute(proof, permissionId);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
+    }
+
+    function test_validator_rejectsSameChainSessionSignedDirectlyByContractOwnerKey() public {
+        _useContractOwner();
+        // The fixture signs the raw digest with the wallet's key, which the wallet does not accept.
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        (bytes32 digest, bytes memory envelope) = _sameChainRoute(proof, permissionId);
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, envelope);
+    }
+
+    function test_validator_acceptsOwnerSignatureFromContractOwner() public {
+        MockERC1271Owner wallet = _useContractOwner();
+        bytes32 digest = keccak256("owner-signed intent");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, wallet.wrap(digest));
+
+        assertEq(hca.validate(validator, digest, abi.encodePacked(r, s, v)), ERC1271_MAGICVALUE);
+    }
+
+    function test_validator_rejectsOwnerSignatureWhenContractOwnerRejects() public {
+        MockERC1271Owner wallet = _useContractOwner();
+        bytes32 digest = keccak256("owner-signed intent");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xBAD, wallet.wrap(digest));
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(validator, digest, abi.encodePacked(r, s, v));
     }
 
     function test_validator_rejectsInvalidFirstSameChainDigestAndSignature() public {
@@ -814,9 +839,20 @@ contract HCAOwnerAndSessionValidatorTest is Test {
             block.chainid
         ), sessionDigest: destinationSessionDigest});
 
-        bytes32[] memory chainSessionHashes = new bytes32[](2);
-        for (uint256 i; i < 2; ++i) {
-            HCASmartSessionLib.HashAndChainId memory item = proof.hashesAndChainIds[i];
+        (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(
+            OWNER_KEY,
+            _ownerAuthorizationDigest(proof.hashesAndChainIds)
+        );
+    }
+
+    function _ownerAuthorizationDigest(HCASmartSessionLib.HashAndChainId[] memory hashesAndChainIds)
+        internal
+        pure
+        returns (bytes32)
+    {
+        bytes32[] memory chainSessionHashes = new bytes32[](hashesAndChainIds.length);
+        for (uint256 i; i < hashesAndChainIds.length; ++i) {
+            HCASmartSessionLib.HashAndChainId memory item = hashesAndChainIds[i];
             chainSessionHashes[i] = keccak256(
                 abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
             );
@@ -836,8 +872,56 @@ contract HCAOwnerAndSessionValidatorTest is Test {
                     SMART_SESSION_VERSION_HASH
                 )
             );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(OWNER_KEY, digest);
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+    }
+
+    function _useContractOwner() internal returns (MockERC1271Owner wallet) {
+        wallet = new MockERC1271Owner(vm.addr(OWNER_KEY));
+        owner = address(wallet);
+        hca = new MockStandaloneHCA(owner);
+    }
+
+    function _signOwnerAuthorization(
+        SessionEnableProofFixture memory proof,
+        MockERC1271Owner wallet,
+        uint256 privateKey
+    )
+        internal
+        view
+    {
+        (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(
+            privateKey,
+            wallet.wrap(_ownerAuthorizationDigest(proof.hashesAndChainIds))
+        );
+    }
+
+    function _sameChainRoute(SessionEnableProofFixture memory proof, bytes32 permissionId)
+        internal
+        view
+        returns (bytes32 digest, bytes memory envelope)
+    {
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes memory operationData = _initialRefundCommitOperation(permissionId, proof);
+        uint256 nonce = 71;
+        digest = validator.singleChainDigestWithRefundHarness(
+            address(hca),
+            nonce,
+            operationData,
+            gasRefund
+        );
+        envelope = _initialRefundEnvelope(
+            permissionId,
+            proof,
+            nonce,
+            gasRefund,
+            operationData,
+            digest
+        );
     }
 
     function _packProof(SessionEnableProofFixture memory proof)

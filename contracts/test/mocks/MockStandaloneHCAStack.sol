@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
+import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IExecutor} from "nexus/interfaces/modules/IExecutor.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
@@ -55,6 +57,40 @@ contract MockStandaloneHCA {
                 operationHash,
                 signature
             );
+    }
+}
+
+
+/// @title Mock ERC-1271 Owner
+/// @notice Test-only contract owner that verifies signatures over its own domain, like a Safe.
+contract MockERC1271Owner is IERC1271 {
+    /// @notice The key holder whose signatures this contract accepts.
+    address public immutable SIGNER;
+
+    /// @param signer The key holder whose signatures this contract accepts.
+    constructor(address signer) {
+        SIGNER = signer;
+    }
+
+    /// @notice Binds a digest to this contract and chain before it is signed.
+    /// @param hash The digest presented for validation.
+    /// @return The digest the key holder signs.
+    function wrap(bytes32 hash) public view returns (bytes32) {
+        return
+            keccak256(abi.encodePacked("\x19\x01", keccak256(abi.encode(block.chainid, this)), hash));
+    }
+
+    /// @inheritdoc IERC1271
+    function isValidSignature(bytes32 hash, bytes calldata signature)
+        external
+        view
+        returns (bytes4)
+    {
+        (address recovered, ECDSA.RecoverError error, ) = ECDSA.tryRecover(wrap(hash), signature);
+        return
+            error == ECDSA.RecoverError.NoError && recovered == SIGNER
+                ? IERC1271.isValidSignature.selector
+                : bytes4(0xffffffff);
     }
 }
 
