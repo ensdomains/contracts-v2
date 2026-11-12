@@ -60,6 +60,16 @@ contract HCAFundingSessionValidator is HCAValidatorBase {
         bytes data;
     }
 
+    /// @dev Offsets into a validated funding proof; signatures remain in calldata.
+    struct FundingProofView {
+        bytes32 permissionId;
+        uint256 selectedIndex;
+        uint256 sessionsOffset;
+        uint256 entriesEnd;
+        uint256 signatureOffset;
+        uint256 proofEnd;
+    }
+
     /// @notice Reusable owner authorization represented for off-chain construction.
     struct FundingAuthorizationProof {
         uint8 sessionToEnableIndex;
@@ -76,12 +86,11 @@ contract HCAFundingSessionValidator is HCAValidatorBase {
     /// @dev Fixed source-session mode carrying the reusable multi-chain owner authorization.
     bytes1 internal constant FUNDING_SESSION_MODE = 0x04;
 
+    /// @dev Source-session mode with an opaque ERC-1271 owner signature.
+    bytes1 internal constant CONTRACT_FUNDING_SESSION_MODE = 0x07;
+
     /// @dev Selected-session index and entry count preceding packed chain sessions.
     uint256 private constant _FUNDING_PROOF_HEADER_LENGTH = 2;
-
-    /// @dev Fixed proof bytes including the owner signature but excluding chain entries.
-    uint256 private constant _FUNDING_PROOF_BASE_LENGTH =
-        _FUNDING_PROOF_HEADER_LENGTH + HCASignatureLib.SIGNATURE_LENGTH;
 
     /// @notice Rhinestone protocol version used by the supported Across claim.
     bytes2 public constant RHINESTONE_PROTOCOL_VERSION = 0x0001;
@@ -301,32 +310,42 @@ contract HCAFundingSessionValidator is HCAValidatorBase {
         internal
         view
     {
-        (
-            bytes32 permissionId,
-            uint256 selectedIndex,
-            bytes calldata packedSessions,
-            bytes calldata ownerSignature,
-            uint256 proofEnd
-        ) =
+        uint256 proofEnd = _validateFundingAuthorization(data, config);
+        _validateSignedPermit2Claim(
+            hash,
+            data,
+            proofEnd,
+            proofEnd + HCASignatureLib.SIGNATURE_LENGTH + HCAPermit2Lib.CLAIM_DATA_LENGTH,
+            config
+        );
+    }
+
+    /// @dev Checks the reusable authorization before processing its signed funding claim.
+    function _validateFundingAuthorization(bytes calldata data, SessionConfig memory config)
+        internal
+        view
+        returns (uint256)
+    {
+        FundingProofView memory proof =
             _decodeFundingAuthorization(
                 data,
                 HCASignatureLib.SIGNATURE_LENGTH + HCAPermit2Lib.CLAIM_DATA_LENGTH
             );
-        if (proofEnd == 0 || data[0] != FUNDING_SESSION_MODE) {
+        if (
+            proof.proofEnd == 0 ||
+            (data[0] != FUNDING_SESSION_MODE && data[0] != CONTRACT_FUNDING_SESSION_MODE)
+        ) {
             revert InvalidSession();
         }
-        _validateConfig(config, permissionId);
-        uint256 operationOffset =
-            proofEnd + HCASignatureLib.SIGNATURE_LENGTH + HCAPermit2Lib.CLAIM_DATA_LENGTH;
+        _validateConfig(config, proof.permissionId);
         _validateMultiChainAuthorization(
-            msg.sender,
             config,
-            permissionId,
-            selectedIndex,
-            packedSessions,
-            ownerSignature
+            proof.selectedIndex,
+            data[proof.sessionsOffset:proof.entriesEnd],
+            data[proof.signatureOffset:proof.proofEnd],
+            data[0] == CONTRACT_FUNDING_SESSION_MODE
         );
-        _validateSignedPermit2Claim(hash, data, proofEnd, operationOffset, config);
+        return proof.proofEnd;
     }
 
     /// @dev Checks the session signature, Permit2 claim, and matching source operation.
@@ -369,20 +388,19 @@ contract HCAFundingSessionValidator is HCAValidatorBase {
 
     /// @dev Verifies the reusable owner signature and the selected chain session.
     function _validateMultiChainAuthorization(
-        address account,
         SessionConfig memory config,
-        bytes32 permissionId,
         uint256 selectedIndex,
         bytes calldata packedSessions,
-        bytes calldata ownerSignature
+        bytes calldata ownerSignature,
+        bool contractOwner
     )
         internal
         view
     {
         bytes32 salt = _fundingAuthorizationSalt(config);
         (bytes32 expectedPermissionId, bytes32 expectedSessionDigest) =
-            HCASmartSessionLib.authorizationHashes(account, config.sessionKey, salt);
-        if (permissionId != expectedPermissionId) {
+            HCASmartSessionLib.authorizationHashes(msg.sender, config.sessionKey, salt);
+        if (config.permissionId != expectedPermissionId) {
             revert InvalidSession();
         }
         if (
@@ -391,7 +409,8 @@ contract HCAFundingSessionValidator is HCAValidatorBase {
                 expectedSessionDigest,
                 selectedIndex,
                 packedSessions,
-                ownerSignature
+                ownerSignature,
+                contractOwner
             ) !=
             HCASmartSessionLib.AuthorizationStatus.Valid
         ) {
@@ -528,43 +547,36 @@ contract HCAFundingSessionValidator is HCAValidatorBase {
         }
     }
 
-    /// @dev Locates the packed multi-chain authorization and its trailing owner signature.
-    ///      Returns a zero proof end when the envelope cannot contain the required tail.
+    /// @dev Locates the packed authorization and opaque signature, retaining strict bounds checks.
     function _decodeFundingAuthorization(bytes calldata data, uint256 tailLength)
         internal
         pure
-        returns (
-            bytes32 permissionId,
-            uint256 selectedIndex,
-            bytes calldata packedSessions,
-            bytes calldata ownerSignature,
-            uint256 proofEnd
-        )
+        returns (FundingProofView memory proof)
     {
-        packedSessions = data[0:0];
-        ownerSignature = data[0:0];
         uint256 proofOffset = HCASmartSessionLib.ENABLE_PREFIX_LENGTH;
-        if (data.length <= proofOffset + _FUNDING_PROOF_BASE_LENGTH + tailLength) {
-            return (permissionId, selectedIndex, packedSessions, ownerSignature, 0);
-        }
-
-        permissionId = bytes32(data[1:proofOffset]);
-        selectedIndex = uint8(data[proofOffset]);
+        if (data.length <= proofOffset + _FUNDING_PROOF_HEADER_LENGTH + tailLength)
+            return proof;
+        proof.permissionId = bytes32(data[1:proofOffset]);
+        proof.selectedIndex = uint8(data[proofOffset]);
         uint256 chainCount = uint8(data[proofOffset + 1]);
-        if (chainCount == 0) {
-            return (permissionId, selectedIndex, packedSessions, ownerSignature, 0);
+        if (chainCount == 0)
+            return proof;
+        proof.sessionsOffset = proofOffset + _FUNDING_PROOF_HEADER_LENGTH;
+        proof.entriesEnd =
+            proof.sessionsOffset + chainCount * HCASmartSessionLib.AUTHORIZATION_ENTRY_LENGTH;
+        proof.signatureOffset = proof.entriesEnd;
+        if (data[0] == CONTRACT_FUNDING_SESSION_MODE) {
+            (, proof.proofEnd) = HCASignatureLib.decodeContractSignature(
+                data,
+                proof.signatureOffset,
+                tailLength
+            );
+            proof.signatureOffset += 2;
+        } else {
+            proof.proofEnd = proof.signatureOffset + HCASignatureLib.SIGNATURE_LENGTH;
         }
-
-        uint256 sessionsOffset = proofOffset + _FUNDING_PROOF_HEADER_LENGTH;
-        uint256 signatureOffset =
-            sessionsOffset + chainCount * HCASmartSessionLib.AUTHORIZATION_ENTRY_LENGTH;
-        proofEnd = signatureOffset + HCASignatureLib.SIGNATURE_LENGTH;
-        if (proofEnd + tailLength >= data.length) {
-            return (permissionId, selectedIndex, packedSessions, ownerSignature, 0);
-        }
-
-        packedSessions = data[sessionsOffset:signatureOffset];
-        ownerSignature = data[signatureOffset:proofEnd];
+        if (proof.proofEnd == 0 || proof.proofEnd + tailLength >= data.length)
+            proof.proofEnd = 0;
     }
 
     /// @dev Hashes the fields fixed by one source funding session.

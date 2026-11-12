@@ -95,6 +95,7 @@ const config = {
       "test/mocks/MockRegistrationIntentExecutor.sol": hcaCompiler,
       "test/mocks/MockStandaloneHCAStack.sol": hcaCompiler,
       "test/unit/hca/HCAFundingSessionValidator.t.sol": hcaCompiler,
+      "test/unit/hca/HCAContractOwnerSignatures.t.sol": hcaCompiler,
       "test/unit/hca/HCAOwnerAndSessionValidator.t.sol": hcaCompiler,
       "test/unit/hca/StandaloneHCAFactory.t.sol": hcaCompiler,
       "test/unit/hca/StandaloneSingleOwnerHCA.t.sol": hcaCompiler,

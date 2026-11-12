@@ -313,7 +313,7 @@ index f77a7c96e7e1a75c92653dc412283cf6883d45c7..578c774e0e539f224e2fa774605dd001
      destinationSignature: `0x${string}`;
  }>;
 diff --git a/dist/src/execution/utils.js b/dist/src/execution/utils.js
-index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78c89b75ff 100644
+index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..7f07626ac0f9e0a11b1dffbfb79c32bea02debca 100644
 --- a/dist/src/execution/utils.js
 +++ b/dist/src/execution/utils.js
 @@ -27,6 +27,7 @@ const viem_1 = require("viem");
@@ -391,7 +391,31 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
      const targetExecutionSignature = await getTargetExecutionSignature(config, intentRoute.intentOp, targetChain, signers);
      return {
          intentRoute,
-@@ -430,6 +446,14 @@ function getIntentAccount(config, eip7702InitSignature, account) {
+@@ -210,6 +226,10 @@ async function signAuthorizations(config, preparedTransaction) {
+     return await signAuthorizationsInternal(config, preparedTransaction.intentRoute);
+ }
+ async function signMessage(config, message, chain, signers) {
++    if ((0, hca_1.isStandaloneHca)(config) && config.account.ownerSignatureType === 'erc1271' &&
++        (!signers || signers.type === 'owner')) {
++        throw new Error('Contract-owned HCA messages require wallet-specific signing; use typed data for intents and sessions');
++    }
+     const validator = getValidator(config, signers);
+     if (!validator) {
+         throw new Error('Validator not available');
+@@ -252,7 +272,11 @@ async function signTypedData(config, parameters, chain, signers, options) {
+     const signature = await (0, accounts_1.getTypedDataPackedSignature)(config, signers, chain, {
+         address: validator.address,
+         isRoot,
+-    }, parameters);
++    }, parameters, (signature) => (0, hca_1.isStandaloneHca)(config) &&
++        config.account.ownerSignatureType === 'erc1271' && isRoot &&
++        (!signers || signers.type === 'owner')
++        ? (0, viem_1.encodeAbiParameters)([{ type: 'bytes1' }, { type: 'bytes' }], ['0x06', signature])
++        : signature);
+     if (!options?.skipErc6492) {
+         return await (0, accounts_1.toErc6492Signature)(config, signature, chain);
+     }
+@@ -430,6 +454,14 @@ function getIntentAccount(config, eip7702InitSignature, account) {
  async function prepareTransactionAsIntent(config, sourceChains, targetChain, callInputs, gasLimit, tokenRequests, recipientInput, sponsored, eip7702InitSignature, settlementLayers, sourceAssets, feeAsset, lockFunds, auxiliaryFunds, account, signers, sourceCalls) {
      const calls = parseCalls(callInputs, targetChain.id);
      const accountAccessList = createAccountAccessList(sourceChains, sourceAssets);
@@ -406,7 +430,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
      function getRecipient(recipient) {
          if (typeof recipient === 'string') {
              // Passed as an address, assume it's an EOA
-@@ -447,7 +471,7 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+@@ -447,7 +479,7 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
      }
      const intentAccount = {
          ...getIntentAccount(config, eip7702InitSignature, account),
@@ -415,7 +439,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
              // Global fallback: target-chain sig for backward-compat with older orchestrators
              mockSignature: (0, validators_1.buildMockSignature)(resolveSessionForChain(signers, targetChain.id).session, config.useDevContracts, sourceChains?.length ?? 1),
              // Per-chain map: enables accurate per-chain session validation gas simulation
-@@ -463,7 +487,6 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+@@ -463,7 +495,6 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
          }),
      };
      const recipient = getRecipient(recipientInput);
@@ -423,7 +447,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
      // For session signers that need enabling, pass a dummy preclaimop per source chain
      // so the orchestrator bakes it into the bundle before computing its HMAC. The filler
      // executes the op via verifyExecution in ENABLE mode, enabling the session on-chain
-@@ -481,6 +504,8 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+@@ -481,6 +512,8 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
              const { enableData, verifyExecutions } = resolved;
              if (!verifyExecutions || !enableData)
                  continue;
@@ -432,7 +456,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
              preClaimExecutions[chainId] = [
                  {
                      to: validators_1.DUMMY_PRECLAIMOP_TARGET,
-@@ -554,8 +579,13 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
+@@ -554,8 +587,13 @@ async function prepareTransactionAsIntent(config, sourceChains, targetChain, cal
      const intentRoute = await orchestrator.getIntentRoute(metaIntent);
      return { intentRoute, intentInput: serializedIntent };
  }
@@ -447,7 +471,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
      if (config.account?.type === 'eoa') {
          const eoa = config.eoa;
          if (!eoa) {
-@@ -571,7 +601,13 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
+@@ -571,7 +609,13 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
                  throw new accounts_1.EoaSigningMethodNotConfiguredError('signTypedData');
              }
          }
@@ -462,7 +486,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
          return {
              originSignatures,
              destinationSignature,
-@@ -590,13 +626,53 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
+@@ -590,13 +634,53 @@ async function signIntent(config, intentOp, targetChain, signers, targetExecutio
          const signature = await signIntentTypedData(config, originSigners, validator, isRoot, typedData, chain, targetExecution ?? false);
          originSignatures.push(signature);
      }
@@ -518,7 +542,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
  async function getDestinationSignature(config, signers, validator, isRoot, targetChain, destination, originSignatures, targetExecution) {
      // Smart sessions require a separate destination signature because the
      // session enable data differs per chain
-@@ -662,6 +738,32 @@ function getTargetExecutionMessage(config, intentOp) {
+@@ -662,6 +746,32 @@ function getTargetExecutionMessage(config, intentOp) {
      };
      return typedData;
  }
@@ -551,10 +575,17 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
  /** Computes claim policy calldata when parameters are Permit2 typed data with claim policies. */
  function resolveClaimPolicyData(signers, parameters) {
      if (parameters.primaryType !== 'PermitBatchWitnessTransferFrom' ||
-@@ -679,6 +781,45 @@ function resolveClaimPolicyData(signers, parameters) {
+@@ -679,6 +789,52 @@ function resolveClaimPolicyData(signers, parameters) {
      return (0, permit2_1.buildPermit2ClaimPolicyCalldata)(signers.session.claimPolicies[0], parameters.message);
  }
  async function signIntentTypedData(config, signers, validator, isRoot, parameters, chain, targetExecution) {
++    if ((0, hca_1.isStandaloneHca)(config) &&
++        config.account.ownerSignatureType === 'erc1271' && isRoot &&
++        (!signers || signers.type === 'owner')) {
++        return (0, accounts_1.getTypedDataPackedSignature)(config, signers, chain,
++            { address: validator.address, isRoot }, parameters,
++            (signature) => (0, viem_1.encodeAbiParameters)([{ type: 'bytes1' }, { type: 'bytes' }], ['0x06', signature]));
++    }
 +    if ((0, hca_1.isStandaloneHca)(config) &&
 +        isResolvedSessionSignerSet(signers) &&
 +        signers.verifyExecutions &&
@@ -597,7 +628,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
      if ((0, core_1.supportsEip712)(validator)) {
          const isK1Validator = validator.address.toLowerCase() ===
              startale_1.K1_DEFAULT_VALIDATOR_ADDRESS.toLowerCase();
-@@ -738,6 +879,304 @@ async function signIntentTypedData(config, signers, validator, isRoot, parameter
+@@ -738,7 +894,312 @@ async function signIntentTypedData(config, signers, validator, isRoot, parameter
          isRoot,
      }, hash);
  }
@@ -681,21 +712,15 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
 +        throw new Error('HCA funding session has an unexpected Permit2 claim shape');
 +    }
 +    const operationData = packIntentOperation(message.mandate.originOps);
-+    const userSignature = signers.enableData.userSignature;
-+    if ((0, viem_1.size)(userSignature) !== 85 ||
-+        (0, viem_1.slice)(userSignature, 0, 20).toLowerCase() !== viem_1.zeroAddress.toLowerCase()) {
-+        throw new Error('HCA funding session owner signature has an unexpected shape');
-+    }
 +    if (message.permitted?.[0]?.token?.toLowerCase() !== fundingConfig.sourceToken.toLowerCase() ||
 +        message.mandate.target.recipient.toLowerCase() !==
 +            fundingConfig.destinationRecipient.toLowerCase()) {
 +        throw new Error('HCA funding session Permit2 route does not match its fixed policy');
 +    }
-+    const { r: ownerR, s: ownerS, v: ownerV, yParity: ownerYParity, } = (0, viem_1.parseSignature)((0, viem_1.slice)(userSignature, 20));
-+    const proofData = packHcaAuthorizationProof(signers.enableData, ownerR, ownerS, Number(ownerV ?? BigInt(27 + (ownerYParity ?? 0))));
++    const proofData = packHcaAuthorizationProof(signers.enableData);
 +    return (0, viem_1.encodePacked)(['address', 'bytes1', 'bytes32', 'bytes', 'bytes', 'bytes', 'bytes'], [
 +        module,
-+        '0x04',
++        hcaOwnerAuthorization(signers.enableData.userSignature).contractOwner ? '0x07' : '0x04',
 +        permissionId,
 +        proofData,
 +        (0, viem_1.slice)(packedSessionSignature, 85, 150),
@@ -703,25 +728,41 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
 +        operationData,
 +    ]);
 +}
-+function packHcaAuthorizationProof(enableData, ownerR, ownerS, ownerV) {
++function hcaOwnerAuthorization(userSignature) {
++    if ((0, viem_1.size)(userSignature) < 20 ||
++        (0, viem_1.slice)(userSignature, 0, 20).toLowerCase() !== viem_1.zeroAddress.toLowerCase()) {
++        throw new Error('HCA owner authorization requires the default-validator prefix');
++    }
++    const signature = (0, viem_1.slice)(userSignature, 20);
++    if ((0, viem_1.size)(signature) === 65) {
++        const { r, s, v, yParity } = (0, viem_1.parseSignature)(signature);
++        return { contractOwner: false, signature: (0, viem_1.concat)([r, s,
++            (0, viem_1.toHex)(Number(v ?? BigInt(27 + (yParity ?? 0))), { size: 1 })]) };
++    }
++    const types = [{ type: 'bytes1' }, { type: 'bytes' }];
++    const [mode, opaque] = (0, viem_1.decodeAbiParameters)(types, signature);
++    if (mode !== '0x06' ||
++        (0, viem_1.encodeAbiParameters)(types, [mode, opaque]).toLowerCase() !== signature.toLowerCase() ||
++        (0, viem_1.size)(opaque) > 0xffff) {
++        throw new Error('Malformed HCA contract-owner authorization');
++    }
++    return { contractOwner: true, signature: (0, viem_1.concat)([
++        (0, viem_1.toHex)((0, viem_1.size)(opaque), { size: 2 }), opaque]) };
++}
++function packHcaAuthorizationProof(enableData) {
 +    const sessions = enableData.hashesAndChainIds;
 +    const selectedIndex = Number(enableData.sessionToEnableIndex);
-+    if (!Array.isArray(sessions) ||
-+        sessions.length === 0 ||
-+        sessions.length > 0xff ||
-+        !Number.isInteger(selectedIndex) ||
-+        selectedIndex < 0 ||
-+        selectedIndex >= sessions.length) {
++    if (!Array.isArray(sessions) || sessions.length === 0 || sessions.length > 0xff ||
++        !Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= sessions.length) {
 +        throw new Error('HCA multi-chain authorization is malformed');
 +    }
-+    const packed = [
-+        (0, viem_1.toHex)(selectedIndex, { size: 1 }),
-+        (0, viem_1.toHex)(sessions.length, { size: 1 }),
-+    ];
++    const packed = [(0, viem_1.toHex)(selectedIndex, { size: 1 }),
++        (0, viem_1.toHex)(sessions.length, { size: 1 })];
 +    for (const session of sessions) {
-+        packed.push((0, viem_1.encodePacked)(['uint64', 'bytes32'], [BigInt(session.chainId), session.sessionDigest]));
++        packed.push((0, viem_1.encodePacked)(['uint64', 'bytes32'],
++            [BigInt(session.chainId), session.sessionDigest]));
 +    }
-+    packed.push(ownerR, ownerS, (0, viem_1.toHex)(ownerV, { size: 1 }));
++    packed.push(hcaOwnerAuthorization(enableData.userSignature).signature);
 +    return (0, viem_1.concat)(packed);
 +}
 +function buildStandaloneHcaEnableProof(signers, permissionId, enableOperation) {
@@ -759,12 +800,6 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
 +        signers.enableData.hcaSessionNonce === undefined) {
 +        throw new Error('Standalone HCA enable operation does not match its session');
 +    }
-+    const userSignature = signers.enableData.userSignature;
-+    if ((0, viem_1.size)(userSignature) !== 85 ||
-+        (0, viem_1.slice)(userSignature, 0, 20).toLowerCase() !== viem_1.zeroAddress.toLowerCase()) {
-+        throw new Error('Standalone HCA owner authorization has an unexpected shape');
-+    }
-+    const { r: ownerR, s: ownerS, v: ownerV, yParity: ownerYParity, } = (0, viem_1.parseSignature)((0, viem_1.slice)(userSignature, 20));
 +    return (0, viem_1.concat)([
 +        (0, viem_1.encodePacked)(['address', 'uint48', 'uint96', 'address', 'address', 'uint96', 'uint48', 'uint96'], [
 +            sessionKey,
@@ -776,7 +811,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
 +            maxRefundGasOverhead,
 +            maxRefundAmount,
 +        ]),
-+        packHcaAuthorizationProof(signers.enableData, ownerR, ownerS, Number(ownerV ?? BigInt(27 + (ownerYParity ?? 0)))),
++        packHcaAuthorizationProof(signers.enableData),
 +    ]);
 +}
 +function packStandaloneHcaPermit2SessionSignature(config, signers, parameters, packedSessionSignature) {
@@ -820,7 +855,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
 +    return (0, viem_1.concat)([
 +        viem_1.zeroAddress,
 +        (0, viem_1.encodePacked)(['bytes1', 'bytes32', 'bytes', 'uint256', 'bytes', 'bytes', 'bytes'], [
-+            '0x04',
++            hcaOwnerAuthorization(signers.enableData.userSignature).contractOwner ? '0x07' : '0x04',
 +            permissionId,
 +            proofData,
 +            sourceChainId,
@@ -866,7 +901,7 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
 +        return (0, viem_1.concat)([
 +            viem_1.zeroAddress,
 +            (0, viem_1.encodePacked)(['bytes1', 'bytes32', 'bytes', 'uint256', 'address', 'uint96', 'uint96', 'uint48', 'bytes', 'bytes'], [
-+                '0x05',
++                hcaOwnerAuthorization(signers.enableData.userSignature).contractOwner ? '0x08' : '0x05',
 +                permissionId,
 +                proofData,
 +                BigInt(message.nonce),
@@ -900,8 +935,12 @@ index 8e43c7a314d93072c6ef9e74bcee7cc31aa60329..3fa080e46b35204e3f6a9d3ea35dca78
 +    return (0, viem_1.concat)([viem_1.zeroAddress, sessionEnvelope]);
 +}
  async function signUserOp(config, chain, signers, userOp) {
++    if ((0, hca_1.isStandaloneHca)(config) && config.account.ownerSignatureType === 'erc1271') {
++        throw new Error('Contract-owned HCA UserOperations are not supported; use an intent or direct owner execution');
++    }
      const validator = getValidator(config, signers);
      if (!validator) {
+         throw new Error('Validator not available');
 diff --git a/dist/src/index.d.ts b/dist/src/index.d.ts
 index 65670fb2f50b45a1f810414a1c4aad816958ef7e..fd598e6c86eb07cb35797fc0f78559c61955253d 100644
 --- a/dist/src/index.d.ts
@@ -1011,10 +1050,10 @@ index 17a419494de4548b759a9a33df5fcff378c349ba..1694e42aa1a1100bbee07b26c2dac771
          additionalContext: '0x',
          type: common_1.MODULE_TYPE_ID_VALIDATOR,
 diff --git a/dist/src/types.d.ts b/dist/src/types.d.ts
-index 6d4ec528d6c661a14fbf019b20855a7ff05cb94a..b1e8ca749397e99b9367b627a6f78c6c767a87c7 100644
+index 6d4ec528d6c661a14fbf019b20855a7ff05cb94a..5edf39532d7644752febd331b55e5a35d126189e 100644
 --- a/dist/src/types.d.ts
 +++ b/dist/src/types.d.ts
-@@ -26,9 +26,21 @@ interface StartaleAccount {
+@@ -26,9 +26,23 @@ interface StartaleAccount {
  interface PassportAccount {
      type: 'passport';
  }
@@ -1032,12 +1071,14 @@ index 6d4ec528d6c661a14fbf019b20855a7ff05cb94a..b1e8ca749397e99b9367b627a6f78c6c
 +    verifiableFactory: Address;
 +    proxyLogic: Address;
 +    userSalt?: bigint;
++    /** Explicit wallet-defined ERC-1271 signatures; omitted preserves EOA/root-key signing. */
++    ownerSignatureType?: 'ecdsa' | 'erc1271';
 +}
 +type HcaAccount = LegacyHcaAccount | StandaloneHcaAccount;
  interface EoaAccount {
      type: 'eoa';
  }
-@@ -161,6 +173,8 @@ interface ScopedAction {
+@@ -161,6 +175,8 @@ interface ScopedAction {
  }
  type Action = FallbackAction | ScopedAction;
  interface SessionInput {
@@ -1046,7 +1087,7 @@ index 6d4ec528d6c661a14fbf019b20855a7ff05cb94a..b1e8ca749397e99b9367b627a6f78c6c
      owners: OwnerSet;
      actions?: Action[];
      claimPolicies?: [Permit2ClaimPolicy];
-@@ -185,6 +199,7 @@ interface RhinestoneAccountConfig {
+@@ -185,6 +201,7 @@ interface RhinestoneAccountConfig {
      experimental_sessions?: {
          enabled: boolean;
          module?: Address;
@@ -1054,7 +1095,7 @@ index 6d4ec528d6c661a14fbf019b20855a7ff05cb94a..b1e8ca749397e99b9367b627a6f78c6c
          compatibilityFallback?: Address;
      };
      recovery?: Recovery;
-@@ -313,6 +328,16 @@ interface SessionEnableData {
+@@ -313,6 +330,16 @@ interface SessionEnableData {
          sessionDigest: Hex;
      }[];
      sessionToEnableIndex: number;
@@ -1071,7 +1112,7 @@ index 6d4ec528d6c661a14fbf019b20855a7ff05cb94a..b1e8ca749397e99b9367b627a6f78c6c
  }
  interface ChainSessionConfig {
      session: Session;
-@@ -388,5 +413,5 @@ interface UserOperationTransaction {
+@@ -388,5 +415,5 @@ interface UserOperationTransaction {
      chain: Chain;
  }
  type Transaction = SameChainTransaction | CrossChainTransaction;

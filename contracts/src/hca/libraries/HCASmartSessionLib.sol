@@ -73,54 +73,34 @@ library HCASmartSessionLib {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Validates the selected chain session and its multi-chain owner signature.
-    /// @dev Reconstructs the ENS-specific digest before recovering the authorizing signer.
+    /// @dev Reconstructs the ENS-specific digest before checking the owner authorization.
     /// @param expectedOwner The owner that authorized the session set.
     /// @param expectedSessionDigest The session digest authorized for the current chain.
     /// @param selectedIndex The current chain's index in `hashesAndChainIds`.
     /// @param packedSessions Packed chain identifiers and session digests covered by the signature.
-    /// @param ownerSignature The owner's ECDSA signature over the multi-chain authorization.
+    /// @param ownerSignature The owner signature over the multi-chain authorization.
+    /// @param contractOwner Whether to use the owner's ERC-1271 code, including a 7702 wallet.
     /// @return status Whether selection and signer validation succeeded.
     function validateMultiChainAuthorization(
         address expectedOwner,
         bytes32 expectedSessionDigest,
         uint256 selectedIndex,
         bytes calldata packedSessions,
-        bytes calldata ownerSignature
+        bytes calldata ownerSignature,
+        bool contractOwner
     )
         internal
         view
         returns (AuthorizationStatus status)
     {
-        uint256 packedLength = packedSessions.length;
-        uint256 count = packedLength / AUTHORIZATION_ENTRY_LENGTH;
-        if (
-            count == 0 ||
-            packedLength != count * AUTHORIZATION_ENTRY_LENGTH ||
-            selectedIndex >= count
-        ) {
+        (bytes32 digest, bool selected) =
+            _authorizationDigest(expectedSessionDigest, selectedIndex, packedSessions);
+        if (!selected)
             return AuthorizationStatus.InvalidSelection;
-        }
-
-        uint256 selectedOffset = selectedIndex * AUTHORIZATION_ENTRY_LENGTH;
-        uint64 selectedChainId = uint64(bytes8(packedSessions[selectedOffset:selectedOffset + 8]));
-        bytes32 selectedSessionDigest =
-            bytes32(packedSessions[selectedOffset + 8:selectedOffset + AUTHORIZATION_ENTRY_LENGTH]);
-        if (selectedChainId != block.chainid || selectedSessionDigest != expectedSessionDigest) {
-            return AuthorizationStatus.InvalidSelection;
-        }
-
-        bytes32[] memory chainSessionHashes = new bytes32[](count);
-        for (uint256 i; i < count; ++i) {
-            uint256 offset = i * AUTHORIZATION_ENTRY_LENGTH;
-            chainSessionHashes[i] = chainSessionHash(
-                uint64(bytes8(packedSessions[offset:offset + 8])),
-                bytes32(packedSessions[offset + 8:offset + AUTHORIZATION_ENTRY_LENGTH])
-            );
-        }
-        address signer =
-            HCASignatureLib.recover(multiChainDigest(chainSessionHashes), ownerSignature);
-        return
-            signer == expectedOwner ? AuthorizationStatus.Valid : AuthorizationStatus.InvalidSigner;
+        bool valid = contractOwner
+            ? HCASignatureLib.isValidContractSignature(expectedOwner, digest, ownerSignature)
+            : HCASignatureLib.recover(digest, ownerSignature) == expectedOwner;
+        return valid ? AuthorizationStatus.Valid : AuthorizationStatus.InvalidSigner;
     }
 
     /// @notice Derives the hashes that bind a one-of-one key to an account and policy.
@@ -204,5 +184,48 @@ library HCASmartSessionLib {
                 )
             );
         return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Private Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Validates the selected session and reconstructs the shared authorization digest.
+    function _authorizationDigest(
+        bytes32 expectedSessionDigest,
+        uint256 selectedIndex,
+        bytes calldata packedSessions
+    )
+        private
+        view
+        returns (bytes32 digest, bool valid)
+    {
+        uint256 packedLength = packedSessions.length;
+        uint256 count = packedLength / AUTHORIZATION_ENTRY_LENGTH;
+        if (
+            count == 0 ||
+            packedLength != count * AUTHORIZATION_ENTRY_LENGTH ||
+            selectedIndex >= count
+        ) {
+            return (bytes32(0), false);
+        }
+
+        uint256 selectedOffset = selectedIndex * AUTHORIZATION_ENTRY_LENGTH;
+        uint64 selectedChainId = uint64(bytes8(packedSessions[selectedOffset:selectedOffset + 8]));
+        bytes32 selectedSessionDigest =
+            bytes32(packedSessions[selectedOffset + 8:selectedOffset + AUTHORIZATION_ENTRY_LENGTH]);
+        if (selectedChainId != block.chainid || selectedSessionDigest != expectedSessionDigest) {
+            return (bytes32(0), false);
+        }
+
+        bytes32[] memory chainSessionHashes = new bytes32[](count);
+        for (uint256 i; i < count; ++i) {
+            uint256 offset = i * AUTHORIZATION_ENTRY_LENGTH;
+            chainSessionHashes[i] = chainSessionHash(
+                uint64(bytes8(packedSessions[offset:offset + 8])),
+                bytes32(packedSessions[offset + 8:offset + AUTHORIZATION_ENTRY_LENGTH])
+            );
+        }
+        return (multiChainDigest(chainSessionHashes), true);
     }
 }

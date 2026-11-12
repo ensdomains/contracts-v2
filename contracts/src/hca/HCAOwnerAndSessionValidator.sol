@@ -57,6 +57,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         uint48 maxRefundGasOverhead;
         uint96 maxRefundAmount;
         uint8 sessionToEnableIndex;
+        bool contractOwner;
     }
 
     /// @dev State collected while the validator checks one operation batch.
@@ -87,12 +88,13 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     /// @dev Single-chain mode carrying one reusable multi-chain session authorization.
     bytes1 internal constant FIXED_SESSION_REFUND_ENABLE_MODE = 0x05;
 
+    /// @dev Permit2 session mode carrying an opaque ERC-1271 owner signature.
+    bytes1 internal constant CONTRACT_SESSION_PERMIT2_MODE = 0x07;
+    /// @dev Same-chain session mode carrying an opaque ERC-1271 owner signature.
+    bytes1 internal constant CONTRACT_SESSION_REFUND_MODE = 0x08;
+
     /// @dev Fixed fields in a packed session authorization before its chain entries.
     uint256 private constant _SESSION_PROOF_HEADER_LENGTH = 110;
-
-    /// @dev Fixed proof bytes including the owner signature but excluding chain entries.
-    uint256 private constant _SESSION_PROOF_BASE_LENGTH =
-        _SESSION_PROOF_HEADER_LENGTH + HCASignatureLib.SIGNATURE_LENGTH;
 
     /// @dev Packed fields after a first-use proof and before its single-chain operation.
     uint256 internal constant FIXED_SESSION_REFUND_ENABLE_FIELDS_LENGTH = 82;
@@ -224,7 +226,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     /// @notice Validates an HCA owner signature or reusable fixed-session proof.
     /// @param sender The caller forwarded by the account.
     /// @param hash The digest supplied by the intent executor.
-    /// @param data A 65-byte owner signature or fixed-session envelope.
+    /// @param data A legacy owner signature, opaque ERC-1271 owner signature, or fixed-session envelope.
     /// @return magicValue ERC-1271 success value.
     function isValidSignatureWithSender(address sender, bytes32 hash, bytes calldata data)
         external
@@ -239,6 +241,10 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
             if (HCASignatureLib.recover(hash, data) != expectedOwner) {
                 revert InvalidSigner();
             }
+        } else if (data.length >= 96 && data[0] == 0x06) {
+            (address expectedOwner, ) = _ownerAndSessionNonce(msg.sender);
+            if (!HCASignatureLib.isValidContractEnvelope(expectedOwner, hash, data))
+                revert InvalidSigner();
         } else {
             _validateFixedSession(hash, data);
         }
@@ -318,11 +324,11 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         }
 
         bytes1 mode = data[0];
-        if (mode == FIXED_SESSION_PERMIT2_ENABLE_MODE) {
+        if (mode == FIXED_SESSION_PERMIT2_ENABLE_MODE || mode == CONTRACT_SESSION_PERMIT2_MODE) {
             _validateFixedPermit2SessionEnable(hash, data);
             return;
         }
-        if (mode == FIXED_SESSION_REFUND_ENABLE_MODE) {
+        if (mode == FIXED_SESSION_REFUND_ENABLE_MODE || mode == CONTRACT_SESSION_REFUND_MODE) {
             _validateFixedRefundSessionEnable(hash, data);
             return;
         }
@@ -384,7 +390,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         _validateMultiChainSessionAuthorization(
             owner_,
             sessionDigest,
-            proof.sessionToEnableIndex,
+            proof,
             packedSessions,
             ownerSignature
         );
@@ -483,7 +489,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     function _validateMultiChainSessionAuthorization(
         address owner_,
         bytes32 expectedSessionDigest,
-        uint256 selectedIndex,
+        SessionEnableProof memory proof,
         bytes calldata packedSessions,
         bytes calldata ownerSignature
     )
@@ -494,9 +500,10 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
             HCASmartSessionLib.validateMultiChainAuthorization(
                 owner_,
                 expectedSessionDigest,
-                selectedIndex,
+                proof.sessionToEnableIndex,
                 packedSessions,
-                ownerSignature
+                ownerSignature,
+                proof.contractOwner
             );
         if (status == HCASmartSessionLib.AuthorizationStatus.InvalidSelection) {
             revert InvalidSessionData();
@@ -856,7 +863,7 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         packedSessions = data[0:0];
         ownerSignature = data[0:0];
         uint256 proofOffset = HCASmartSessionLib.ENABLE_PREFIX_LENGTH;
-        if (data.length <= proofOffset + _SESSION_PROOF_BASE_LENGTH + tailLength) {
+        if (data.length <= proofOffset + _SESSION_PROOF_HEADER_LENGTH + tailLength) {
             return (permissionId, proof, packedSessions, ownerSignature, 0);
         }
 
@@ -869,8 +876,18 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
         uint256 sessionsOffset = proofOffset + _SESSION_PROOF_HEADER_LENGTH;
         uint256 signatureOffset =
             sessionsOffset + chainCount * HCASmartSessionLib.AUTHORIZATION_ENTRY_LENGTH;
-        proofEnd = signatureOffset + HCASignatureLib.SIGNATURE_LENGTH;
-        if (proofEnd + tailLength >= data.length) {
+        if (data[0] == CONTRACT_SESSION_PERMIT2_MODE || data[0] == CONTRACT_SESSION_REFUND_MODE) {
+            (ownerSignature, proofEnd) = HCASignatureLib.decodeContractSignature(
+                data,
+                signatureOffset,
+                tailLength
+            );
+        } else {
+            proofEnd = signatureOffset + HCASignatureLib.SIGNATURE_LENGTH;
+            if (proofEnd + tailLength < data.length)
+                ownerSignature = data[signatureOffset:proofEnd];
+        }
+        if (proofEnd == 0 || proofEnd + tailLength >= data.length) {
             return (permissionId, proof, packedSessions, ownerSignature, 0);
         }
 
@@ -882,9 +899,10 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
             bytes12(data[proofOffset + 78:proofOffset + 90])
         ), maxRefundGasOverhead: uint48(bytes6(data[proofOffset + 90:proofOffset + 96])), maxRefundAmount: uint96(
             bytes12(data[proofOffset + 96:proofOffset + 108])
-        ), sessionToEnableIndex: uint8(data[proofOffset + 108])});
+        ), sessionToEnableIndex: uint8(data[proofOffset + 108]), contractOwner: false});
+        proof.contractOwner =
+            data[0] == CONTRACT_SESSION_PERMIT2_MODE || data[0] == CONTRACT_SESSION_REFUND_MODE;
         packedSessions = data[sessionsOffset:signatureOffset];
-        ownerSignature = data[signatureOffset:proofEnd];
     }
 
     /// @dev Validates one leg of an optional EIP-2612 funding pull into the HCA.
