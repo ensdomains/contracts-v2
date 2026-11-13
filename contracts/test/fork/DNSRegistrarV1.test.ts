@@ -25,7 +25,7 @@ async function fixture() {
 }
 
 describe("DNSRegistrar", () => {
-  it("enableNode", async () => {
+  it("enableNode()", async () => {
     const F = await connection.networkHelpers.loadFixture(fixture);
 
     const tld = "com";
@@ -34,5 +34,21 @@ describe("DNSRegistrar", () => {
     await expect(
       F.v1.ENSRegistry.read.resolver([namehash(tld)]),
     ).resolves.toStrictEqual(F.v1.OffchainDNSResolver.address);
+  });
+
+  it("resolver()", async () => {
+    const F = await connection.networkHelpers.loadFixture(fixture);
+
+    await expect(F.v1.DNSRegistrar.read.resolver()).resolves.toStrictEqual(
+      F.v1.OffchainDNSResolver.address,
+    );
+  });
+
+  it("oracle()", async () => {
+    const F = await connection.networkHelpers.loadFixture(fixture);
+
+    await expect(F.v1.DNSRegistrar.read.oracle()).resolves.toStrictEqual(
+      F.DNSSECImpl.address,
+    );
   });
 });

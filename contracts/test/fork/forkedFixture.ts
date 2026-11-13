@@ -58,11 +58,11 @@ export async function forkAndAttach(network = "mainnet") {
     );
     const OffchainDNSResolver = await connection.viem.getContractAt(
       "OffchainDNSResolver",
-      "0x965e1eC7510E9fEDE8F754A6e8662e068c770388",
+      "0xA4A2d86B30896fe5c4f2A7F2Ee0BDE3dbff26924",
     );
     const DNSRegistrar = await connection.viem.getContractAt(
       "DNSRegistrar",
-      "0x941DE2288fa17886fD5e0dCE9341954612c90aeF",
+      "0x084462610a20efbdb686b30fe587eca0e234d2ef",
     );
     const SimplePublicSuffixList = await connection.viem.getContractAt(
       "SimplePublicSuffixList",

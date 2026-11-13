@@ -74,7 +74,7 @@ async function fixture() {
 const loadFixture = () => connection.networkHelpers.loadFixture(fixture);
 
 describe("TemporaryDNSRegistrar", () => {
-  it("syncTLD", async () => {
+  it("syncTLD()", async () => {
     const F = await loadFixture();
 
     const tld = "com";
