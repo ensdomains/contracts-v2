@@ -42,6 +42,7 @@ import { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
 import { Abi_MigrationHelper } from "generated/abis/src/migration/MigrationHelper.sol/MigrationHelper.js";
 // erc20
 import { Abi_MockERC20 } from "generated/abis/test/mocks/MockERC20.sol/MockERC20.js";
+import { Abi_MockERC20Capped } from "generated/abis/MockERC20Capped.js";
 // hca
 import { Abi_MockRegistrationIntentExecutor } from "generated/abis/MockRegistrationIntentExecutor.js";
 import { Abi_HCAOwnerAndSessionValidator } from "generated/abis/HCAOwnerAndSessionValidator.js";
@@ -594,7 +595,7 @@ export async function setupDevnet({
 
     const erc20 = {
       MockUSDC: getContract({
-        abi: Abi_MockERC20,
+        abi: Abi_MockERC20Capped,
         address: rocketh.get("MockUSDC").address,
         client,
       }),
