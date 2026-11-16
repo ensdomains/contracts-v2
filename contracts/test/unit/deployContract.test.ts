@@ -20,9 +20,12 @@ import {
 } from "viem";
 
 import {
+  addressPagesToRefresh,
   coerceConstructorArgs,
+  DEFAULT_DEPLOYMENTS_DIR,
   deployContract,
   planVerification,
+  privateChainReason,
   resolveArtifact,
 } from "../../script/deployContract.js";
 
@@ -248,6 +251,13 @@ describe("planVerification", () => {
     expect(plan.skipped).toContain("local node");
   });
 
+  it("names a development node at any host as one no explorer can see", async () => {
+    fakeNetwork({ clientVersion: "anvil/v1.5.1" });
+    expect(await privateChainReason(RPC_URL)).toContain("anvil/v1.5.1");
+    fakeNetwork({});
+    expect(await privateChainReason(RPC_URL)).toBeUndefined();
+  });
+
   it("skips a development node", async () => {
     fakeNetwork({ clientVersion: "anvil/v1.5.1" });
     const plan = await planVerification(RPC_URL, ["etherscan", "sourcify"]);
@@ -289,6 +299,48 @@ describe("planVerification", () => {
     delete process.env.ETHERSCAN_API_KEY;
     const plan = await planVerification(RPC_URL, ["sourcify"]);
     expect(plan).toEqual({ backends: ["sourcify"] });
+  });
+});
+
+describe("addressPagesToRefresh", () => {
+  let docsDir: string;
+
+  beforeAll(() => {
+    docsDir = mkdtempSync(join(tmpdir(), "address-pages-"));
+    writeFileSync(join(docsDir, "mainnet.md"), "");
+  });
+
+  afterAll(() => rmSync(docsDir, { recursive: true, force: true }));
+
+  const pages = (
+    overrides: Partial<Parameters<typeof addressPagesToRefresh>[0]>,
+  ) =>
+    addressPagesToRefresh({
+      deploymentsDir: DEFAULT_DEPLOYMENTS_DIR,
+      namespace: "mainnet-adhoc",
+      privateReason: undefined,
+      docsDir,
+      ...overrides,
+    });
+
+  it("refreshes the published network of a record in the canonical tree", () => {
+    expect(pages({})).toBe("mainnet");
+    expect(pages({ namespace: "mainnet" })).toBe("mainnet");
+  });
+
+  it("refreshes nothing for a chain no explorer can see", () => {
+    expect(pages({ privateReason: "the RPC is a development node" })).toBe(
+      undefined,
+    );
+  });
+
+  it("refreshes nothing for records outside the canonical tree", () => {
+    expect(pages({ deploymentsDir: tmpdir() })).toBe(undefined);
+  });
+
+  it("refreshes nothing for a network without a published page", () => {
+    expect(pages({ namespace: "mainnet-fork" })).toBe(undefined);
+    expect(pages({ namespace: "sepolia-adhoc" })).toBe(undefined);
   });
 });
 
@@ -360,10 +412,58 @@ describe("deployContract", () => {
   });
 
   it("reuses the record when the code and arguments are unchanged", async () => {
+    const namespace = "reuse-adhoc";
+    const original = await deploy({ namespace });
     const blockBefore = await publicClient.getBlockNumber();
-    const first = await deploy({});
-    expect(first?.newlyDeployed).toBe(false);
+    const again = await deploy({ namespace });
+    expect(again?.newlyDeployed).toBe(false);
+    expect(again!.address).toBe(original!.address);
     expect(await publicClient.getBlockNumber()).toBe(blockBefore);
+  });
+
+  it("reuses the record when only the compiler metadata differs", async () => {
+    const namespace = "metadata-adhoc";
+    const original = await deploy({ namespace });
+    const metadataHashes = /(?<=a264697066735822)[0-9a-f]{68}/gi;
+    const code = await publicClient.getCode({ address: original!.address });
+    await publicClient.request({
+      method: "anvil_setCode" as any,
+      params: [
+        original!.address,
+        code!.replace(metadataHashes, "11".repeat(34)),
+      ] as any,
+    });
+    const record = JSON.parse(readFileSync(original!.recordFile, "utf8"));
+    record.bytecode = record.bytecode.replace(metadataHashes, "22".repeat(34));
+    writeFileSync(original!.recordFile, JSON.stringify(record));
+
+    const again = await deploy({ namespace });
+    expect(again?.newlyDeployed).toBe(false);
+    expect(again!.address).toBe(original!.address);
+  });
+
+  it("replaces the record when its creation code differs from the build", async () => {
+    const namespace = "constructor-adhoc";
+    const original = await deploy({ namespace });
+    const record = JSON.parse(readFileSync(original!.recordFile, "utf8"));
+    record.bytecode = `0xfe${record.bytecode.slice(4)}`;
+    writeFileSync(original!.recordFile, JSON.stringify(record));
+
+    const replaced = await deploy({ namespace });
+    expect(replaced?.newlyDeployed).toBe(true);
+    expect(replaced!.replaced?.address).toBe(original!.address);
+  });
+
+  it("refuses to record a local node's contracts beside a published network's records", async () => {
+    await expect(
+      deployContract({
+        contract: MOCK_ERC20,
+        args: ["TST", 6],
+        rpcUrl,
+        privateKey: DEPLOYER_KEY,
+        namespace: "mainnet-adhoc",
+      }),
+    ).rejects.toThrow("feed the published address pages");
   });
 
   it("deploys another copy under another record name", async () => {
@@ -408,6 +508,26 @@ describe("deployContract", () => {
       address: replaced!.address,
       archive: `local-adhoc-redeploy-${stamp}-r2`,
     });
+  });
+
+  it("replaces the record when the code on the chain differs from the build", async () => {
+    const namespace = "changed-code-adhoc";
+    const original = await deploy({ namespace });
+    const code = await publicClient.getCode({ address: original!.address });
+    for (const changed of [`0xfe${code!.slice(4)}`, "0x"]) {
+      const current = await deploy({ namespace });
+      await publicClient.request({
+        method: "anvil_setCode" as any,
+        params: [current!.address, changed] as any,
+      });
+      const replaced = await deploy({ namespace });
+      expect(replaced?.newlyDeployed).toBe(true);
+      expect(replaced!.replaced?.address).toBe(current!.address);
+      expect(await readToken(replaced!.address)).toEqual({
+        symbol: "TST",
+        decimals: 6,
+      });
+    }
   });
 
   it("sends nothing when the confirmation is declined", async () => {

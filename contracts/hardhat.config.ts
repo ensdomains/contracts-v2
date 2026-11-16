@@ -109,14 +109,12 @@ const config = {
           outputSelection,
         },
       },
-      // 23k at 1
-      // 25k at 1000
       "src/registry/WrapperRegistry.sol": {
         version,
         settings: {
           optimizer: {
             enabled: true,
-            runs: 100,
+            runs: 1,
           },
           evmVersion: "cancun",
           outputSelection,

@@ -349,7 +349,7 @@ address resolved = abi.decode(result, (address));
 
 ## Deployed Addresses
 
-Generated contract address tables, regenerated automatically at the end of `phase deploy-v2` (or on demand with `bun run docs:addresses`):
+Generated contract address tables, regenerated at the end of `phase deploy-v2` and after each live `bun run deploy:contract` (or on demand with `bun run docs:addresses --network <network>`, which reads block times from `--rpc-url` or `<NETWORK>_RPC_URL`):
 
 - [Sepolia](docs/addresses/sepolia.md)
 - [Mainnet](docs/addresses/mainnet.md)
