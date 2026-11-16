@@ -46,16 +46,19 @@ contract MigrationHelperTest is MigrationControllerFixture {
 
         // locked
         wrapperRegistryImpl = new WrapperRegistry(
-            nameWrapper,
-            address(graveyard),
-            verifiableFactory,
-            address(ensV1Resolver),
-            registryUpgradeSet,
-            labelStore,
-            boxedRenderer,
-            publicResolverSet,
-            address(0), // publicResolver
-            address(this) // namer
+            WrapperRegistry.ConstructorArgs({
+                nameWrapper: nameWrapper,
+                graveyard: address(graveyard),
+                verifiableFactory: verifiableFactory,
+                publicResolverSet: publicResolverSet,
+                publicResolver: address(0), // unused
+                labelStore: labelStore,
+                namer: address(this),
+                upgradeSet: registryUpgradeSet,
+                upgradeable: new address[](0),
+                uriRenderer: boxedRenderer,
+                ensV1Resolver: address(ensV1Resolver)
+            })
         );
         lockedController = new LockedMigrationController(
             nameWrapper,

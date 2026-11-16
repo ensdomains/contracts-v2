@@ -118,13 +118,10 @@ export function toRequiredGrantRevokeRoles(roleBitmap: bigint) {
   return (roleBitmap | (roleBitmap >> 128n)) << 128n;
 }
 
-// Root roles that reach a registry's names or replace its code: setting a name's
-// child registry or resolver, unregistering it, letting its owner transfer it, and
-// upgrading the registry, each with its admin role. A registry where nobody holds
-// any of them at the root leaves its names emancipated. This is
-// RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP plus the upgrade roles, which only an
-// upgradeable registry counts (see: UserRegistry.isEmancipated); nobody is meant to
-// hold them on any registry.
+// Root roles that reach a registry's names: setting a name's child registry or
+// resolver, unregistering it, and letting its owner transfer it, each with its admin
+// role. A registry where nobody holds any of them at the root leaves its names
+// emancipated. This is RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP.
 export const DANGEROUS_ROOT_ROLES =
   ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
   ROLES.REGISTRY.SET_SUBREGISTRY |
@@ -132,13 +129,12 @@ export const DANGEROUS_ROOT_ROLES =
   ROLES.REGISTRY.SET_RESOLVER |
   ROLES.ADMIN.REGISTRY.SET_RESOLVER |
   ROLES.REGISTRY.UNREGISTER |
-  ROLES.ADMIN.REGISTRY.UNREGISTER |
-  ROLES.REGISTRY.UPGRADE |
-  ROLES.ADMIN.REGISTRY.UPGRADE;
+  ROLES.ADMIN.REGISTRY.UNREGISTER;
 
 // Every root role outside the dangerous set, each with its admin role: registering
 // names and reserved names, setting the parent, renewing, setting the metadata URI,
-// and contract naming.
+// contract naming, and upgrading the registry. An emancipated registry only accepts
+// an upgrade to an approved implementation, so the upgrade role reaches no name.
 const SAFE_ROOT_ROLES =
   ROLES.REGISTRY.REGISTRAR |
   ROLES.ADMIN.REGISTRY.REGISTRAR |
@@ -151,7 +147,9 @@ const SAFE_ROOT_ROLES =
   ROLES.REGISTRY.CAN_NAME |
   ROLES.ADMIN.REGISTRY.CAN_NAME |
   ROLES.REGISTRY.SET_URI |
-  ROLES.ADMIN.REGISTRY.SET_URI;
+  ROLES.ADMIN.REGISTRY.SET_URI |
+  ROLES.REGISTRY.UPGRADE |
+  ROLES.ADMIN.REGISTRY.UPGRADE;
 
 // Role bitmaps for static deployment per README Static Deployment Permissions.
 export const DEPLOYMENT_ROLES = {
@@ -169,7 +167,8 @@ export const DEPLOYMENT_ROLES = {
   // on.eth for the name owner: every role and admin role.
   DIRECT_REGISTRATION: FLAGS.ALL,
   // ETHRegistry root at deploy: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓,
-  // RENEW✓. None of these reaches a name, so a holder leaves .eth names emancipated.
+  // RENEW✓, CAN_NAME✓✓, SET_URI✓✓, UPGRADE✓✓. None of these reaches a name, so a
+  // holder leaves .eth names emancipated.
   ETH_REGISTRY_ROOT:
     ROLES.ADMIN.REGISTRY.REGISTRAR |
     ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
@@ -179,7 +178,9 @@ export const DEPLOYMENT_ROLES = {
     ROLES.REGISTRY.CAN_NAME |
     ROLES.ADMIN.REGISTRY.CAN_NAME |
     ROLES.REGISTRY.SET_URI |
-    ROLES.ADMIN.REGISTRY.SET_URI,
+    ROLES.ADMIN.REGISTRY.SET_URI |
+    ROLES.REGISTRY.UPGRADE |
+    ROLES.ADMIN.REGISTRY.UPGRADE,
   // Restricted roles granted to manager of core registries:
   ROOT_REGISTRY_MANAGER: ROLES.REGISTRY.CAN_NAME | ROLES.REGISTRY.SET_URI,
   ETH_REGISTRY_MANAGER: ROLES.REGISTRY.CAN_NAME | ROLES.REGISTRY.SET_URI,
