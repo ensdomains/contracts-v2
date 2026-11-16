@@ -41,10 +41,6 @@ library LibMigration {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Name cannot be registered because unmigrated NameWrapper token exists.
-    /// @dev Error selector: `0x408fa1b8`
-    error NameRequiresMigration();
-
     /// @notice NameWrapper token is unlocked.
     /// @dev Error selector: `0x1bfe8f0a`
     error NameNotLocked(uint256 tokenId);

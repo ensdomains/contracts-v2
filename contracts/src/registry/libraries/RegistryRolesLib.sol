@@ -40,9 +40,12 @@ library RegistryRolesLib {
     /// @dev Nybble 38: authorizes setting `ROLE_SET_RESOLVER`.
     uint256 internal constant ROLE_SET_RESOLVER_ADMIN = ROLE_SET_RESOLVER << 128;
 
-    /// @dev Nybble 39: authorizes ERC1155 token transfers. Root or token.
+    /// @dev Nybble 7: marks a registry for transfer.
+    ///      This role is only checked on the child registry.
+    uint256 internal constant ROLE_CAN_TRANSFER = 1 << 28;
+    /// @dev Nybble 39: authorizes ERC1155 token transfers.
     ///      This role is only checked on the token owner, not the operator.
-    uint256 internal constant ROLE_CAN_TRANSFER_ADMIN = (1 << 28) << 128;
+    uint256 internal constant ROLE_CAN_TRANSFER_ADMIN = ROLE_CAN_TRANSFER << 128;
 
     /// @dev Nybble 8: tags a name that was registered via `ROLE_REGISTER_RESERVED`. Token only. Not revokable.
     uint256 internal constant ROLE_WAS_RESERVED = (1 << 32);
@@ -73,4 +76,8 @@ library RegistryRolesLib {
         ROLE_SET_RESOLVER_ADMIN |
         ROLE_UNREGISTER |
         ROLE_UNREGISTER_ADMIN;
+
+    /// @dev Roles that should cause token regeneration.
+    uint256 internal constant REGENERATION_ROLE_BITMAP =
+        UNEMANCIPATED_ROLE_BITMAP | ROLE_CAN_TRANSFER;
 }

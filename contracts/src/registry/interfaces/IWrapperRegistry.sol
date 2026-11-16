@@ -6,6 +6,18 @@ import {IPermissionedRegistry} from "./IPermissionedRegistry.sol";
 /// @notice Interface for a registry that manages a locked NameWrapper name.
 /// @dev Interface selector: `0xf5586a0b`
 interface IWrapperRegistry is IPermissionedRegistry {
+    ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Name cannot be registered because unmigrated NameWrapper token exists.
+    /// @dev Error selector: `0x408fa1b8`
+    error NameRequiresMigration();
+
+    ////////////////////////////////////////////////////////////////////////
+    // Functions
+    ////////////////////////////////////////////////////////////////////////
+
     /// @notice Returns the DNS-encoded name for this registry.
     function getWrappedName() external view returns (bytes memory);
 

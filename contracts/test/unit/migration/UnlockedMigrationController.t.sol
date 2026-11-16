@@ -383,8 +383,6 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController)
         );
         vm.expectEmit();
-        emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
-        vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
@@ -393,6 +391,8 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             0 /*old roles*/,
             REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_WAS_RESERVED
         );
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
             tokenId,
@@ -451,8 +451,6 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController)
         );
         vm.expectEmit();
-        emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
-        vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
@@ -461,6 +459,8 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
             0 /*old roles*/,
             REGISTRATION_ROLE_BITMAP | RegistryRolesLib.ROLE_WAS_RESERVED
         );
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
             tokenId,
