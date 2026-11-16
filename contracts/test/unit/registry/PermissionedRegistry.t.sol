@@ -604,12 +604,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     function test_setResolver() external {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
-        vm.recordLogs();
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(testOwner));
         vm.prank(testOwner);
         registry.setResolver(tokenId, testResolver);
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        assertEq(logs.length, 1, "logs");
-        _assertResolverUpdated(logs[0], tokenId, testResolver, testOwner);
         vm.assertEq(registry.getResolver(testLabel), testResolver, "before");
         vm.warp(testExpiry);
         vm.assertEq(registry.getResolver(testLabel), address(0), "after");
@@ -2163,6 +2161,28 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         this._register();
 
         assertEq(registry.__roles(resource, testOwner), testRoles);
+    }
+
+    // scenerio: register to receiver and regenerate then invoke a setter
+    function test_mutatingReceiver_registerWithRegenerationAndSetters() external {
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
+
+        MutatingReceiver r = new MutatingReceiver();
+        r.addCall(
+            abi.encodeCall(
+                PermissionedRegistry.grantRoles,
+                (tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER, user2)
+            )
+        );
+        r.addCall(abi.encodeCall(PermissionedRegistry.setResolver, (tokenId, actor)));
+
+        testOwner = address(r);
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId + 1, actor, address(r));
+        this._register();
     }
 
     ////////////////////////////////////////////////////////////////////////

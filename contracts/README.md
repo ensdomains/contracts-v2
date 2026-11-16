@@ -104,7 +104,7 @@ In registry contracts, EAC is used with these specific behaviors:
 | `ROLE_REGISTER_RESERVED`  | 4    | 132       | Root-only     | Promote reserved name to registered                                    |
 | `ROLE_SET_PARENT`         | 8    | 136       | Root-only     | Set parent registry                                                    |
 | `ROLE_UNREGISTER`         | 12   | 140       | Root or token | Unregister names                                                       |
-| `ROLE_RENEW`              | 16   | 144       | Root or token | Extend name expiry                                                     |
+| `ROLE_RENEW`              | 16   | 144       | Root-only     | Extend name expiry                                                     |
 | `ROLE_SET_SUBREGISTRY`    | 20   | 148       | Root or token | Change child registry                                                  |
 | `ROLE_SET_RESOLVER`       | 24   | 152       | Root or token | Change resolver address                                                |
 | `ROLE_CAN_TRANSFER_ADMIN` | 28\* | 156       | Root or token | Admin-only. Auto-granted to name owner. Revoke to make soulbound.      |
