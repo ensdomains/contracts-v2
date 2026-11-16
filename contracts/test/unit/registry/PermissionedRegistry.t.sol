@@ -27,8 +27,6 @@ import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {LabelStore, ILabelStore} from "~src/utils/LabelStore.sol";
 import {IUnsafeTransferable} from "~src/utils/interfaces/IUnsafeTransferable.sol";
 
-uint256 constant DEFAULT_ROLE_BITMAP = EACBaseRolesLib.ALL_ROLES;
-
 contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     MockPermissionedRegistry registry;
     LabelStore labelStore;
@@ -49,7 +47,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
-        registry = new MockPermissionedRegistry(labelStore, address(this), DEFAULT_ROLE_BITMAP);
+        registry = new MockPermissionedRegistry(labelStore, address(this), EACBaseRolesLib.ALL_ROLES);
         testRegistry = new PermissionedRegistry(labelStore, testOwner, EACBaseRolesLib.ALL_ROLES);
     }
 
@@ -62,7 +60,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     function test_constructor() external view {
         assertEq(address(registry.LABEL_STORE()), address(labelStore), "LABEL_STORE");
 
-        assertTrue(registry.hasRootRoles(DEFAULT_ROLE_BITMAP, address(this)));
+        assertTrue(registry.hasRootRoles(EACBaseRolesLib.ALL_ROLES, address(this)));
     }
 
     function test_supportsInterface() external view {
@@ -1203,6 +1201,24 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     // Token Regeneration
     ////////////////////////////////////////////////////////////////////////
 
+    function test_shouldRegenerate() external pure {
+        assertTrue(_shouldRegenerate(RegistryRolesLib.REGENERATION_ROLE_BITMAP), "all");
+        assertFalse(_shouldRegenerate(~RegistryRolesLib.REGENERATION_ROLE_BITMAP), "~all");
+
+        assertTrue(_shouldRegenerate(RegistryRolesLib.ROLE_CAN_TRANSFER), "CAN_TRANSFER");
+        assertTrue(_shouldRegenerate(RegistryRolesLib.ROLE_SET_RESOLVER), "SET_RESOLVER");
+        assertTrue(_shouldRegenerate(RegistryRolesLib.ROLE_SET_SUBREGISTRY), "SET_SUBREGISTRY");
+        assertTrue(_shouldRegenerate(RegistryRolesLib.ROLE_UNREGISTER), "UNREGISTER");
+
+        assertTrue(_shouldRegenerate(RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN), "CAN_TRANSFER_ADMIN");
+        assertTrue(_shouldRegenerate(RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN), "SET_RESOLVER_ADMIN");
+        assertTrue(
+            _shouldRegenerate(RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN),
+            "SET_SUBREGISTRY_ADMIN"
+        );
+        assertTrue(_shouldRegenerate(RegistryRolesLib.ROLE_UNREGISTER_ADMIN), "UNREGISTER_ADMIN");
+    }
+
     function test_burn_invalidSender() external {
         address from; // wrong
         vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidSender.selector, from));
@@ -1253,6 +1269,130 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(s1.latestOwner, s2.latestOwner, "owner:12");
     }
 
+    function test_regenerate_grantAsRoot() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+
+        for (uint256 i; i < 32; i++) {
+            uint256 regular = 1 << (i << 2);
+
+            tokenId = registry.getTokenId(tokenId);
+            assertTrue(registry.grantRoles(tokenId, regular, user2));
+            assertEq(
+                tokenId != registry.getTokenId(tokenId),
+                _shouldRegenerate(regular),
+                vm.toString(i)
+            );
+        }
+    }
+
+    function test_regenerate_revokeAsRoot() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+
+        for (uint256 i; i < 32; i++) {
+            uint256 regular = 1 << (i << 2);
+            uint256 admin = regular << 128;
+
+            tokenId = registry.getTokenId(tokenId);
+            assertTrue(registry.revokeRoles(tokenId, regular, testOwner));
+            assertEq(
+                tokenId != registry.getTokenId(tokenId),
+                _shouldRegenerate(regular),
+                vm.toString(i)
+            );
+
+            tokenId = registry.getTokenId(tokenId);
+            assertTrue(registry.revokeRoles(tokenId, admin, testOwner));
+            assertEq(
+                tokenId != registry.getTokenId(tokenId),
+                _shouldRegenerate(admin),
+                vm.toString(i + 32)
+            );
+        }
+    }
+
+    function test_regenerate_grantAsOwner() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+
+        for (uint256 i; i < 32; i++) {
+            uint256 regular = 1 << (i << 2);
+
+            tokenId = registry.getTokenId(tokenId);
+            vm.prank(testOwner);
+            assertTrue(registry.grantRoles(tokenId, regular, user2));
+            assertEq(
+                tokenId != registry.getTokenId(tokenId),
+                _shouldRegenerate(regular),
+                vm.toString(i)
+            );
+        }
+    }
+
+    function test_regenerate_revokeAsOwner() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+
+        for (uint256 i; i < 32; i++) {
+            uint256 regular = 1 << (i << 2);
+            uint256 admin = regular << 128;
+
+            tokenId = registry.getTokenId(tokenId);
+            vm.prank(testOwner);
+            assertTrue(registry.revokeRoles(tokenId, regular, testOwner));
+            assertEq(
+                tokenId != registry.getTokenId(tokenId),
+                _shouldRegenerate(regular),
+                vm.toString(i)
+            );
+
+            tokenId = registry.getTokenId(tokenId);
+            vm.prank(testOwner);
+            assertTrue(registry.revokeRoles(tokenId, admin, testOwner));
+            assertEq(
+                tokenId != registry.getTokenId(tokenId),
+                _shouldRegenerate(admin),
+                vm.toString(i + 32)
+            );
+        }
+    }
+
+    function test_regenerate_isEmancipated_grantAsRoot() external {
+        uint256 tokenId = this._register();
+        _makeEmancipated();
+
+        for (uint256 i; i < 32; i++) {
+            uint256 regular = 1 << (i << 2);
+            uint256 admin = regular << 128;
+
+            if (registry.hasRoles(tokenId, admin, address(this))) {
+                tokenId = registry.getTokenId(tokenId);
+                assertTrue(registry.grantRoles(tokenId, regular, user2));
+                assertFalse(_shouldRegenerate(regular));
+                assertFalse(tokenId != registry.getTokenId(tokenId), vm.toString(i));
+            }
+        }
+    }
+
+    function test_regenerate_isEmancipated_revokeAsRoot() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+        _makeEmancipated();
+
+        for (uint256 i; i < 32; i++) {
+            uint256 regular = 1 << (i << 2);
+            uint256 admin = regular << 128;
+
+            if (registry.hasRoles(tokenId, admin, address(this))) {
+                tokenId = registry.getTokenId(tokenId);
+                assertTrue(registry.revokeRoles(tokenId, regular, testOwner));
+                assertFalse(_shouldRegenerate(regular));
+                assertFalse(tokenId != registry.getTokenId(tokenId), vm.toString(i));
+            }
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // EAC Override: grantRoles() and revokeRoles()
     ////////////////////////////////////////////////////////////////////////
@@ -1263,8 +1403,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         testRoles = roleBitmap << 128; // admin
         uint256 tokenId = this._register();
 
-        vm.expectEmit();
-        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
         vm.prank(testOwner);
         assertTrue(registry.grantRoles(tokenId, roleBitmap, user2));
     }
@@ -1366,8 +1504,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         uint256 tokenId = this._register();
 
         // revoke normal role
-        vm.expectEmit();
-        emit IRegistryEvents.TokenRegenerated(tokenId, tokenId + 1);
         vm.prank(testOwner);
         assertTrue(registry.revokeRoles(tokenId, roleBitmap, testOwner));
 
@@ -1929,12 +2065,33 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.revokeRoles(tokenId, role1, testOwner);
     }
 
-    // scenerio: emanicipation concern: root can revoke token
-    function test_rootRevokeToken(uint8 role) external {
-        vm.assume(role >= 32 && role < 64);
-        testRoles = 1 << (role << 2); // every admin role
+    // scenerio: emancipated root grief via unrelated emancipated role grants
+    function test_griefWhileEmancipated_grantAsRoot() external {
         uint256 tokenId = this._register();
-        assertTrue(registry.revokeRoles(tokenId, testRoles, testOwner));
+        _makeEmancipated();
+
+        uint256 roleBitmap = registry.roles(registry.ROOT_RESOURCE(), address(this)); // unrelated roles
+        roleBitmap >>= 128; // can only grant regular of admin bits
+
+        // add unrelated token roles
+        assertTrue(registry.grantRoles(tokenId, roleBitmap, testOwner), "grant");
+        assertTrue(registry.getTokenId(tokenId) == tokenId, "regen");
+    }
+
+    // scenerio: emancipated root grief via unrelated emancipated role revokes
+    function test_griefWhileEmancipated_revokeAsRoot() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+
+        uint256 tokenId = this._register();
+        _makeEmancipated();
+
+        uint256 roleBitmap = registry.roles(registry.ROOT_RESOURCE(), address(this)); // unrelated roles
+        roleBitmap >>= 128; // can only revoke admin bits
+        roleBitmap |= roleBitmap << 128; // can also revoke corresponding regular bits
+
+        // remove unrelated token roles
+        assertTrue(registry.revokeRoles(tokenId, roleBitmap, testOwner), "revoke");
+        assertTrue(registry.getTokenId(tokenId) == tokenId, "regen");
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -2014,6 +2171,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             registry.isEmancipated() ||
             registry.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this))
         );
+    }
+
+    function _shouldRegenerate(uint256 roleBitmap) internal pure returns (bool) {
+        return (roleBitmap & RegistryRolesLib.REGENERATION_ROLE_BITMAP) != 0;
     }
 
     function _expectNoEmit(Vm.Log[] memory logs, bytes32 topic0) internal pure {

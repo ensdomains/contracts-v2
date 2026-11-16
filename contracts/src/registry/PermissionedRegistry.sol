@@ -553,33 +553,37 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     function _onRolesGranted(
         uint256 resource,
         address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        uint256 oldRoles,
+        uint256 newRoles,
         uint256 /*roleBitmap*/
     )
         internal
         override
     {
-        _regenerate(resource);
+        _regenerate(resource, oldRoles, newRoles);
     }
 
     /// @dev Override the base registry _onRolesRevoked function to regenerate the token when the roles are revoked.
     function _onRolesRevoked(
         uint256 resource,
         address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        uint256 oldRoles,
+        uint256 newRoles,
         uint256 /*roleBitmap*/
     )
         internal
         override
     {
-        _regenerate(resource);
+        _regenerate(resource, oldRoles, newRoles);
     }
 
     /// @dev Bump `tokenVersionId` via burn+mint if token is not expired.
-    function _regenerate(uint256 resource) internal {
-        if (resource != ROOT_RESOURCE) {
+    ///      Skip if regeneration-related roles were unchanged.
+    function _regenerate(uint256 resource, uint256 oldRoles, uint256 newRoles) internal {
+        if (
+            resource != ROOT_RESOURCE &&
+            ((oldRoles ^ newRoles) & RegistryRolesLib.REGENERATION_ROLE_BITMAP != 0)
+        ) {
             Entry storage entry = _entry(resource);
             uint256 tokenId = _constructTokenId(resource, entry);
             address owner = super.ownerOf(tokenId); // grant/revoke only on registered
