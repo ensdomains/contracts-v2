@@ -7,9 +7,9 @@
 ///   `reverse` tokens, and with each every role and admin role on its entry;
 /// - the owner (the DAO on mainnet) takes every safe root role, with its admin
 ///   role, on both the root registry and the `.eth` registry: registering names
-///   and reserved names, setting the parent, renewing, setting the metadata URI and
-///   contract naming. None of them reaches a name, so both registries leave their
-///   names emancipated;
+///   and reserved names, setting the parent, renewing, setting the metadata URI,
+///   contract naming and upgrading the registry. None of them reaches a name, so
+///   both registries leave their names emancipated;
 /// - the batch registrars have no owner, so nothing can ever send through them
 ///   again, even if a registry grants them roles;
 /// - the deployer holds no role on a root registry a root replacement set aside, and
