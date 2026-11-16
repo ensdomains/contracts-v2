@@ -503,8 +503,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController)
         );
         vm.expectEmit();
-        emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
-        vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
@@ -516,6 +514,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN |
             RegistryRolesLib.ROLE_WAS_RESERVED
         );
+        vm.expectEmit();
+        emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
         vm.expectEmit();
         emit IRegistryEvents.SubregistryUpdated(
             tokenId,

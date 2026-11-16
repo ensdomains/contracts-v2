@@ -499,11 +499,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             emit LabelReserved(tokenId, bytes32(labelId), label, expiry, msg.sender);
         } else {
             emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, msg.sender);
-            _mint(owner, tokenId, 1, "");
             uint256 resource = _constructResource(tokenId, entry);
             assert(resource != ROOT_RESOURCE);
             emit TokenResource(tokenId, resource);
             _grantRoles(resource, roleBitmap, owner, false);
+            _mint(owner, tokenId, 1, "");
         }
         if (address(registry) != address(0)) {
             emit SubregistryUpdated(tokenId, registry, msg.sender);
