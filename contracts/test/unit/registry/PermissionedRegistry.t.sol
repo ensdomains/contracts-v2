@@ -391,6 +391,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_renew_notAuthorized_asOwner() external {
+        testRoles = RegistryRolesLib.ROLE_RENEW;
         uint256 tokenId = this._register();
         vm.expectRevert(
             abi.encodeWithSelector(
