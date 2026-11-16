@@ -110,15 +110,15 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             address(this)
         );
         vm.expectEmit();
+        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
+        vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, 0, testRoles);
         vm.expectEmit();
         emit IERC1155.TransferSingle(address(this), address(0), testOwner, tokenId, 1);
-        vm.expectEmit();
-        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
-        vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
         assertEq(this._register(), tokenId, "token");
         assertEq(registry.getExpiry(tokenId), testExpiry, "expiry");
         assertEq(registry.ownerOf(tokenId), testOwner, "owner");
@@ -372,12 +372,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.renew(tokenId, testExpiry);
     }
 
-    function test_renew_notAuthorized() external {
+    function test_renew_notAuthorized_asRoot() external {
         uint256 tokenId = this._register();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.getResource(tokenId),
+                registry.ROOT_RESOURCE(),
                 RegistryRolesLib.ROLE_RENEW,
                 actor
             )
@@ -387,6 +387,20 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         // retry with permissions
         registry.grantRootRoles(RegistryRolesLib.ROLE_RENEW, actor);
         vm.prank(actor);
+        registry.renew(tokenId, testExpiry);
+    }
+
+    function test_renew_notAuthorized_asOwner() external {
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_RENEW,
+                testOwner
+            )
+        );
+        vm.prank(testOwner);
         registry.renew(tokenId, testExpiry);
     }
 
@@ -400,31 +414,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
                 testExpiry
             )
         );
-        registry.renew(tokenId, testExpiry);
-    }
-
-    function test_renew_self() external {
-        testRoles = RegistryRolesLib.ROLE_RENEW;
-        uint256 tokenId = this._register();
-        vm.prank(testOwner);
-        registry.renew(tokenId, testExpiry);
-    }
-
-    function test_renew_self_notAuthorized() external {
-        uint256 tokenId = this._register();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_RENEW,
-                testOwner
-            )
-        );
-        vm.prank(testOwner);
-        registry.renew(tokenId, testExpiry);
-        // retry with permissions
-        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_RENEW, actor);
-        vm.prank(actor);
         registry.renew(tokenId, testExpiry);
     }
 

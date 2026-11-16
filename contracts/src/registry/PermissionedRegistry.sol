@@ -240,7 +240,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev If `REGISTERED | RESERVED`, requires `ROLE_RENEW`.
+    /// @dev If `REGISTERED | RESERVED`, requires `ROLE_RENEW` on root.
     ///      If `AVAILABLE`, requires expiry > 0 and `ROLE_RENEW` on root.
     function renew(uint256 anyId, uint64 newExpiry) public override {
         Entry storage entry = _entry(anyId);
@@ -251,7 +251,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
                 revert LabelExpired(tokenId); // never registered OR cannot revive
             }
         } else {
-            _checkRoles(_constructResource(anyId, entry), RegistryRolesLib.ROLE_RENEW, msg.sender);
+            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RENEW, msg.sender);
         }
         if (newExpiry < expiry) {
             revert CannotReduceExpiry(expiry, newExpiry);
@@ -501,17 +501,19 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             emit LabelReserved(tokenId, bytes32(labelId), label, expiry, msg.sender);
         } else {
             emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, msg.sender);
-            uint256 resource = _constructResource(tokenId, entry);
-            assert(resource != ROOT_RESOURCE);
-            emit TokenResource(tokenId, resource);
-            _grantRoles(resource, roleBitmap, owner, false);
-            _mint(owner, tokenId, 1, "");
         }
         if (address(registry) != address(0)) {
             emit SubregistryUpdated(tokenId, registry, msg.sender);
         }
         if (address(resolver) != address(0)) {
             emit ResolverUpdated(tokenId, resolver, msg.sender);
+        }
+        if (owner != address(0)) {
+            uint256 resource = _constructResource(tokenId, entry);
+            assert(resource != ROOT_RESOURCE);
+            emit TokenResource(tokenId, resource);
+            _grantRoles(resource, roleBitmap, owner, false);
+            _mint(owner, tokenId, 1, "");
         }
     }
 
