@@ -470,6 +470,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.expectEmit();
         emit IRegistryEvents.RegistryCreated();
         vm.expectEmit();
+        emit IRegistryEvents.ParentUpdated(ethRegistry, testLabel, address(0));
+        vm.expectEmit();
+        emit IRegistryEvents.URIUpdated("", address(boxedRenderer), address(0));
+        vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
             0 /*ROOT_RESOURCE*/,
             virtualOwner,
@@ -483,8 +487,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_CAN_NAME |
             RegistryRolesLib.ROLE_CAN_NAME_ADMIN
         );
-        vm.expectEmit();
-        emit IRegistryEvents.URIUpdated("", address(boxedRenderer), address(0));
         // emit Initializable.Initialized()
         vm.expectEmit();
         emit IVerifiableFactory.ProxyDeployed(
@@ -1140,7 +1142,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry2.register(data3.label, testOwner, IRegistry(address(0)), address(0), 0, _soon());
 
         // check unmigrated 3LD child
-        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
+        vm.expectRevert(abi.encodeWithSelector(IWrapperRegistry.NameRequiresMigration.selector));
         vm.prank(friend);
         registry2.register(
             NameCoder.firstLabel(name3unmigrated),
@@ -1215,7 +1217,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         registry2.register(data3.label, testOwner, IRegistry(address(0)), address(0), 0, _soon());
 
         // check unmigrated 3LD child
-        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
+        vm.expectRevert(abi.encodeWithSelector(IWrapperRegistry.NameRequiresMigration.selector));
         vm.prank(friend);
         registry2.register(
             NameCoder.firstLabel(name3unmigrated),
@@ -1276,7 +1278,7 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             ),
             "testOwner has ROLE_REGISTRAR on registry2"
         );
-        vm.expectRevert(abi.encodeWithSelector(LibMigration.NameRequiresMigration.selector));
+        vm.expectRevert(abi.encodeWithSelector(IWrapperRegistry.NameRequiresMigration.selector));
         vm.prank(testOwner);
         registry2.register("sub", testOwner, IRegistry(address(0)), address(0), 0, _soon());
 

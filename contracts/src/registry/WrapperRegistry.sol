@@ -123,23 +123,22 @@ contract WrapperRegistry is
     /// @inheritdoc IWrapperRegistryInitializable
     function initialize(bytes32 node, IRegistry parentRegistry) public initializer {
         // derive from wrapper
-        uint32 fuses = _getFuses(node);
+        (uint32 fuses, ) = _getWrapperData(node);
         if (!LibMigration.isLocked(fuses)) {
             revert LibMigration.NameNotLocked(uint256(node));
         }
-        string memory childLabel = NameCoder.firstLabel(NAME_WRAPPER.names(node)); // exists if locked
+        string memory childLabel = NameCoder.firstLabel(_getWrapperName(node)); // exists if locked
         uint256 roleBitmap = _subregistryRoleBitmapFromFuses(fuses);
         _node = node;
         // setup canonical parent (ROLE_SET_PARENT is not granted)
         _parentRegistry = parentRegistry;
         _childLabel = childLabel;
         _initialRoleBitmap = roleBitmap;
-        emit RegistryCreated();
-        address virtualOwner = address(_parentRegistry);
-        emit ParentUpdated(parentRegistry, childLabel, address(0));
-        _grantRoles(ROOT_RESOURCE, roleBitmap, virtualOwner, false);
         _uriRenderer = URI_RENDERER;
+        emit RegistryCreated();
+        emit ParentUpdated(parentRegistry, childLabel, address(0));
         emit URIUpdated("", address(URI_RENDERER), address(0));
+        _grantRoles(ROOT_RESOURCE, roleBitmap, address(_parentRegistry), false); // virtual owner
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -179,7 +178,7 @@ contract WrapperRegistry is
         returns (uint256 tokenId)
     {
         if (_isMigratableChild(label)) {
-            revert LibMigration.NameRequiresMigration();
+            revert NameRequiresMigration();
         }
         return super.register(label, owner, registry, resolver, roleBitmap, expiry);
     }
@@ -268,7 +267,7 @@ contract WrapperRegistry is
                     account == owner ||
                     PermissionedRegistry(parent).isApprovedForAll(owner, account)
                 ) {
-                    return super._getRoles(resource, parent); // replace, instead of OR
+                    account = parent; // replace, instead of OR
                 }
             }
         }
@@ -311,13 +310,7 @@ contract WrapperRegistry is
         // active v1 registry owner.  A null owner means the subname was ABANDONED
         // and reserving the label would lock it forever; positive expiry on either
         // side marks a completed migration.
-        return
-            LibMigration.isEmancipatedChild(_getFuses(node)) &&
-            _REGISTRY_V1.owner(node) != address(0);
-    }
-
-    /// @dev Convenience for `NameWrapper` fuses.
-    function _getFuses(bytes32 node) internal view returns (uint32 fuses) {
-        (, fuses, ) = NAME_WRAPPER.getData(uint256(node));
+        (uint32 fuses, ) = _getWrapperData(node);
+        return LibMigration.isEmancipatedChild(fuses) && _REGISTRY_V1.owner(node) != address(0);
     }
 }
