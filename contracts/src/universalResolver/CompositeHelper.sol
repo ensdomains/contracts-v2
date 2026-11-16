@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
-import {CCIPReader} from "@ens/contracts/ccipRead/CCIPBatcher.sol";
+import {CCIPBatcher} from "@ens/contracts/ccipRead/CCIPBatcher.sol";
+import {CCIPReader} from "@ens/contracts/ccipRead/CCIPReader.sol";
+import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {ICompositeResolver} from "@ens/contracts/resolvers/profiles/ICompositeResolver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
@@ -9,10 +11,10 @@ import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistr
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
-import {LibRegistry} from "./libraries/LibRegistry.sol";
+import {LibResolution} from "./libraries/LibResolution.sol";
 
 /// @notice Helper contract for following `ICompositeResolver` chains. 
-contract CompositeHelper is DelegatedContractNamer, CCIPReader {
+contract CompositeHelper is DelegatedContractNamer, CCIPBatcher {
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -29,6 +31,9 @@ contract CompositeHelper is DelegatedContractNamer, CCIPReader {
     /// @notice The ENSv2 root registry.
     IPermissionedRegistry public immutable ROOT_REGISTRY;
 
+    /// @notice Shared batch gateway provider.
+    IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
+
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -42,12 +47,18 @@ contract CompositeHelper is DelegatedContractNamer, CCIPReader {
     ////////////////////////////////////////////////////////////////////////
 
     /// @param rootRegistry The root registry.
+    /// @param batchGatewayProvider The batch gateway provider.
     /// @param contractNamer Delegated contract namer.
-    constructor(IPermissionedRegistry rootRegistry, IContractNamer contractNamer)
+    constructor(
+        IPermissionedRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer
+    )
         CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
         DelegatedContractNamer(contractNamer)
     {
         ROOT_REGISTRY = rootRegistry;
+        BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -58,31 +69,26 @@ contract CompositeHelper is DelegatedContractNamer, CCIPReader {
     /// @param name DNS-encoded name to lookup.
     /// @return Array of resolvers.
     function getResolvers(bytes calldata name) external view returns (ResolverInfo[] memory) {
-        (, address resolver, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, address resolver, , ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);
         return _getResolvers(resolver, false, name, new ResolverInfo[](0));
     }
 
-    /// @notice CCIP-Read callback for `_getResolvers()` from calling a resolver successfully.
+    /// @notice CCIP-Read callback for `_getResolvers()`.
     // solhint-disable-next-line
     function getResolversCallback(bytes calldata response, bytes calldata extraData)
         external
         view
         returns (ResolverInfo[] memory)
     {
+        Lookup[] memory lookups = abi.decode(response, (Batch)).lookups;
         (bytes memory name, ResolverInfo[] memory resolvers) =
             abi.decode(extraData, (bytes, ResolverInfo[]));
-        (address resolver, bool offchain) = abi.decode(response, (address, bool));
+        Lookup memory lu = lookups[0];
+        if ((lu.flags & FLAGS_ANY_ERROR) != 0) {
+            revert UnknownResolver(resolvers, lu.data);
+        }
+        (address resolver, bool offchain) = abi.decode(lu.data, (address, bool));
         return _getResolvers(resolver, offchain, name, resolvers);
-    }
-
-    /// @notice CCIP-Read callback for `_getResolvers()` from calling a resolver unsuccessfully.
-    // solhint-disable-next-line
-    function getResolversCallbackError(bytes calldata response, bytes calldata extraData)
-        external
-        pure
-    {
-        (, ResolverInfo[] memory resolvers) = abi.decode(extraData, (bytes, ResolverInfo[]));
-        revert UnknownResolver(resolvers, response);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -109,11 +115,16 @@ contract CompositeHelper is DelegatedContractNamer, CCIPReader {
         if (!ERC165Checker.supportsInterface(resolver, type(ICompositeResolver).interfaceId)) {
             return dst;
         }
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(ICompositeResolver.getResolver, (name));
         ccipRead(
-            resolver,
-            abi.encodeCall(ICompositeResolver.getResolver, (name)),
+            address(this),
+            abi.encodeCall(
+                this.ccipBatch,
+                createBatch(resolver, calls, BATCH_GATEWAY_PROVIDER.gateways())
+            ),
             this.getResolversCallback.selector,
-            this.getResolversCallbackError.selector,
+            IDENTITY_FUNCTION,
             abi.encode(name, dst)
         );
     }

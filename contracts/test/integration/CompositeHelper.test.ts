@@ -1,19 +1,12 @@
-import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
 import { describe, expect, it } from "vitest";
-import type { Address } from "viem";
+import { type Address, zeroAddress } from "viem";
+import { encodeErrorResult, getAddress, parseAbi } from "viem/utils";
 
-import {
-  type KnownProfile,
-  bundleCalls,
-  makeResolutions,
-} from "../utils/resolutions.js";
-import { dnsEncodeName, COIN_TYPE_ETH } from "../utils/utils.js";
+import { type KnownProfile, makeResolutions } from "../utils/resolutions.js";
+import { dnsEncodeName, COIN_TYPE_ETH, namehash } from "../utils/utils.js";
 import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
-import { expectVar } from "../utils/expectVar.js";
-import { getAddress } from "viem/utils";
-import { V2_SETTER_ABI } from "../utils/resolver-abis.ts";
 
 const network = await hre.network.connect();
 
@@ -37,6 +30,7 @@ async function fixture() {
   ]);
   const helper = await network.viem.deployContract("CompositeHelper", [
     v2.rootRegistry.address,
+    v1.batchGatewayProvider.address,
     v2.contractNamer.address,
   ]);
   await v1.setupName({ name: V1.name });
@@ -51,7 +45,7 @@ async function fixture() {
 }
 
 describe("CompositeHelper", () => {
-  it("test", async () => {
+  it("v2 => v1 fallback", async () => {
     const F = await network.networkHelpers.loadFixture(fixture);
     await expect(
       F.helper.read.getResolvers([dnsEncodeName(V1.name)]),
@@ -67,6 +61,89 @@ describe("CompositeHelper", () => {
     ]);
   });
 
+  it("callback revert", async () => {
+    const F = await network.networkHelpers.loadFixture(fixture);
+    const resolver = await network.viem.deployContract("MockCompositeResolver");
+    const revertData = "0x12345678";
+    await resolver.write.setOffchain();
+    await resolver.write.setCallbackRevert([revertData]);
+    await F.v1.ensRegistry.write.setResolver([
+      namehash(V1.name),
+      resolver.address,
+    ]);
+    await expect(F.helper.read.getResolvers([dnsEncodeName(V1.name)]))
+      .toBeRevertedWithCustomError("UnknownResolver")
+      .withArgs([
+        [
+          {
+            resolver: getAddress(F.ensV1Resolver.address),
+            offchain: false,
+          },
+          {
+            resolver: getAddress(resolver.address),
+            offchain: false,
+          },
+        ],
+        revertData,
+      ]);
+  });
+
+  it("offchain revert: no gateways", async () => {
+    const F = await network.networkHelpers.loadFixture(fixture);
+    const resolver = await network.viem.deployContract("MockCompositeResolver");
+    await resolver.write.setGateways([[]]); // wrong
+    await F.v1.ensRegistry.write.setResolver([
+      namehash(V1.name),
+      resolver.address,
+    ]);
+    await expect(F.helper.read.getResolvers([dnsEncodeName(V1.name)]))
+      .toBeRevertedWithCustomError("UnknownResolver")
+      .withArgs([
+        [
+          {
+            resolver: getAddress(F.ensV1Resolver.address),
+            offchain: false,
+          },
+          {
+            resolver: getAddress(resolver.address),
+            offchain: false,
+          },
+        ],
+        encodeErrorResult({
+          abi: parseAbi(["error Error(string)"]),
+          args: ["An unknown error occurred."], // viem error
+        }),
+      ]);
+  });
+
+  it("offchain revert: failing gateway", async () => {
+    const F = await network.networkHelpers.loadFixture(fixture);
+    const resolver = await network.viem.deployContract("MockCompositeResolver");
+    await resolver.write.setGateways([["x-not-a-url:true"]]); // wrong
+    await F.v1.ensRegistry.write.setResolver([
+      namehash(V1.name),
+      resolver.address,
+    ]);
+    await expect(F.helper.read.getResolvers([dnsEncodeName(V1.name)]))
+      .toBeRevertedWithCustomError("UnknownResolver")
+      .withArgs([
+        [
+          {
+            resolver: getAddress(F.ensV1Resolver.address),
+            offchain: false,
+          },
+          {
+            resolver: getAddress(resolver.address),
+            offchain: false,
+          },
+        ],
+        encodeErrorResult({
+          abi: parseAbi(["error Error(string)"]),
+          args: ["HTTP request failed."], // viem error
+        }),
+      ]);
+  });
+
   for (let n = 0; n < 5; n++) {
     it(`chain of ${n}`, async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
@@ -75,8 +152,8 @@ describe("CompositeHelper", () => {
       for (let i = 0; i < n; i++) {
         const resolver = await network.viem.deployContract(
           "MockCompositeResolver",
-          [resolvers[0], false],
         );
+        await resolver.write.setResolver([resolvers[0]]);
         resolvers.unshift(resolver.address);
       }
       await F.v2.setupName({
