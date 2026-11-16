@@ -501,11 +501,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             emit LabelReserved(tokenId, bytes32(labelId), label, expiry, msg.sender);
         } else {
             emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, msg.sender);
-            _mint(owner, tokenId, 1, "");
             uint256 resource = _constructResource(tokenId, entry);
             assert(resource != ROOT_RESOURCE);
             emit TokenResource(tokenId, resource);
             _grantRoles(resource, roleBitmap, owner, false);
+            _mint(owner, tokenId, 1, "");
         }
         if (address(registry) != address(0)) {
             emit SubregistryUpdated(tokenId, registry, msg.sender);
@@ -555,33 +555,37 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     function _onRolesGranted(
         uint256 resource,
         address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        uint256 oldRoles,
+        uint256 newRoles,
         uint256 /*roleBitmap*/
     )
         internal
         override
     {
-        _regenerate(resource);
+        _regenerate(resource, oldRoles, newRoles);
     }
 
     /// @dev Override the base registry _onRolesRevoked function to regenerate the token when the roles are revoked.
     function _onRolesRevoked(
         uint256 resource,
         address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        uint256 oldRoles,
+        uint256 newRoles,
         uint256 /*roleBitmap*/
     )
         internal
         override
     {
-        _regenerate(resource);
+        _regenerate(resource, oldRoles, newRoles);
     }
 
     /// @dev Bump `tokenVersionId` via burn+mint if token is not expired.
-    function _regenerate(uint256 resource) internal {
-        if (resource != ROOT_RESOURCE) {
+    ///      Skip if regeneration-related roles were unchanged.
+    function _regenerate(uint256 resource, uint256 oldRoles, uint256 newRoles) internal {
+        if (
+            resource != ROOT_RESOURCE &&
+            ((oldRoles ^ newRoles) & RegistryRolesLib.REGENERATION_ROLE_BITMAP != 0)
+        ) {
             Entry storage entry = _entry(resource);
             uint256 tokenId = _constructTokenId(resource, entry);
             address owner = latestOwnerOf(tokenId); // grant/revoke only on registered

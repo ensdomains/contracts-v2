@@ -133,10 +133,10 @@ Roles granted during core deployment.
 
 | Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | CAN_NAME | UPGRADE |
 | --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | -------- | ------- |
-| RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       |         |
+| RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       | AR      |
 | RootRegistry    | .eth     | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | A                  | AR       | AR      |
 | RootRegistry    | .reverse | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | A                  | AR       | AR      |
-| ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       |         |
+| ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       | AR      |
 | ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |          |         |
 | ETHRegistry     | Root     | `BatchRegistrar`              | R         |                   |            |            | R     |                 |              |                    |          |         |
 | ETHRegistry     | Root     | `UnlockedMigrationController` |           | R                 |            |            |       |                 |              |                    |          |         |
@@ -349,7 +349,7 @@ address resolved = abi.decode(result, (address));
 
 ## Deployed Addresses
 
-Generated contract address tables, regenerated automatically at the end of `phase deploy-v2` (or on demand with `bun run docs:addresses`):
+Generated contract address tables, regenerated at the end of `phase deploy-v2` and after each live `bun run deploy:contract` (or on demand with `bun run docs:addresses --network <network>`, which reads block times from `--rpc-url` or `<NETWORK>_RPC_URL`):
 
 - [Sepolia](docs/addresses/sepolia.md)
 - [Mainnet](docs/addresses/mainnet.md)

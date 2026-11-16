@@ -10,10 +10,9 @@ interface IWrapperRegistry is IPermissionedRegistry {
     // Errors
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Upgrade target is not approved for `WrapperRegistry` proxies.
-    /// @dev Error selector: `0xf74d7dd0`
-    /// @param implementation The disallowed implementation address.
-    error UpgradeTargetNotApproved(address implementation);
+    /// @notice Name cannot be registered because unmigrated NameWrapper token exists.
+    /// @dev Error selector: `0x408fa1b8`
+    error NameRequiresMigration();
 
     ////////////////////////////////////////////////////////////////////////
     // Functions

@@ -116,11 +116,8 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         LibMigration.Data[] memory mds = new LibMigration.Data[](1);
         ids[0] = id;
         mds[0] = abi.decode(data, (LibMigration.Data)); // reverts if invalid
-        try this.finishERC1155Migration(ids, mds) {
-            return this.onERC1155Received.selector;
-        } catch (bytes memory reason) {
-            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
-        }
+        _finishERC1155Migration(ids, mds);
+        return this.onERC1155Received.selector;
     }
 
     /// @inheritdoc IERC1155Receiver
@@ -146,11 +143,8 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
         // if (amounts[i] != 1) { ... } => never happens :: caught by ERC1155Fuse
         // https://github.com/ensdomains/ens-contracts/blob/staging/contracts/wrapper/ERC1155Fuse.sol#L182
         LibMigration.Data[] memory mds = abi.decode(data, (LibMigration.Data[])); // reverts if invalid
-        try this.finishERC1155Migration(ids, mds) {
-            return this.onERC1155BatchReceived.selector;
-        } catch (bytes memory reason) {
-            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
-        }
+        _finishERC1155Migration(ids, mds);
+        return this.onERC1155BatchReceived.selector;
     }
 
     /// @notice Convert NameWrapper tokens to their equivalent ENSv2 form.
@@ -176,6 +170,13 @@ abstract contract AbstractWrapperReceiver is ERC165, IERC1155Receiver {
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Call `finishERC1155Migration()` and wrap any reverts.
+    function _finishERC1155Migration(uint256[] memory ids, LibMigration.Data[] memory mds) internal {
+        try this.finishERC1155Migration(ids, mds) {} catch (bytes memory reason) {
+            WrappedErrorLib.wrapAndRevert(reason); // convert all errors to wrapped
+        }
+    }
 
     /// @dev Migrate received NameWrapper tokens.
     ///      Token owner is this contract.

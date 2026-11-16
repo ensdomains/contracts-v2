@@ -2,9 +2,10 @@
 
 Deployment artifacts written and read by [rocketh](https://github.com/wighawag/rocketh)
 through the migration tooling ([`script/migrate.ts`](../script/migrate.ts),
-[`docs/migration.md`](../docs/migration.md)). Each contract a deploy script
-produces is recorded here as JSON so later runs and the phase commands can resolve
-on-chain addresses without re-deploying.
+[`docs/migration.md`](../docs/migration.md)) and the single-contract deploy
+([`script/deployContract.ts`](../script/deployContract.ts), `bun run deploy:contract`).
+Each contract a deploy script produces is recorded here as JSON so later runs and
+the phase commands can resolve on-chain addresses without re-deploying.
 
 ## Layout
 
@@ -16,11 +17,19 @@ deployments/
   <namespace>/            # a single deployment set (v2 contracts)
     .chain                # { chainId, genesisHash } the set was deployed against
     .migrations.json      # rocketh's record of completed deploy scripts (id → unix-epoch-seconds)
-    .deployment.json      # { environment, chainId, deployedAt } — when this set was first deployed
+    .deployment.json      # { environment, chainId, deployedAt, updatedAt } — first and latest deploy
     .premigration.json    # pre-migration counts sidecar (names reserved/renewed/skipped/…), no label strings
     <Contract>.json       # one file per deployed contract (address, abi, bytecode, receipt, buildInfoId, …)
     build-info/
       <buildInfoId>.json  # exact compiler input shared by every contract from that build
+    addresses.md          # generated address table (see "Address pages")
+    roles.md              # generated record of who controls the deployment (`phase verify-roles`)
+    dao/                  # DAO proposal files from `phase build-dao-proposal`, where kept (mainnet)
+  <network>-adhoc/        # contracts deployed one at a time with `deploy:contract`
+  <namespace>-<kind>-<YYYYMMDD>[-r<N>]/
+                          # records replaced in <namespace>; <kind> is `redeploy` or `root`
+  <namespace>-<YYYYMMDD>-r<N>/
+                          # a whole earlier deployment, archived by `phase deploy-v2`
   v1/
     <network>/            # local v1-reference overrides (searched before the bundled set)
       .chainId            # chain id of the referenced v1 set
@@ -30,9 +39,10 @@ deployments/
 The `.chain`, `.migrations.json`, `.deployment.json`, and `.premigration.json`
 dotfiles are metadata; rocketh loads only `.migrations.json` and the
 `<Contract>.json` artifacts and ignores every other dotfile, so none of them are
-mistaken for a contract. `.deployment.json` is written once, on the first deploy
-into a namespace, so its `deployedAt` records the original deployment time and
-survives idempotent re-runs.
+mistaken for a contract. `.deployment.json` is created on the first deploy into a
+namespace, so its `deployedAt` records the original deployment time and survives
+idempotent re-runs. Each later migration deploy that changes the namespace sets
+its `updatedAt`.
 
 Compiled deployment artifacts record a `buildInfoId`. The matching file under
 `build-info/` preserves the exact compiler version, settings, remappings, and
@@ -64,6 +74,47 @@ in order and the first match wins, so `deployments/v1/<network>/` acts as a **lo
 override layer**: the bundled ens-contracts deployment supplies the canonical v1
 contracts, and anything dropped under `deployments/v1/` takes precedence or adds a
 contract the bundled set omits.
+
+## Ad-hoc deployments and record archives
+
+`bun run deploy:contract <Contract> --network <network>` records the contract in
+`<network>-adhoc/` unless `--deployment-network` names another namespace. A record
+that names this build's code on the chain, with the same constructor arguments, is
+reused. Otherwise the contract is deployed again, and the old record moves to a
+record archive.
+
+A record archive keeps records that were replaced in a namespace, so their
+addresses stay on record and their source can still be verified. It is named
+`<namespace>-<kind>-<YYYYMMDD>`, with `-r<N>` added when the name is taken:
+
+- `redeploy`: written by `deploy:contract` and the contract redeploy phases, for
+  example `mainnet-redeploy-20261026` or `mainnet-adhoc-redeploy-20261109`.
+- `root`: written by the root registry redeploy, for example `mainnet-root-20261013`.
+
+Each archive holds the replaced `<Contract>.json` files and a copy of the
+namespace's `.chain`, which the address pages need to read it. An archive written
+by `deploy:contract` also holds the `build-info/` files its records name. To drop a
+deployment that will not be used, archive its record by hand the same way; see
+[`docs/migration.md`](../docs/migration.md).
+
+A record archive is not the same as a whole-deployment archive
+(`<namespace>-<YYYYMMDD>-r<N>`, below), which keeps an entire earlier deployment.
+
+## Address pages
+
+`<namespace>/addresses.md` lists the contracts of a deployment. For mainnet and
+sepolia, the same table is published as
+[`docs/addresses/<network>.md`](../docs/addresses). Each table gives the latest
+deployed address of each contract, read from `<namespace>/` and
+`<namespace>-adhoc/` and leaving out archived records. Below it, a changelog lists
+every address of each contract deployed more than once or deployed ad hoc,
+archived ones included, with the UTC time its block was mined.
+
+The migration deploy writes the table of every namespace it persists. After a
+deploy to a public chain, `deploy:contract` rewrites both tables of a network with
+a published page. To rewrite them by hand, run
+`bun run docs:addresses --network <network>` with `--rpc-url`, or with
+`<NETWORK>_RPC_URL` set: the changelog's times are read from the chain.
 
 ## Namespace naming and `sepolia-official-v1-20260525-r2`
 
@@ -149,7 +200,8 @@ deployments/v1/*            # v1 references are ignored …
 !deployments/v1/mainnet/    # … and the tracked mainnet v1 references
 ```
 
-A live namespace (`deployments/sepolia/`) and dated archives
-(`deployments/sepolia-<YYYYMMDD>-r<N>/`) are therefore committed automatically —
-no allow-list entry needed. To deliberately keep a namespace local-only, name it
+A live namespace (`deployments/sepolia/`), its ad-hoc namespace
+(`deployments/sepolia-adhoc/`) and dated archives
+(`deployments/sepolia-<YYYYMMDD>-r<N>/`, `deployments/mainnet-redeploy-<YYYYMMDD>/`)
+are therefore committed automatically — no allow-list entry needed. To deliberately keep a namespace local-only, name it
 with a `-fork` / `-clean-` suffix or add a matching ignore line.
