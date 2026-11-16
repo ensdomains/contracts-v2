@@ -3,40 +3,46 @@ import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegi
 import type { Abi_ENSV1Resolver } from "generated/abis/ENSV1Resolver.js";
 import { zeroAddress, isAddressEqual } from "viem";
 import { idFromLabel } from "../test/utils/utils.js";
-import { DEPLOYMENT_ROLES, MAX_EXPIRY } from "../script/deploy-constants.js";
+import {
+  DEPLOYMENT_ROLES,
+  MAX_EXPIRY,
+  STATUS,
+} from "../script/deploy-constants.js";
 
 export default execute(
-  async ({ execute: write, get, read, namedAccounts: { deployer, owner } }) => {
+  async ({ execute: write, get, read, namedAccounts: { deployer } }) => {
     const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
     const ensV1Resolver = get<Abi_ENSV1Resolver>("ENSV1Resolver");
+    const reverseId = idFromLabel("reverse");
 
     // Phase-tagged scripts re-run on every `deploy-v2 --resume`, and
     // registering an existing name reverts, so only register when the name
     // is absent (same guard as the eth registration in 01_ETHRegistry).
     const currentStatus = await read(rootRegistry, {
       functionName: "getStatus",
-      args: [idFromLabel("reverse")],
+      args: [reverseId],
     });
 
-    if (currentStatus === 0) {
+    // The deployer takes the token with every role and admin role; the registry
+    // handover moves it, and every role with it, to the name owner.
+    if (currentStatus === STATUS.AVAILABLE) {
       console.log("  - Registering reverse in root");
       await write(rootRegistry, {
         account: deployer,
         functionName: "register",
         args: [
           "reverse",
-          owner,
+          deployer,
           zeroAddress,
           ensV1Resolver.address,
-          DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
+          DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
           MAX_EXPIRY,
         ],
       });
-      return;
     }
 
-    // A resume can redeploy ENSV1Resolver, leaving reverse pointing at the
-    // old one; repoint it so reverse resolution follows the live resolver.
+    // A run that replaced the ENSV1Resolver record leaves reverse pointing at
+    // the old one; repoint it so reverse resolution follows the live resolver.
     const currentResolver = await read(rootRegistry, {
       functionName: "getResolver",
       args: ["reverse"],
@@ -45,16 +51,10 @@ export default execute(
     if (isAddressEqual(currentResolver, ensV1Resolver.address)) return;
 
     console.log("  - Updating reverse resolver to current ENSV1Resolver");
-    const tokenId = await read(rootRegistry, {
-      functionName: "findTokenId",
-      args: ["reverse"],
-    });
-    // setResolver comes from `owner` — the name owner holds the full
-    // REVERSE_REGISTRY_ROOT bitmap; `deployer` only has registrar rights.
     await write(rootRegistry, {
-      account: owner,
+      account: deployer,
       functionName: "setResolver",
-      args: [tokenId, ensV1Resolver.address],
+      args: [reverseId, ensV1Resolver.address],
     });
   },
   {

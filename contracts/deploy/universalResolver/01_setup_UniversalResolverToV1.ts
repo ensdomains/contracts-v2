@@ -66,7 +66,7 @@ export default execute(
     tags: [
       "UniversalResolverMigration",
       "migration:phase1:deploy-v2",
-      "UniversalResolverV1",
+      "UniversalResolverProxyToV1",
       "v2",
     ],
     dependencies: ["UniversalResolver"],

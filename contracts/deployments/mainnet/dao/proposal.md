@@ -1,0 +1,186 @@
+# DAO proposal: v1 → v2 migration calls
+
+The DAO timelock executes these 15 calls in this order, in one proposal. `proposal.json` holds the same calls as the `targets`, `values` and `calldatas` arrays a Governor proposal takes.
+
+| # | Contract | Function | Purpose |
+| --- | --- | --- | --- |
+| 1 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `setRegistrarResolver(address)` | setRegistrarResolver |
+| 2 | DefaultReverseRegistrar `0x283F227c4Bd38ecE252C4Ae7ECE650B0e913f1f9` | `setController(address,bool)` | setController |
+| 3 | ReverseRegistrar `0xa58E81fe9b61B5c3fE2AFD33CF304c454AbFc7Cb` | `setController(address,bool)` | setController |
+| 4 | PublicResolverSet `0xfFCedA021CBDF20f1a66ebbef32E49d208cAbf62` | `approve(address,bool)` | PublicResolverSet.approve |
+| 5 | PublicResolverSet `0xfFCedA021CBDF20f1a66ebbef32E49d208cAbf62` | `approve(address,bool)` | PublicResolverSet.approve |
+| 6 | StandaloneHCAFactory `0x742bf21897a78e2C98cC5f5C5473A370a081e561` | `setImplementationApproval(address,bool)` | StandaloneHCAFactory.setImplementationApproval |
+| 7 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `removeRegistrarController(address)` | revoke v1 BaseRegistrar: ETHRegistrarController 0x59E16fcCd424Cc24e280Be16E11Bcd56fb0CE547 |
+| 8 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `removeRegistrarController(address)` | revoke v1 BaseRegistrar: NameWrapper 0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401 |
+| 9 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `removeRegistrarController(address)` | revoke v1 BaseRegistrar: unrecognized controller 0x60C7C2A24b5e86C38639Fd1586917a8FEF66a56d |
+| 10 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `removeRegistrarController(address)` | revoke v1 BaseRegistrar: unrecognized controller 0xCF60916b6CB4753f58533808fA610FcbD4098Ec0 |
+| 11 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `removeRegistrarController(address)` | revoke v1 BaseRegistrar: unrecognized controller 0x283Af0B28c62C092C9727F1Ee09c02CA627EB7F5 |
+| 12 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `addRegistrarController(address)` | authorize Graveyard |
+| 13 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `addRegistrarController(address)` | authorize ETHRenewerV1 |
+| 14 | RegistrarSecurityController `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b` | `transferRegistrarOwnership(address)` | transfer v1 BaseRegistrar ownership to ETHRenewerV1 |
+| 15 | UpgradableUniversalResolverProxy `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe` | `upgradeTo(address)` | switch UniversalResolverProxy to managed URP |
+
+## 1. RegistrarSecurityController.setRegistrarResolver
+
+- Purpose: setRegistrarResolver
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0x3071AD643cE4Ed8b3D67b289845b45dB82b068A4"]`
+
+```
+0x198e42360000000000000000000000003071ad643ce4ed8b3d67b289845b45db82b068a4
+```
+
+## 2. DefaultReverseRegistrar.setController
+
+- Purpose: setController
+- Target: `0x283F227c4Bd38ecE252C4Ae7ECE650B0e913f1f9`
+- Value: 0 wei
+- Arguments: `["0xd86E32499eCAFe9c181dd7410f93A1a9bB61ef0d",true]`
+
+```
+0xe0dba60f000000000000000000000000d86e32499ecafe9c181dd7410f93a1a9bb61ef0d0000000000000000000000000000000000000000000000000000000000000001
+```
+
+## 3. ReverseRegistrar.setController
+
+- Purpose: setController
+- Target: `0xa58E81fe9b61B5c3fE2AFD33CF304c454AbFc7Cb`
+- Value: 0 wei
+- Arguments: `["0x349151735790269a9C14668B58D7C83b5ecb9607",true]`
+
+```
+0xe0dba60f000000000000000000000000349151735790269a9c14668b58d7c83b5ecb96070000000000000000000000000000000000000000000000000000000000000001
+```
+
+## 4. PublicResolverSet.approve
+
+- Purpose: PublicResolverSet.approve
+- Target: `0xfFCedA021CBDF20f1a66ebbef32E49d208cAbf62`
+- Value: 0 wei
+- Arguments: `["0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63",true]`
+
+```
+0x3d140d21000000000000000000000000231b0ee14048e9dccd1d247744d114a4eb5e8e630000000000000000000000000000000000000000000000000000000000000001
+```
+
+## 5. PublicResolverSet.approve
+
+- Purpose: PublicResolverSet.approve
+- Target: `0xfFCedA021CBDF20f1a66ebbef32E49d208cAbf62`
+- Value: 0 wei
+- Arguments: `["0xF29100983E058B709F3D539b0c765937B804AC15",true]`
+
+```
+0x3d140d21000000000000000000000000f29100983e058b709f3d539b0c765937b804ac150000000000000000000000000000000000000000000000000000000000000001
+```
+
+## 6. StandaloneHCAFactory.setImplementationApproval
+
+- Purpose: StandaloneHCAFactory.setImplementationApproval
+- Target: `0x742bf21897a78e2C98cC5f5C5473A370a081e561`
+- Value: 0 wei
+- Arguments: `["0x116F462FA078ec0009e9b25DCd60309E70aaC4F4",true]`
+
+```
+0xe537b27b000000000000000000000000116f462fa078ec0009e9b25dcd60309e70aac4f40000000000000000000000000000000000000000000000000000000000000001
+```
+
+## 7. RegistrarSecurityController.removeRegistrarController
+
+- Purpose: revoke v1 BaseRegistrar: ETHRegistrarController 0x59E16fcCd424Cc24e280Be16E11Bcd56fb0CE547
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0x59E16fcCd424Cc24e280Be16E11Bcd56fb0CE547"]`
+
+```
+0x246b813e00000000000000000000000059e16fccd424cc24e280be16e11bcd56fb0ce547
+```
+
+## 8. RegistrarSecurityController.removeRegistrarController
+
+- Purpose: revoke v1 BaseRegistrar: NameWrapper 0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401"]`
+
+```
+0x246b813e000000000000000000000000d4416b13d2b3a9abae7acd5d6c2bbdbe25686401
+```
+
+## 9. RegistrarSecurityController.removeRegistrarController
+
+- Purpose: revoke v1 BaseRegistrar: unrecognized controller 0x60C7C2A24b5e86C38639Fd1586917a8FEF66a56d
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0x60C7C2A24b5e86C38639Fd1586917a8FEF66a56d"]`
+
+```
+0x246b813e00000000000000000000000060c7c2a24b5e86c38639fd1586917a8fef66a56d
+```
+
+## 10. RegistrarSecurityController.removeRegistrarController
+
+- Purpose: revoke v1 BaseRegistrar: unrecognized controller 0xCF60916b6CB4753f58533808fA610FcbD4098Ec0
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0xCF60916b6CB4753f58533808fA610FcbD4098Ec0"]`
+
+```
+0x246b813e000000000000000000000000cf60916b6cb4753f58533808fa610fcbd4098ec0
+```
+
+## 11. RegistrarSecurityController.removeRegistrarController
+
+- Purpose: revoke v1 BaseRegistrar: unrecognized controller 0x283Af0B28c62C092C9727F1Ee09c02CA627EB7F5
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0x283Af0B28c62C092C9727F1Ee09c02CA627EB7F5"]`
+
+```
+0x246b813e000000000000000000000000283af0b28c62c092c9727f1ee09c02ca627eb7f5
+```
+
+## 12. RegistrarSecurityController.addRegistrarController
+
+- Purpose: authorize Graveyard
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0xDa021A2C1C2F99574D861Ef8c6fA745851BEB7F6"]`
+
+```
+0xb229e85e000000000000000000000000da021a2c1c2f99574d861ef8c6fa745851beb7f6
+```
+
+## 13. RegistrarSecurityController.addRegistrarController
+
+- Purpose: authorize ETHRenewerV1
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0x56c447F308F463A01121C41E72b0E7e7557fCb68"]`
+
+```
+0xb229e85e00000000000000000000000056c447f308f463a01121c41e72b0e7e7557fcb68
+```
+
+## 14. RegistrarSecurityController.transferRegistrarOwnership
+
+- Purpose: transfer v1 BaseRegistrar ownership to ETHRenewerV1
+- Target: `0x7dd4d97653A67C2FD7fbA0a84825eC09524D4E1b`
+- Value: 0 wei
+- Arguments: `["0x56c447F308F463A01121C41E72b0E7e7557fCb68"]`
+
+```
+0x154fbf1500000000000000000000000056c447f308f463a01121c41e72b0e7e7557fcb68
+```
+
+## 15. UpgradableUniversalResolverProxy.upgradeTo
+
+- Purpose: switch UniversalResolverProxy to managed URP
+- Target: `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe`
+- Value: 0 wei
+- Arguments: `["0xcFFd2Ae680CD110D28739a70922636B5937b022B"]`
+
+```
+0x3659cfe6000000000000000000000000cffd2ae680cd110d28739a70922636b5937b022b
+```

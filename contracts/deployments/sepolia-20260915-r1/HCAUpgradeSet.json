@@ -1,0 +1,964 @@
+{
+  "address": "0x2ceedf92fd032167c90936c9e6ca2931bd7ec2c0",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "rootAccount",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "EACCannotGrantRoles",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "EACCannotRevokeRoles",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EACInvalidAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACInvalidRoleBitmap",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "role",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACMaxAssignees",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "role",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACMinAssignees",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EACRootResourceNotAllowed",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "EACUnauthorizedAccountRoles",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "addr",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        }
+      ],
+      "name": "ApprovalChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "oldRoleBitmap",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newRoleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACRolesChanged",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "ROOT_RESOURCE",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "addr",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        }
+      ],
+      "name": "approve",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAssigneeCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "counts",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "mask",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "grantRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "grantRootRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "hasAssignees",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "hasRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "hasRootRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "addr",
+          "type": "address"
+        }
+      ],
+      "name": "includes",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "namer",
+          "type": "address"
+        }
+      ],
+      "name": "isContractNamer",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "isOnlyAssignee",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "revokeRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "revokeRootRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        }
+      ],
+      "name": "roleCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "resource",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "roles",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
+        }
+      ],
+      "name": "supportsInterface",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "contractName": "PermissionedAddressSet",
+  "sourceName": "src/utils/PermissionedAddressSet.sol",
+  "bytecode": "0x608060405234801561000f575f80fd5b506040516110ba3803806110ba83398101604081905261002e916102e3565b61004b5f7011000000000000000000000000000000118382610052565b5050610350565b5f835f0361006157505f610145565b61006a8461014d565b6001600160a01b0383166100915760405163761fe2c960e11b815260040160405180910390fd5b5f858152602081815260408083206001600160a01b038716845290915290205484811780821461013f575f878152602081815260408083206001600160a01b03891684529091529020819055811986166100ed88826001610199565b60408051848152602081018490526001600160a01b038816918a917f0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c910160405180910390a360019350505050610145565b5f925050505b949350505050565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee81161561019657604051630153d96960e51b8152600481018290526024015b60405180910390fd5b50565b5f6101a3836102c9565b90508115610239575f848152600160205260409020546101e99082161980195f8051602061109a83398151915291909101165f8051602061107a83398151915216151590565b1561021157604051631f22ca6960e31b8152600481018590526024810184905260440161018d565b5f848152600160205260408120805485929061022e908490610324565b909155506102c39050565b5f84815260016020526040902054610278901982161980195f8051602061109a83398151915291909101165f8051602061107a83398151915216151590565b156102a057604051631f80c19b60e01b8152600481018590526024810184905260440161018d565b5f84815260016020526040812080548592906102bd90849061033d565b90915550505b50505050565b5f6102d38261014d565b50600181901b17600281901b1790565b5f602082840312156102f3575f80fd5b81516001600160a01b0381168114610309575f80fd5b9392505050565b634e487b7160e01b5f52601160045260245ffd5b8082018082111561033757610337610310565b92915050565b8181038181111561033757610337610310565b610d1d8061035d5f395ff3fe608060405234801561000f575f80fd5b50600436106100fb575f3560e01c80635adf4724116100935780638e77c95f116100635780638e77c95f146102aa578063ce156e82146102bd578063d3bf89b1146102d0578063dfa70d8b146102e3575f80fd5b80635adf4724146101ea5780636f3ff726146101fd578063781ef8db1461024d5780637c30058614610297575f80fd5b80631c3fc3eb116100ce5780631c3fc3eb146101795780632f27fa241461018e5780633634f911146101ad5780633d140d21146101d5575f80fd5b806301ffc9a7146100ff578063072d5d771461012757806311b8e00a1461013a5780631aedefda1461014d575b5f80fd5b61011261010d366004610b6d565b6102f6565b60405190151581526020015b60405180910390f35b610112610135366004610baf565b6103a1565b610112610148366004610bd9565b6103c5565b61011261015b366004610bf9565b6001600160a01b03165f908152610102602052604090205460ff1690565b6101805f81565b60405190815260200161011e565b61018061019c366004610c12565b5f9081526001602052604090205490565b6101c06101bb366004610bd9565b6103dc565b6040805192835260208301919091520161011e565b6101e86101e3366004610c29565b6103ff565b005b6101806101f8366004610baf565b61049b565b61011261020b366004610bf9565b6001600160a01b0381165f9081527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602052604081205460109081161461039b565b61011261025b366004610baf565b6001600160a01b03165f9081527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602052604090205481161490565b6101126102a5366004610c62565b6104c3565b6101126102b8366004610c62565b610506565b6101126102cb366004610baf565b610534565b6101126102de366004610c62565b61054f565b6101126102f1366004610c62565b6105a0565b5f6001600160e01b031982167f3d140d2100000000000000000000000000000000000000000000000000000000148061035857506001600160e01b031982167f1aedefda00000000000000000000000000000000000000000000000000000000145b8061038c57506001600160e01b031982167f6f3ff72600000000000000000000000000000000000000000000000000000000145b8061039b575061039b826105d9565b92915050565b5f80836103af82823361063f565b6103bc5f868660016106ab565b95945050505050565b5f806103d184846103dc565b501515949350505050565b5f806103e7836107bf565b5f948552600160205260409094205484169492505050565b600161040c5f82336107d9565b6001600160a01b0383165f908152610102602052604090205482151560ff909116151503610438575f80fd5b6001600160a01b0383165f8181526101026020908152604091829020805460ff191686151590811790915591519182523392917f7da296e993dc16ba7339edda62347c967436bf5bd3c5e3b98a73bfcb27b38f66910160405180910390a3505050565b5f828152602081815260408083206001600160a01b03851684529091528120545b9392505050565b5f83836104d182823361063f565b856104ef57604051631850848b60e31b815260040160405180910390fd5b6104fc86868660016106ab565b9695505050505050565b5f8061051285856103dc565b50905080158015906103bc57508361052a868561049b565b1614949350505050565b5f8083610542828233610838565b6103bc5f86866001610899565b5f838152602081815260408083206001600160a01b03851684528252808320547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5909252822054849182911761052a565b5f83836105ae828233610838565b856105cc57604051631850848b60e31b815260040160405180910390fd5b6104fc8686866001610899565b5f6001600160e01b031982167f0132e43d00000000000000000000000000000000000000000000000000000000148061039b57507f01ffc9a7000000000000000000000000000000000000000000000000000000006001600160e01b031983161461039b565b5f61064a8483610901565b905080198316156106a5576040517fd1a3b35500000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b03831660448201526064015b60405180910390fd5b50505050565b5f835f036106ba57505f6107b7565b6106c384610978565b6001600160a01b038316610703576040517fec3fc59200000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5f858152602081815260408083206001600160a01b03871684529091529020548481178082146107b1575f878152602081815260408083206001600160a01b038916845290915290208190558119861661075f888260016109d8565b60408051848152602081018490526001600160a01b038816918a917f0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c910160405180910390a3600193505050506107b7565b5f925050505b949350505050565b5f6107c982610978565b50600181901b17600281901b1790565b6107e483838361054f565b610833576040517f4b27a13300000000000000000000000000000000000000000000000000000000815260048101849052602481018390526001600160a01b038216604482015260640161069c565b505050565b5f6108438483610901565b905080198316156106a5576040517fa604e31800000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b038316604482015260640161069c565b5f6108a384610978565b5f858152602081815260408083206001600160a01b0387168452909152902054841981168082146107b1575f878152602081815260408083206001600160a01b038916845290915281208290558683169061075f90899083906109d8565b5f828152602081815260408083206001600160a01b03851684528252808320547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb590925282205417608081901c7fffffffffffffffffffffffffffffffff00000000000000000000000000000000909116176104bc565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee8116156109d5576040517f2a7b2d200000000000000000000000000000000000000000000000000000000081526004810182905260240161069c565b50565b5f6109e2836107bf565b90508115610aab575f848152600160205260409020547f888888888888888888888888888888888888888888888888888888888888888890821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610a83576040517ff9165348000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069c565b5f8481526001602052604081208054859290610aa0908490610cc1565b909155506106a59050565b5f848152600160205260409020547f88888888888888888888888888888888888888888888888888888888888888889019821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610b45576040517f1f80c19b000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069c565b5f8481526001602052604081208054859290610b62908490610cd4565b909155505050505050565b5f60208284031215610b7d575f80fd5b81356001600160e01b0319811681146104bc575f80fd5b80356001600160a01b0381168114610baa575f80fd5b919050565b5f8060408385031215610bc0575f80fd5b82359150610bd060208401610b94565b90509250929050565b5f8060408385031215610bea575f80fd5b50508035926020909101359150565b5f60208284031215610c09575f80fd5b6104bc82610b94565b5f60208284031215610c22575f80fd5b5035919050565b5f8060408385031215610c3a575f80fd5b610c4383610b94565b915060208301358015158114610c57575f80fd5b809150509250929050565b5f805f60608486031215610c74575f80fd5b8335925060208401359150610c8b60408501610b94565b90509250925092565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b8082018082111561039b5761039b610c94565b8181038181111561039b5761039b610c9456fea2646970667358221220087c3f644a9081c9e3f085bb6f3fa34f1201cb0cf7244996356ac64576f2ea6664736f6c634300081900338888888888888888888888888888888888888888888888888888888888888888eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b50600436106100fb575f3560e01c80635adf4724116100935780638e77c95f116100635780638e77c95f146102aa578063ce156e82146102bd578063d3bf89b1146102d0578063dfa70d8b146102e3575f80fd5b80635adf4724146101ea5780636f3ff726146101fd578063781ef8db1461024d5780637c30058614610297575f80fd5b80631c3fc3eb116100ce5780631c3fc3eb146101795780632f27fa241461018e5780633634f911146101ad5780633d140d21146101d5575f80fd5b806301ffc9a7146100ff578063072d5d771461012757806311b8e00a1461013a5780631aedefda1461014d575b5f80fd5b61011261010d366004610b6d565b6102f6565b60405190151581526020015b60405180910390f35b610112610135366004610baf565b6103a1565b610112610148366004610bd9565b6103c5565b61011261015b366004610bf9565b6001600160a01b03165f908152610102602052604090205460ff1690565b6101805f81565b60405190815260200161011e565b61018061019c366004610c12565b5f9081526001602052604090205490565b6101c06101bb366004610bd9565b6103dc565b6040805192835260208301919091520161011e565b6101e86101e3366004610c29565b6103ff565b005b6101806101f8366004610baf565b61049b565b61011261020b366004610bf9565b6001600160a01b0381165f9081527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602052604081205460109081161461039b565b61011261025b366004610baf565b6001600160a01b03165f9081527fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5602052604090205481161490565b6101126102a5366004610c62565b6104c3565b6101126102b8366004610c62565b610506565b6101126102cb366004610baf565b610534565b6101126102de366004610c62565b61054f565b6101126102f1366004610c62565b6105a0565b5f6001600160e01b031982167f3d140d2100000000000000000000000000000000000000000000000000000000148061035857506001600160e01b031982167f1aedefda00000000000000000000000000000000000000000000000000000000145b8061038c57506001600160e01b031982167f6f3ff72600000000000000000000000000000000000000000000000000000000145b8061039b575061039b826105d9565b92915050565b5f80836103af82823361063f565b6103bc5f868660016106ab565b95945050505050565b5f806103d184846103dc565b501515949350505050565b5f806103e7836107bf565b5f948552600160205260409094205484169492505050565b600161040c5f82336107d9565b6001600160a01b0383165f908152610102602052604090205482151560ff909116151503610438575f80fd5b6001600160a01b0383165f8181526101026020908152604091829020805460ff191686151590811790915591519182523392917f7da296e993dc16ba7339edda62347c967436bf5bd3c5e3b98a73bfcb27b38f66910160405180910390a3505050565b5f828152602081815260408083206001600160a01b03851684529091528120545b9392505050565b5f83836104d182823361063f565b856104ef57604051631850848b60e31b815260040160405180910390fd5b6104fc86868660016106ab565b9695505050505050565b5f8061051285856103dc565b50905080158015906103bc57508361052a868561049b565b1614949350505050565b5f8083610542828233610838565b6103bc5f86866001610899565b5f838152602081815260408083206001600160a01b03851684528252808320547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5909252822054849182911761052a565b5f83836105ae828233610838565b856105cc57604051631850848b60e31b815260040160405180910390fd5b6104fc8686866001610899565b5f6001600160e01b031982167f0132e43d00000000000000000000000000000000000000000000000000000000148061039b57507f01ffc9a7000000000000000000000000000000000000000000000000000000006001600160e01b031983161461039b565b5f61064a8483610901565b905080198316156106a5576040517fd1a3b35500000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b03831660448201526064015b60405180910390fd5b50505050565b5f835f036106ba57505f6107b7565b6106c384610978565b6001600160a01b038316610703576040517fec3fc59200000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5f858152602081815260408083206001600160a01b03871684529091529020548481178082146107b1575f878152602081815260408083206001600160a01b038916845290915290208190558119861661075f888260016109d8565b60408051848152602081018490526001600160a01b038816918a917f0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c910160405180910390a3600193505050506107b7565b5f925050505b949350505050565b5f6107c982610978565b50600181901b17600281901b1790565b6107e483838361054f565b610833576040517f4b27a13300000000000000000000000000000000000000000000000000000000815260048101849052602481018390526001600160a01b038216604482015260640161069c565b505050565b5f6108438483610901565b905080198316156106a5576040517fa604e31800000000000000000000000000000000000000000000000000000000815260048101859052602481018490526001600160a01b038316604482015260640161069c565b5f6108a384610978565b5f858152602081815260408083206001600160a01b0387168452909152902054841981168082146107b1575f878152602081815260408083206001600160a01b038916845290915281208290558683169061075f90899083906109d8565b5f828152602081815260408083206001600160a01b03851684528252808320547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb590925282205417608081901c7fffffffffffffffffffffffffffffffff00000000000000000000000000000000909116176104bc565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee8116156109d5576040517f2a7b2d200000000000000000000000000000000000000000000000000000000081526004810182905260240161069c565b50565b5f6109e2836107bf565b90508115610aab575f848152600160205260409020547f888888888888888888888888888888888888888888888888888888888888888890821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610a83576040517ff9165348000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069c565b5f8481526001602052604081208054859290610aa0908490610cc1565b909155506106a59050565b5f848152600160205260409020547f88888888888888888888888888888888888888888888888888888888888888889019821680197feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeef01161615610b45576040517f1f80c19b000000000000000000000000000000000000000000000000000000008152600481018590526024810184905260440161069c565b5f8481526001602052604081208054859290610b62908490610cd4565b909155505050505050565b5f60208284031215610b7d575f80fd5b81356001600160e01b0319811681146104bc575f80fd5b80356001600160a01b0381168114610baa575f80fd5b919050565b5f8060408385031215610bc0575f80fd5b82359150610bd060208401610b94565b90509250929050565b5f8060408385031215610bea575f80fd5b50508035926020909101359150565b5f60208284031215610c09575f80fd5b6104bc82610b94565b5f60208284031215610c22575f80fd5b5035919050565b5f8060408385031215610c3a575f80fd5b610c4383610b94565b915060208301358015158114610c57575f80fd5b809150509250929050565b5f805f60608486031215610c74575f80fd5b8335925060208401359150610c8b60408501610b94565b90509250925092565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b8082018082111561039b5761039b610c94565b8181038181111561039b5761039b610c9456fea2646970667358221220087c3f644a9081c9e3f085bb6f3fa34f1201cb0cf7244996356ac64576f2ea6664736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {},
+  "inputSourceName": "project/src/utils/PermissionedAddressSet.sol",
+  "buildInfoId": "solc-0_8_25-dabdd66c7234a6e1a96c7d0104facb6ac6a61215",
+  "devdoc": {
+    "errors": {
+      "EACCannotGrantRoles(uint256,uint256,address)": [
+        {
+          "details": "Error selector: `0xd1a3b355`"
+        }
+      ],
+      "EACCannotRevokeRoles(uint256,uint256,address)": [
+        {
+          "details": "Error selector: `0xa604e318`"
+        }
+      ],
+      "EACInvalidAccount()": [
+        {
+          "details": "Error selector: `0xec3fc592`"
+        }
+      ],
+      "EACInvalidRoleBitmap(uint256)": [
+        {
+          "details": "Error selector: `0x2a7b2d20`"
+        }
+      ],
+      "EACMaxAssignees(uint256,uint256)": [
+        {
+          "details": "Error selector: `0xf9165348`"
+        }
+      ],
+      "EACMinAssignees(uint256,uint256)": [
+        {
+          "details": "Error selector: `0x1f80c19b`"
+        }
+      ],
+      "EACRootResourceNotAllowed()": [
+        {
+          "details": "Error selector: `0xc2842458`"
+        }
+      ],
+      "EACUnauthorizedAccountRoles(uint256,uint256,address)": [
+        {
+          "details": "Error selector: `0x4b27a133`"
+        }
+      ]
+    },
+    "events": {
+      "ApprovalChanged(address,bool,address)": {
+        "params": {
+          "addr": "The address.",
+          "approved": "If `true`, added, otherwise removed.",
+          "sender": "The sender of the change."
+        }
+      },
+      "EACRolesChanged(uint256,address,uint256,uint256)": {
+        "params": {
+          "account": "The account that the roles were changed for.",
+          "newRoleBitmap": "The new roles for the account.",
+          "oldRoleBitmap": "The old roles for the account.",
+          "resource": "The resource that the roles were changed within."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "approve(address,bool)": {
+        "params": {
+          "addr": "The address to approve.",
+          "approved": "If `true`, added, otherwise removed."
+        }
+      },
+      "constructor": {
+        "params": {
+          "rootAccount": "Account granted root roles."
+        }
+      },
+      "getAssigneeCount(uint256,uint256)": {
+        "params": {
+          "resource": "The resource to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "counts": "The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.",
+          "mask": "The mask for the given role bitmap."
+        }
+      },
+      "grantRoles(uint256,uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being granted.      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.",
+        "params": {
+          "account": "The account to grant roles to.",
+          "resource": "The resource to grant roles within.",
+          "roleBitmap": "The roles bitmap to grant."
+        },
+        "returns": {
+          "_0": "`true` if the roles were granted, `false` otherwise."
+        }
+      },
+      "grantRootRoles(uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being granted.",
+        "params": {
+          "account": "The account to grant roles to.",
+          "roleBitmap": "The roles bitmap to grant."
+        },
+        "returns": {
+          "_0": "`true` if the roles were granted, `false` otherwise."
+        }
+      },
+      "hasAssignees(uint256,uint256)": {
+        "details": "Derivable from `getAssigneeCount()`.",
+        "params": {
+          "resource": "The resource to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "_0": "`true` if any of the roles in the given role bitmap has assignees, `false` otherwise."
+        }
+      },
+      "hasRoles(uint256,uint256,address)": {
+        "params": {
+          "account": "The account to check.",
+          "resource": "The resource to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "_0": "`true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise."
+        }
+      },
+      "hasRootRoles(uint256,address)": {
+        "params": {
+          "account": "The account to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "_0": "`true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise."
+        }
+      },
+      "includes(address)": {
+        "params": {
+          "addr": "The address to check."
+        },
+        "returns": {
+          "_0": "`true` if included."
+        }
+      },
+      "isContractNamer(address)": {
+        "params": {
+          "namer": "The address to check."
+        },
+        "returns": {
+          "_0": "`true` if authorized."
+        }
+      },
+      "isOnlyAssignee(uint256,uint256,address)": {
+        "details": "Derivable from `getAssigneeCount()` and `roles()`.",
+        "params": {
+          "account": "The account to check.",
+          "resource": "The resource to check.",
+          "roleBitmap": "The roles bitmap to check."
+        },
+        "returns": {
+          "_0": "`true` if the only assignee."
+        }
+      },
+      "revokeRoles(uint256,uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being revoked.      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.",
+        "params": {
+          "account": "The account to revoke roles from.",
+          "resource": "The resource to revoke roles within.",
+          "roleBitmap": "The roles bitmap to revoke."
+        },
+        "returns": {
+          "_0": "`true` if the roles were revoked, `false` otherwise."
+        }
+      },
+      "revokeRootRoles(uint256,address)": {
+        "details": "The caller must have all the necessary admin roles for the roles being revoked.",
+        "params": {
+          "account": "The account to revoke roles from.",
+          "roleBitmap": "The roles bitmap to revoke."
+        },
+        "returns": {
+          "_0": "`true` if the roles were revoked, `false` otherwise."
+        }
+      },
+      "roleCount(uint256)": {
+        "params": {
+          "resource": "The resource to get the role count for."
+        },
+        "returns": {
+          "_0": "count The role count bitmap for the resource."
+        }
+      },
+      "roles(uint256,address)": {
+        "params": {
+          "account": "The account to get the roles for.",
+          "resource": "The resource to get the roles for."
+        },
+        "returns": {
+          "_0": "The roles bitmap for the account in the resource."
+        }
+      },
+      "supportsInterface(bytes4)": {
+        "details": "See {IERC165-supportsInterface}."
+      }
+    },
+    "stateVariables": {
+      "_approved": {
+        "details": "Mapping that determines members of the set."
+      }
+    },
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "671400",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "ROOT_RESOURCE()": "216",
+        "approve(address,bool)": "33383",
+        "getAssigneeCount(uint256,uint256)": "2703",
+        "grantRoles(uint256,uint256,address)": "infinite",
+        "grantRootRoles(uint256,address)": "infinite",
+        "hasAssignees(uint256,uint256)": "2732",
+        "hasRoles(uint256,uint256,address)": "4922",
+        "hasRootRoles(uint256,address)": "2631",
+        "includes(address)": "2625",
+        "isContractNamer(address)": "2611",
+        "isOnlyAssignee(uint256,uint256,address)": "5125",
+        "revokeRoles(uint256,uint256,address)": "infinite",
+        "revokeRootRoles(uint256,address)": "infinite",
+        "roleCount(uint256)": "2480",
+        "roles(uint256,address)": "2674",
+        "supportsInterface(bytes4)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"rootAccount\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"EACCannotGrantRoles\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"EACCannotRevokeRoles\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"EACInvalidAccount\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"}],\"name\":\"EACInvalidRoleBitmap\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"role\",\"type\":\"uint256\"}],\"name\":\"EACMaxAssignees\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"role\",\"type\":\"uint256\"}],\"name\":\"EACMinAssignees\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"EACRootResourceNotAllowed\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"EACUnauthorizedAccountRoles\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"addr\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"ApprovalChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"oldRoleBitmap\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"newRoleBitmap\",\"type\":\"uint256\"}],\"name\":\"EACRolesChanged\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"ROOT_RESOURCE\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"addr\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"}],\"name\":\"approve\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"}],\"name\":\"getAssigneeCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"counts\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"mask\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"grantRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"grantRootRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"}],\"name\":\"hasAssignees\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"hasRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"hasRootRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"addr\",\"type\":\"address\"}],\"name\":\"includes\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"namer\",\"type\":\"address\"}],\"name\":\"isContractNamer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isOnlyAssignee\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"revokeRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roleBitmap\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"revokeRootRoles\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"}],\"name\":\"roleCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"resource\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"roles\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"errors\":{\"EACCannotGrantRoles(uint256,uint256,address)\":[{\"details\":\"Error selector: `0xd1a3b355`\"}],\"EACCannotRevokeRoles(uint256,uint256,address)\":[{\"details\":\"Error selector: `0xa604e318`\"}],\"EACInvalidAccount()\":[{\"details\":\"Error selector: `0xec3fc592`\"}],\"EACInvalidRoleBitmap(uint256)\":[{\"details\":\"Error selector: `0x2a7b2d20`\"}],\"EACMaxAssignees(uint256,uint256)\":[{\"details\":\"Error selector: `0xf9165348`\"}],\"EACMinAssignees(uint256,uint256)\":[{\"details\":\"Error selector: `0x1f80c19b`\"}],\"EACRootResourceNotAllowed()\":[{\"details\":\"Error selector: `0xc2842458`\"}],\"EACUnauthorizedAccountRoles(uint256,uint256,address)\":[{\"details\":\"Error selector: `0x4b27a133`\"}]},\"events\":{\"ApprovalChanged(address,bool,address)\":{\"params\":{\"addr\":\"The address.\",\"approved\":\"If `true`, added, otherwise removed.\",\"sender\":\"The sender of the change.\"}},\"EACRolesChanged(uint256,address,uint256,uint256)\":{\"params\":{\"account\":\"The account that the roles were changed for.\",\"newRoleBitmap\":\"The new roles for the account.\",\"oldRoleBitmap\":\"The old roles for the account.\",\"resource\":\"The resource that the roles were changed within.\"}}},\"kind\":\"dev\",\"methods\":{\"approve(address,bool)\":{\"params\":{\"addr\":\"The address to approve.\",\"approved\":\"If `true`, added, otherwise removed.\"}},\"constructor\":{\"params\":{\"rootAccount\":\"Account granted root roles.\"}},\"getAssigneeCount(uint256,uint256)\":{\"params\":{\"resource\":\"The resource to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"counts\":\"The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.\",\"mask\":\"The mask for the given role bitmap.\"}},\"grantRoles(uint256,uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being granted.      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.\",\"params\":{\"account\":\"The account to grant roles to.\",\"resource\":\"The resource to grant roles within.\",\"roleBitmap\":\"The roles bitmap to grant.\"},\"returns\":{\"_0\":\"`true` if the roles were granted, `false` otherwise.\"}},\"grantRootRoles(uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being granted.\",\"params\":{\"account\":\"The account to grant roles to.\",\"roleBitmap\":\"The roles bitmap to grant.\"},\"returns\":{\"_0\":\"`true` if the roles were granted, `false` otherwise.\"}},\"hasAssignees(uint256,uint256)\":{\"details\":\"Derivable from `getAssigneeCount()`.\",\"params\":{\"resource\":\"The resource to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"_0\":\"`true` if any of the roles in the given role bitmap has assignees, `false` otherwise.\"}},\"hasRoles(uint256,uint256,address)\":{\"params\":{\"account\":\"The account to check.\",\"resource\":\"The resource to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"_0\":\"`true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise.\"}},\"hasRootRoles(uint256,address)\":{\"params\":{\"account\":\"The account to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"_0\":\"`true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.\"}},\"includes(address)\":{\"params\":{\"addr\":\"The address to check.\"},\"returns\":{\"_0\":\"`true` if included.\"}},\"isContractNamer(address)\":{\"params\":{\"namer\":\"The address to check.\"},\"returns\":{\"_0\":\"`true` if authorized.\"}},\"isOnlyAssignee(uint256,uint256,address)\":{\"details\":\"Derivable from `getAssigneeCount()` and `roles()`.\",\"params\":{\"account\":\"The account to check.\",\"resource\":\"The resource to check.\",\"roleBitmap\":\"The roles bitmap to check.\"},\"returns\":{\"_0\":\"`true` if the only assignee.\"}},\"revokeRoles(uint256,uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being revoked.      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.\",\"params\":{\"account\":\"The account to revoke roles from.\",\"resource\":\"The resource to revoke roles within.\",\"roleBitmap\":\"The roles bitmap to revoke.\"},\"returns\":{\"_0\":\"`true` if the roles were revoked, `false` otherwise.\"}},\"revokeRootRoles(uint256,address)\":{\"details\":\"The caller must have all the necessary admin roles for the roles being revoked.\",\"params\":{\"account\":\"The account to revoke roles from.\",\"roleBitmap\":\"The roles bitmap to revoke.\"},\"returns\":{\"_0\":\"`true` if the roles were revoked, `false` otherwise.\"}},\"roleCount(uint256)\":{\"params\":{\"resource\":\"The resource to get the role count for.\"},\"returns\":{\"_0\":\"count The role count bitmap for the resource.\"}},\"roles(uint256,address)\":{\"params\":{\"account\":\"The account to get the roles for.\",\"resource\":\"The resource to get the roles for.\"},\"returns\":{\"_0\":\"The roles bitmap for the account in the resource.\"}},\"supportsInterface(bytes4)\":{\"details\":\"See {IERC165-supportsInterface}.\"}},\"stateVariables\":{\"_approved\":{\"details\":\"Mapping that determines members of the set.\"}},\"version\":1},\"userdoc\":{\"events\":{\"ApprovalChanged(address,bool,address)\":{\"notice\":\"Inclusion of a member of the set has changed.\"},\"EACRolesChanged(uint256,address,uint256,uint256)\":{\"notice\":\"Emitted when roles are changed.\"}},\"kind\":\"user\",\"methods\":{\"ROOT_RESOURCE()\":{\"notice\":\"The `ROOT_RESOURCE`.\"},\"approve(address,bool)\":{\"notice\":\"Add or remove a member from the set.\"},\"getAssigneeCount(uint256,uint256)\":{\"notice\":\"Returns the number of assignees for the roles in the given role bitmap.\"},\"grantRoles(uint256,uint256,address)\":{\"notice\":\"Grants all roles in the given role bitmap to `account`.\"},\"grantRootRoles(uint256,address)\":{\"notice\":\"Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.\"},\"hasAssignees(uint256,uint256)\":{\"notice\":\"Checks if any of the roles in the given role bitmap has assignees.\"},\"hasRoles(uint256,uint256,address)\":{\"notice\":\"Checks if the given account has been granted all the given roles in the given resource or the `ROOT_RESOURCE`.\"},\"hasRootRoles(uint256,address)\":{\"notice\":\"Checks if the given account has been granted all the given roles in the `ROOT_RESOURCE`.\"},\"includes(address)\":{\"notice\":\"Check if `addr` is included in the set.\"},\"isContractNamer(address)\":{\"notice\":\"Determine if an account is authorized to name this contract.         Called by reverse registrars.\"},\"isOnlyAssignee(uint256,uint256,address)\":{\"notice\":\"Checks if account is the only assignee.\"},\"revokeRoles(uint256,uint256,address)\":{\"notice\":\"Revokes all roles in the given role bitmap from `account`.\"},\"revokeRootRoles(uint256,address)\":{\"notice\":\"Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.\"},\"roleCount(uint256)\":{\"notice\":\"Returns the role count bitmap for a resource.\"},\"roles(uint256,address)\":{\"notice\":\"Returns the roles bitmap for an account in a resource.\"}},\"notice\":\"An arbitrary set of addresses managed by EAC.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/utils/PermissionedAddressSet.sol\":\"PermissionedAddressSet\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/ERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {IERC165} from \\\"./IERC165.sol\\\";\\n\\n/**\\n * @dev Implementation of the {IERC165} interface.\\n *\\n * Contracts that want to implement ERC-165 should inherit from this contract and override {supportsInterface} to check\\n * for the additional interface id that will be supported. For example:\\n *\\n * ```solidity\\n * function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n *     return interfaceId == type(MyInterface).interfaceId || super.supportsInterface(interfaceId);\\n * }\\n * ```\\n */\\nabstract contract ERC165 is IERC165 {\\n    /**\\n     * @dev See {IERC165-supportsInterface}.\\n     */\\n    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {\\n        return interfaceId == type(IERC165).interfaceId;\\n    }\\n}\\n\",\"keccak256\":\"0xddce8e17e3d3f9ed818b4f4c4478a8262aab8b11ed322f1bf5ed705bb4bd97fa\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/IERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Interface of the ERC-165 standard, as defined in the\\n * https://eips.ethereum.org/EIPS/eip-165[ERC].\\n *\\n * Implementers can declare support of contract interfaces, which can then be\\n * queried by others ({ERC165Checker}).\\n *\\n * For an implementation, see {ERC165}.\\n */\\ninterface IERC165 {\\n    /**\\n     * @dev Returns true if this contract implements the interface defined by\\n     * `interfaceId`. See the corresponding\\n     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section]\\n     * to learn more about how these ids are created.\\n     *\\n     * This function call must use less than 30 000 gas.\\n     */\\n    function supportsInterface(bytes4 interfaceId) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x79796192ec90263f21b464d5bc90b777a525971d3de8232be80d9c4f9fb353b8\",\"license\":\"MIT\"},\"project/src/access-control/EnhancedAccessControl.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (access/AccessControl.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {ERC165} from \\\"@openzeppelin/contracts/utils/introspection/ERC165.sol\\\";\\n\\nimport {IEnhancedAccessControl} from \\\"./interfaces/IEnhancedAccessControl.sol\\\";\\nimport {EACBaseRolesLib} from \\\"./libraries/EACBaseRolesLib.sol\\\";\\n\\n/// @dev Resource-scoped access control system with bitmap-packed roles.\\n///\\n/// Subclasses define custom roles as constants and assign them to accounts within specific\\n/// resources. A resource is an arbitrary uint256 identifier whose meaning is determined by\\n/// the subclass (e.g. a token ID, a name hash, etc.).\\n///\\n/// Features:\\n/// - Resource-based roles: each resource has independent role assignments.\\n/// - ROOT_RESOURCE fallback: roles granted in `ROOT_RESOURCE` (0x0) automatically apply\\n///   to all resources. Role checks OR the account's root roles with their resource-specific\\n///   roles, so holding a role in either scope satisfies the check.\\n/// - Admin roles: each regular role has a corresponding admin role. Holding an admin role\\n///   grants authority to grant and revoke both the regular role and the admin role itself.\\n/// - Assignee counting: per-role assignee counts are tracked, with a maximum of 15 per role.\\n/// - Callbacks: subclasses can override `_onRolesGranted` and `_onRolesRevoked` to react\\n///   to role changes (e.g. regenerating tokens, updating metadata).\\n/// - Separate root operations: `grantRoles`/`revokeRoles` reject `ROOT_RESOURCE` directly;\\n///   use `grantRootRoles`/`revokeRootRoles` for root-level assignments.\\n///\\n/// Bitmap layout (uint256, 64 nybbles):\\n///\\n///   255         128 127            0\\n///   \\u250c\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u252c\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2510\\n///   \\u2502 Admin Roles  \\u2502 Regular Roles \\u2502\\n///   \\u2514\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2534\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2518\\n///   63           32 31             0\\n///\\n/// Each role occupies one nybble (4 bits). A regular role at nybble index N occupies bits\\n/// N*4 to N*4+3, and its admin counterpart occupies the same relative position in the upper\\n/// half at bits N*4+128 to N*4+131.\\n///\\n/// Defining roles: `uint256 constant MY_ROLE = 1 << (N * 4)` where N is the nybble index\\n/// (0-31), and the admin role as `uint256 constant MY_ROLE_ADMIN = MY_ROLE << 128`.\\n///\\n/// The same nybble-per-role layout is used for assignee counting: each nybble in the count\\n/// bitmap tracks the number of accounts holding that role within a resource (4 bits = max 15).\\n///\\nabstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Constants\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice The `ROOT_RESOURCE`.\\n    uint256 public constant ROOT_RESOURCE = 0;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev user roles within a resource stored as a bitmap.\\n    ///      Resource -> User -> RoleBitmap\\n    mapping(uint256 resource => mapping(address account => uint256 roleBitmap)) private _roles;\\n\\n    /// @dev The number of assignees for a given role in a given resource.\\n    ///\\n    /// Each role's count is represented by 4 bits, in little-endian order.\\n    /// This results in max. 64 roles, and 15 assignees per role.\\n    ///\\n    mapping(uint256 resource => uint256 roleCount) private _roleCount;\\n\\n    /// @dev Storage gap for future changes.\\n    uint256[256] private __gap;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Modifiers\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Modifier that checks that sender has the admin roles for all the given roles.\\n    modifier canGrantRoles(uint256 resource, uint256 roleBitmap) {\\n        _checkCanGrantRoles(resource, roleBitmap, msg.sender);\\n        _;\\n    }\\n\\n    /// @dev Modifier that checks that sender has the admin roles for all the given roles and can revoke them.\\n    modifier canRevokeRoles(uint256 resource, uint256 roleBitmap) {\\n        _checkCanRevokeRoles(resource, roleBitmap, msg.sender);\\n        _;\\n    }\\n\\n    /// @dev Modifier that checks that sender has all the given roles within the given resource or the ROOT_RESOURCE.\\n    modifier onlyRoles(uint256 resource, uint256 roleBitmap) {\\n        _checkRoles(resource, roleBitmap, msg.sender);\\n        _;\\n    }\\n\\n    /// @dev Modifier that checks that sender has all the given roles within the `ROOT_RESOURCE`.\\n    modifier onlyRootRoles(uint256 roleBitmap) {\\n        _checkRoles(ROOT_RESOURCE, roleBitmap, msg.sender);\\n        _;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc ERC165\\n    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n        return\\n            interfaceId == type(IEnhancedAccessControl).interfaceId ||\\n            super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being granted.\\n    ///      Cannot be used with ROOT_RESOURCE directly, use grantRootRoles instead.\\n    function grantRoles(uint256 resource, uint256 roleBitmap, address account)\\n        public\\n        virtual\\n        canGrantRoles(resource, roleBitmap)\\n        returns (bool)\\n    {\\n        if (resource == ROOT_RESOURCE) {\\n            revert EACRootResourceNotAllowed();\\n        }\\n        return _grantRoles(resource, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being granted.\\n    function grantRootRoles(uint256 roleBitmap, address account)\\n        public\\n        virtual\\n        canGrantRoles(ROOT_RESOURCE, roleBitmap)\\n        returns (bool)\\n    {\\n        return _grantRoles(ROOT_RESOURCE, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being revoked.\\n    ///      Cannot be used with ROOT_RESOURCE directly, use revokeRootRoles instead.\\n    function revokeRoles(uint256 resource, uint256 roleBitmap, address account)\\n        public\\n        virtual\\n        canRevokeRoles(resource, roleBitmap)\\n        returns (bool)\\n    {\\n        if (resource == ROOT_RESOURCE) {\\n            revert EACRootResourceNotAllowed();\\n        }\\n        return _revokeRoles(resource, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    /// @dev The caller must have all the necessary admin roles for the roles being revoked.\\n    function revokeRootRoles(uint256 roleBitmap, address account)\\n        public\\n        virtual\\n        canRevokeRoles(ROOT_RESOURCE, roleBitmap)\\n        returns (bool)\\n    {\\n        return _revokeRoles(ROOT_RESOURCE, roleBitmap, account, true);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function roles(uint256 resource, address account) public view virtual returns (uint256) {\\n        return _getRoles(resource, account);\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function roleCount(uint256 resource) public view virtual returns (uint256) {\\n        return _roleCount[resource];\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function hasRootRoles(uint256 roleBitmap, address account) public view virtual returns (bool) {\\n        return _getRoles(ROOT_RESOURCE, account) & roleBitmap == roleBitmap;\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function hasRoles(uint256 resource, uint256 roleBitmap, address account)\\n        public\\n        view\\n        virtual\\n        returns (bool)\\n    {\\n        return _effectiveRoles(resource, account) & roleBitmap == roleBitmap;\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function getAssigneeCount(uint256 resource, uint256 roleBitmap)\\n        public\\n        view\\n        virtual\\n        returns (uint256 counts, uint256 mask)\\n    {\\n        mask = _roleBitmapToMask(roleBitmap);\\n        counts = _roleCount[resource] & mask;\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function hasAssignees(uint256 resource, uint256 roleBitmap) public view returns (bool) {\\n        (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);\\n        return counts != 0;\\n    }\\n\\n    /// @inheritdoc IEnhancedAccessControl\\n    function isOnlyAssignee(uint256 resource, uint256 roleBitmap, address account)\\n        public\\n        view\\n        returns (bool)\\n    {\\n        (uint256 counts, ) = getAssigneeCount(resource, roleBitmap);\\n        return counts != 0 && counts == (roles(resource, account) & roleBitmap);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Internal Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Transfers all roles from `srcAccount` to `dstAccount` within the same resource.\\n    ///\\n    /// This function first revokes all roles from the source account, then grants them to the\\n    /// destination account. This prevents exceeding max assignees limits during transfer.\\n    ///\\n    /// Does nothing if there are no roles to transfer.\\n    ///\\n    /// @param resource The resource to transfer roles within.\\n    /// @param srcAccount The account to transfer roles from.\\n    /// @param dstAccount The account to transfer roles to.\\n    /// @param executeCallbacks Whether to execute the callbacks.\\n    function _transferRoles(\\n        uint256 resource,\\n        address srcAccount,\\n        address dstAccount,\\n        bool executeCallbacks\\n    )\\n        internal\\n        virtual\\n    {\\n        uint256 srcRoles = _roles[resource][srcAccount];\\n        if (srcRoles != 0) {\\n            // First revoke roles from source account to free up assignee slots\\n            _revokeRoles(resource, srcRoles, srcAccount, executeCallbacks);\\n            // Then grant roles to destination account\\n            _grantRoles(resource, srcRoles, dstAccount, executeCallbacks);\\n        }\\n    }\\n\\n    /// @dev Grants multiple roles to `account`.\\n    /// @param resource The resource to grant roles within.\\n    /// @param roleBitmap The roles bitmap to grant.\\n    /// @param account The account to grant roles to.\\n    /// @param executeCallbacks Whether to execute the callbacks.\\n    /// @return `true` if the roles were granted, `false` otherwise.\\n    function _grantRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account,\\n        bool executeCallbacks\\n    )\\n        internal\\n        virtual\\n        returns (bool)\\n    {\\n        if (roleBitmap == 0) {\\n            return false;\\n        }\\n        _checkRoleBitmap(roleBitmap);\\n        if (account == address(0)) {\\n            revert EACInvalidAccount();\\n        }\\n        uint256 currentRoles = _roles[resource][account];\\n        uint256 updatedRoles = currentRoles | roleBitmap;\\n\\n        if (currentRoles != updatedRoles) {\\n            _roles[resource][account] = updatedRoles;\\n            uint256 newlyAddedRoles = roleBitmap & ~currentRoles;\\n            _updateRoleCounts(resource, newlyAddedRoles, true);\\n            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);\\n            if (executeCallbacks) {\\n                _onRolesGranted(resource, account, currentRoles, updatedRoles, roleBitmap);\\n            }\\n            return true;\\n        } else {\\n            return false;\\n        }\\n    }\\n\\n    /// @dev Attempts to revoke roles from `account` and returns a boolean indicating if roles were revoked.\\n    /// @param resource The resource to revoke roles within.\\n    /// @param roleBitmap The roles bitmap to revoke.\\n    /// @param account The account to revoke roles from.\\n    /// @param executeCallbacks Whether to execute the callbacks.\\n    /// @return `true` if the roles were revoked, `false` otherwise.\\n    function _revokeRoles(\\n        uint256 resource,\\n        uint256 roleBitmap,\\n        address account,\\n        bool executeCallbacks\\n    )\\n        internal\\n        virtual\\n        returns (bool)\\n    {\\n        _checkRoleBitmap(roleBitmap);\\n        uint256 currentRoles = _roles[resource][account];\\n        uint256 updatedRoles = currentRoles & ~roleBitmap;\\n\\n        if (currentRoles != updatedRoles) {\\n            _roles[resource][account] = updatedRoles;\\n            uint256 newlyRemovedRoles = roleBitmap & currentRoles;\\n            _updateRoleCounts(resource, newlyRemovedRoles, false);\\n            emit EACRolesChanged(resource, account, currentRoles, updatedRoles);\\n            if (executeCallbacks) {\\n                _onRolesRevoked(resource, account, currentRoles, updatedRoles, roleBitmap);\\n            }\\n            return true;\\n        } else {\\n            return false;\\n        }\\n    }\\n\\n    /// @dev Updates role counts when roles are granted/revoked\\n    /// @param resource The resource to update counts for\\n    /// @param roleBitmap The roles being modified\\n    /// @param isGrant true for grant, false for revoke\\n    function _updateRoleCounts(uint256 resource, uint256 roleBitmap, bool isGrant) internal {\\n        uint256 roleMask = _roleBitmapToMask(roleBitmap);\\n\\n        if (isGrant) {\\n            // Check for overflow\\n            if (EACBaseRolesLib.hasZeroNybbles(~(roleMask & _roleCount[resource]))) {\\n                revert EACMaxAssignees(resource, roleBitmap);\\n            }\\n            _roleCount[resource] += roleBitmap;\\n        } else {\\n            // Check for underflow\\n            if (EACBaseRolesLib.hasZeroNybbles(~(roleMask & ~_roleCount[resource]))) {\\n                revert EACMinAssignees(resource, roleBitmap);\\n            }\\n            _roleCount[resource] -= roleBitmap;\\n        }\\n    }\\n\\n    /// @dev Callback for when roles are granted.\\n    /// @param resource The resource that the roles were granted within.\\n    /// @param account The account that the roles were granted to.\\n    /// @param oldRoles The old roles for the account.\\n    /// @param newRoles The new roles for the account.\\n    /// @param roleBitmap The roles that were granted.\\n    function _onRolesGranted(\\n        uint256 resource,\\n        address account,\\n        uint256 oldRoles,\\n        uint256 newRoles,\\n        uint256 roleBitmap\\n    )\\n        internal\\n        virtual\\n    {}\\n\\n    /// @dev Callback for when roles are revoked.\\n    /// @param resource The resource that the roles were revoked within.\\n    /// @param account The account that the roles were revoked from.\\n    /// @param oldRoles The old roles for the account.\\n    /// @param newRoles The new roles for the account.\\n    /// @param roleBitmap The roles that were revoked.\\n    function _onRolesRevoked(\\n        uint256 resource,\\n        address account,\\n        uint256 oldRoles,\\n        uint256 newRoles,\\n        uint256 roleBitmap\\n    )\\n        internal\\n        virtual\\n    {}\\n\\n    /// @dev Reverts if `account` does not have all the given roles.\\n    function _checkRoles(uint256 resource, uint256 roleBitmap, address account)\\n        internal\\n        view\\n        virtual\\n    {\\n        if (!hasRoles(resource, roleBitmap, account)) {\\n            revert EACUnauthorizedAccountRoles(resource, roleBitmap, account);\\n        }\\n    }\\n\\n    /// @dev Reverts if `account` does not have the admin roles for all the given roles.\\n    function _checkCanGrantRoles(uint256 resource, uint256 roleBitmap, address account)\\n        internal\\n        view\\n        virtual\\n    {\\n        uint256 settableRoles = _getSettableRoles(resource, account);\\n        if ((roleBitmap & ~settableRoles) != 0) {\\n            revert EACCannotGrantRoles(resource, roleBitmap, account);\\n        }\\n    }\\n\\n    /// @dev Reverts if `account` does not have the admin roles for all the given roles that are being revoked.\\n    function _checkCanRevokeRoles(uint256 resource, uint256 roleBitmap, address account)\\n        internal\\n        view\\n        virtual\\n    {\\n        uint256 revokableRoles = _getRevokableRoles(resource, account);\\n        if ((roleBitmap & ~revokableRoles) != 0) {\\n            revert EACCannotRevokeRoles(resource, roleBitmap, account);\\n        }\\n    }\\n\\n    /// @dev Returns the settable roles for `account` within `resource`.\\n    ///\\n    /// The settable roles are the roles (both regular and admin) that the account can grant.\\n    /// An account can grant a regular role if they have the corresponding admin role.\\n    /// An account can grant an admin role if they have that same admin role.\\n    ///\\n    /// @param resource The resource to get settable roles for.\\n    /// @param account The account to get settable roles for.\\n    /// @return The settable roles for `account` within `resource`.\\n    function _getSettableRoles(uint256 resource, address account)\\n        internal\\n        view\\n        virtual\\n        returns (uint256)\\n    {\\n        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));\\n    }\\n\\n    /// @dev Returns the revokable roles for `account` within `resource`.\\n    ///\\n    /// The revokable roles are the roles (including admin roles) that the account can revoke.\\n    ///\\n    /// @param resource The resource to get revokable roles for.\\n    /// @param account The account to get revokable roles for.\\n    /// @return The revokable roles for `account` within `resource`.\\n    function _getRevokableRoles(uint256 resource, address account)\\n        internal\\n        view\\n        virtual\\n        returns (uint256)\\n    {\\n        return EACBaseRolesLib.withAdminRolesApplied(_effectiveRoles(resource, account));\\n    }\\n\\n    /// @dev Returns the roles bitmap for an account for permission checks.\\n    function _getRoles(uint256 resource, address account) internal view virtual returns (uint256) {\\n        return _roles[resource][account];\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Private Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Returns the effective roles bitmap for an account for permission checks.\\n    function _effectiveRoles(uint256 resource, address account) private view returns (uint256) {\\n        return _getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account);\\n    }\\n\\n    /// @dev Checks if a role bitmap contains only valid role bits.\\n    /// @param roleBitmap The role bitmap to check.\\n    function _checkRoleBitmap(uint256 roleBitmap) private pure {\\n        if ((roleBitmap & ~EACBaseRolesLib.ALL_ROLES) != 0) {\\n            revert EACInvalidRoleBitmap(roleBitmap);\\n        }\\n    }\\n\\n    /// @dev Converts a role bitmap to a mask.\\n    ///\\n    /// The mask is a bitmap where each nybble is set if the corresponding role is in the role bitmap.\\n    ///\\n    /// @param roleBitmap The role bitmap to convert.\\n    /// @return roleMask The mask for the role bitmap.\\n    function _roleBitmapToMask(uint256 roleBitmap) private pure returns (uint256 roleMask) {\\n        _checkRoleBitmap(roleBitmap);\\n        roleMask = roleBitmap | (roleBitmap << 1);\\n        roleMask |= roleMask << 2;\\n    }\\n}\\n\",\"keccak256\":\"0xb8354b30b7deecf498a11d584ec0fbc4174eb59d81a2fe67b6ea928c610df369\",\"license\":\"MIT\"},\"project/src/access-control/interfaces/IEnhancedAccessControl.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\n/// @notice Interface for Enhanced Access Control system that allows for:\\n/// * Resource-based roles\\n/// * Obtaining assignee count for each role in each resource\\n/// * Root resource override\\n/// * Up to 32 roles and 32 corresponding admin roles\\n/// * Up to 15 assignees per role\\n///\\n/// @dev Interface selector: `0x0132e43d`\\ninterface IEnhancedAccessControl {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Events\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Emitted when roles are changed.\\n    /// @param resource The resource that the roles were changed within.\\n    /// @param account The account that the roles were changed for.\\n    /// @param oldRoleBitmap The old roles for the account.\\n    /// @param newRoleBitmap The new roles for the account.\\n    event EACRolesChanged(\\n        uint256 indexed resource,\\n        address indexed account,\\n        uint256 oldRoleBitmap,\\n        uint256 newRoleBitmap\\n    );\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Error selector: `0x4b27a133`\\n    error EACUnauthorizedAccountRoles(uint256 resource, uint256 roleBitmap, address account);\\n\\n    /// @dev Error selector: `0xd1a3b355`\\n    error EACCannotGrantRoles(uint256 resource, uint256 roleBitmap, address account);\\n\\n    /// @dev Error selector: `0xa604e318`\\n    error EACCannotRevokeRoles(uint256 resource, uint256 roleBitmap, address account);\\n\\n    /// @dev Error selector: `0xc2842458`\\n    error EACRootResourceNotAllowed();\\n\\n    /// @dev Error selector: `0xf9165348`\\n    error EACMaxAssignees(uint256 resource, uint256 role);\\n\\n    /// @dev Error selector: `0x1f80c19b`\\n    error EACMinAssignees(uint256 resource, uint256 role);\\n\\n    /// @dev Error selector: `0x2a7b2d20`\\n    error EACInvalidRoleBitmap(uint256 roleBitmap);\\n\\n    /// @dev Error selector: `0xec3fc592`\\n    error EACInvalidAccount();\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Grants all roles in the given role bitmap to `account`.\\n    /// @param resource The resource to grant roles within.\\n    /// @param roleBitmap The roles bitmap to grant.\\n    /// @param account The account to grant roles to.\\n    /// @return `true` if the roles were granted, `false` otherwise.\\n    function grantRoles(uint256 resource, uint256 roleBitmap, address account)\\n        external\\n        returns (bool);\\n\\n    /// @notice Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE.\\n    /// @param roleBitmap The roles bitmap to grant.\\n    /// @param account The account to grant roles to.\\n    /// @return `true` if the roles were granted, `false` otherwise.\\n    function grantRootRoles(uint256 roleBitmap, address account) external returns (bool);\\n\\n    /// @notice Revokes all roles in the given role bitmap from `account`.\\n    /// @param resource The resource to revoke roles within.\\n    /// @param roleBitmap The roles bitmap to revoke.\\n    /// @param account The account to revoke roles from.\\n    /// @return `true` if the roles were revoked, `false` otherwise.\\n    function revokeRoles(uint256 resource, uint256 roleBitmap, address account)\\n        external\\n        returns (bool);\\n\\n    /// @notice Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE.\\n    /// @param roleBitmap The roles bitmap to revoke.\\n    /// @param account The account to revoke roles from.\\n    /// @return `true` if the roles were revoked, `false` otherwise.\\n    function revokeRootRoles(uint256 roleBitmap, address account) external returns (bool);\\n\\n    /// @notice Returns the `ROOT_RESOURCE` constant.\\n    function ROOT_RESOURCE() external view returns (uint256);\\n\\n    /// @notice Returns the roles bitmap for an account in a resource.\\n    /// @param resource The resource to get the roles for.\\n    /// @param account The account to get the roles for.\\n    /// @return The roles bitmap for the account in the resource.\\n    function roles(uint256 resource, address account) external view returns (uint256);\\n\\n    /// @notice Returns the role count bitmap for a resource.\\n    /// @param resource The resource to get the role count for.\\n    /// @return count The role count bitmap for the resource.\\n    function roleCount(uint256 resource) external view returns (uint256);\\n\\n    /// @notice Checks if the given account has been granted all the given roles in the `ROOT_RESOURCE`.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @param account The account to check.\\n    /// @return `true` if `account` has been granted all the given roles in the `ROOT_RESOURCE`, `false` otherwise.\\n    function hasRootRoles(uint256 roleBitmap, address account) external view returns (bool);\\n\\n    /// @notice Checks if the given account has been granted all the given roles in the given resource or the `ROOT_RESOURCE`.\\n    /// @param resource The resource to check.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @param account The account to check.\\n    /// @return `true` if `account` has been granted all the given roles in the given resource or the `ROOT_RESOURCE`, `false` otherwise.\\n    function hasRoles(uint256 resource, uint256 roleBitmap, address account)\\n        external\\n        view\\n        returns (bool);\\n\\n    /// @notice Returns the number of assignees for the roles in the given role bitmap.\\n    /// @param resource The resource to check.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @return counts The number of assignees for each of the roles in the given role bitmap, expressed as a packed array of 4-bit ints.\\n    /// @return mask The mask for the given role bitmap.\\n    function getAssigneeCount(uint256 resource, uint256 roleBitmap)\\n        external\\n        view\\n        returns (uint256 counts, uint256 mask);\\n\\n    /// @notice Checks if any of the roles in the given role bitmap has assignees.\\n    /// @dev Derivable from `getAssigneeCount()`.\\n    /// @param resource The resource to check.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.\\n    function hasAssignees(uint256 resource, uint256 roleBitmap) external view returns (bool);\\n\\n    /// @notice Checks if account is the only assignee.\\n    /// @dev Derivable from `getAssigneeCount()` and `roles()`.\\n    /// @param resource The resource to check.\\n    /// @param roleBitmap The roles bitmap to check.\\n    /// @param account The account to check.\\n    /// @return `true` if the only assignee.\\n    function isOnlyAssignee(uint256 resource, uint256 roleBitmap, address account)\\n        external\\n        view\\n        returns (bool);\\n}\\n\",\"keccak256\":\"0x9c34c5852a1fbf0d76869a380868376e2a57a9cbbc22908a87af8f552355f579\",\"license\":\"MIT\"},\"project/src/access-control/libraries/EACBaseRolesLib.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\n/// @dev Defines the two fundamental bitmasks used by `EnhancedAccessControl`'s nybble-packed role system.\\n///\\n/// `ALL_ROLES`: a mask with bit 0 of every nybble set (`0x1111...`), representing one unit in\\n/// each of the 64 role slots (32 regular + 32 admin). Used for validation (checking no bits\\n/// outside valid positions are set) and for revoking all roles.\\n///\\n/// `ADMIN_ROLES`: same pattern but only in the upper 128 bits (`0x1111...0000...`), masking\\n/// just the 32 admin role slots. Used to extract which admin roles an account holds.\\n///\\nlibrary EACBaseRolesLib {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Constants\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Mask with bit 0 set in every nybble \\u2014 represents one unit per role slot across all 64 slots.\\n    uint256 internal constant ALL_ROLES =\\n        0x1111111111111111111111111111111111111111111111111111111111111111;\\n\\n    /// @dev Mask selecting only the 32 admin role nybbles (upper 128 bits).\\n    uint256 internal constant ADMIN_ROLES =\\n        0x1111111111111111111111111111111100000000000000000000000000000000;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Regular roles are discarded and admin roles imply their corresponding regular roles.\\n    function withAdminRolesApplied(uint256 roleBitmap) internal pure returns (uint256) {\\n        roleBitmap >>= 128;\\n        return (roleBitmap << 128) | roleBitmap;\\n    }\\n\\n    /// @dev Derive roles bitmap from assignee counts.\\n    /// @param counts Packed role counts (0-15) as `uint4x64`.\\n    /// @return Roles bitmap corresponding to role counts > 0.\\n    function fromCounts(uint256 counts) internal pure returns (uint256) {\\n        return (counts | (counts >> 1) | (counts >> 2) | (counts >> 3)) & ALL_ROLES;\\n    }\\n\\n    /// @dev Checks if the given value has any zero nybbles.\\n    /// @param value The value to check.\\n    /// @return `true` if the value has any zero nybbles, `false` otherwise.\\n    function hasZeroNybbles(uint256 value) internal pure returns (bool) {\\n        // Algorithm source: https://graphics.stanford.edu/~seander/bithacks.html#ZeroInWord\\n        uint256 zeroNybbles;\\n        unchecked {\\n            zeroNybbles =\\n                (value - 0x1111111111111111111111111111111111111111111111111111111111111111) &\\n                ~value &\\n                0x8888888888888888888888888888888888888888888888888888888888888888;\\n        }\\n        return zeroNybbles != 0;\\n    }\\n}\\n\",\"keccak256\":\"0x7e80391029bfec74b4fd9ff9fe7e68b0ec5fdc9d1e439c84dc9572fd6416424b\",\"license\":\"MIT\"},\"project/src/reverse-registrar/interfaces/IContractNamer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\n/// @dev Interface selector: `0x6f3ff726`\\ninterface IContractNamer {\\n    /// @notice Determine if an account is authorized to name this contract.\\n    ///         Called by reverse registrars.\\n    /// @param namer The address to check.\\n    /// @return `true` if authorized.\\n    function isContractNamer(address namer) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x1f8b1ba58195ba6e1b84767523ee59a40547db34f3a74a640edba0d335a0ede3\",\"license\":\"MIT\"},\"project/src/utils/PermissionedAddressSet.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity 0.8.25;\\n\\nimport {EnhancedAccessControl} from \\\"../access-control/EnhancedAccessControl.sol\\\";\\nimport {IContractNamer} from \\\"../reverse-registrar/interfaces/IContractNamer.sol\\\";\\n\\nimport {IAddressSet} from \\\"./interfaces/IAddressSet.sol\\\";\\nimport {\\n    IPermissionedAddressSet,\\n    ROLE_APPROVE,\\n    ROLE_APPROVE_ADMIN,\\n    ROLE_CAN_NAME,\\n    ROLE_CAN_NAME_ADMIN\\n} from \\\"./interfaces/IPermissionedAddressSet.sol\\\";\\n\\n/// @dev Default root roles assigned at construction.\\nuint256 constant DEFAULT_ROLE_BITMAP =\\n    ROLE_APPROVE | ROLE_APPROVE_ADMIN | ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN;\\n\\n/// @notice An arbitrary set of addresses managed by EAC.\\ncontract PermissionedAddressSet is EnhancedAccessControl, IPermissionedAddressSet, IContractNamer {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Mapping that determines members of the set.\\n    mapping(address addr => bool approved) internal _approved;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param rootAccount Account granted root roles.\\n    constructor(address rootAccount) {\\n        _grantRoles(ROOT_RESOURCE, DEFAULT_ROLE_BITMAP, rootAccount, false);\\n    }\\n\\n    /// @inheritdoc EnhancedAccessControl\\n    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n        return\\n            interfaceId == type(IPermissionedAddressSet).interfaceId ||\\n            interfaceId == type(IAddressSet).interfaceId ||\\n            interfaceId == type(IContractNamer).interfaceId ||\\n            super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IPermissionedAddressSet\\n    function approve(address addr, bool approved) external onlyRootRoles(ROLE_APPROVE) {\\n        require(_approved[addr] != approved);\\n        _approved[addr] = approved;\\n        emit ApprovalChanged(addr, approved, msg.sender);\\n    }\\n\\n    /// @inheritdoc IAddressSet\\n    function includes(address addr) external view returns (bool) {\\n        return _approved[addr];\\n    }\\n\\n    /// @inheritdoc IContractNamer\\n    function isContractNamer(address namer) external view returns (bool) {\\n        return hasRootRoles(ROLE_CAN_NAME, namer);\\n    }\\n}\\n\",\"keccak256\":\"0x8e02e4c79d35d6d042243e3ecbe8d2f99236a9a175638e391d6d6a1685676776\",\"license\":\"MIT\"},\"project/src/utils/interfaces/IAddressSet.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\n/// @dev Interface selector: `0x1aedefda`\\ninterface IAddressSet {\\n    /// @notice Check if `addr` is included in the set.\\n    /// @param addr The address to check.\\n    /// @return `true` if included.\\n    function includes(address addr) external view returns (bool);\\n}\\n\",\"keccak256\":\"0xcb4f9c6364c1cf8a737591088f488ede7a7c6bc9d7d87f2dbdac731b492bd862\",\"license\":\"MIT\"},\"project/src/utils/interfaces/IPermissionedAddressSet.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {IEnhancedAccessControl} from \\\"../../access-control/interfaces/IEnhancedAccessControl.sol\\\";\\n\\nimport {IAddressSet} from \\\"./IAddressSet.sol\\\";\\n\\n/// @dev Nybble 0: authorizes modifying the set. Root only.\\nuint256 constant ROLE_APPROVE = 1 << 0;\\n\\n/// @dev Nybble 32: authorizes setting `ROLE_APPROVE`.\\nuint256 constant ROLE_APPROVE_ADMIN = ROLE_APPROVE << 128;\\n\\n/// @dev Nybble 1: authorizes contract naming. Root only.\\nuint256 constant ROLE_CAN_NAME = 1 << 4;\\n\\n/// @dev Nybble 33: authorizes setting `ROLE_CAN_NAME`.\\nuint256 constant ROLE_CAN_NAME_ADMIN = ROLE_CAN_NAME << 128;\\n\\n/// @dev Interface selector: `0x3d140d21`\\ninterface IPermissionedAddressSet is IEnhancedAccessControl, IAddressSet {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Events\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Inclusion of a member of the set has changed.\\n    /// @param addr The address.\\n    /// @param approved If `true`, added, otherwise removed.\\n    /// @param sender The sender of the change.\\n    event ApprovalChanged(address indexed addr, bool approved, address indexed sender);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Add or remove a member from the set.\\n    /// @param addr The address to approve.\\n    /// @param approved If `true`, added, otherwise removed.\\n    function approve(address addr, bool approved) external;\\n}\\n\",\"keccak256\":\"0xa042bb343b79266f6f7dc0d08cd63f16e411e93e1652690147ce8f4f64d3a882\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 20585,
+        "contract": "project/src/utils/PermissionedAddressSet.sol:PermissionedAddressSet",
+        "label": "_roles",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_mapping(t_uint256,t_mapping(t_address,t_uint256))"
+      },
+      {
+        "astId": 20590,
+        "contract": "project/src/utils/PermissionedAddressSet.sol:PermissionedAddressSet",
+        "label": "_roleCount",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_mapping(t_uint256,t_uint256)"
+      },
+      {
+        "astId": 20595,
+        "contract": "project/src/utils/PermissionedAddressSet.sol:PermissionedAddressSet",
+        "label": "__gap",
+        "offset": 0,
+        "slot": "2",
+        "type": "t_array(t_uint256)256_storage"
+      },
+      {
+        "astId": 37840,
+        "contract": "project/src/utils/PermissionedAddressSet.sol:PermissionedAddressSet",
+        "label": "_approved",
+        "offset": 0,
+        "slot": "258",
+        "type": "t_mapping(t_address,t_bool)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_array(t_uint256)256_storage": {
+        "base": "t_uint256",
+        "encoding": "inplace",
+        "label": "uint256[256]",
+        "numberOfBytes": "8192"
+      },
+      "t_bool": {
+        "encoding": "inplace",
+        "label": "bool",
+        "numberOfBytes": "1"
+      },
+      "t_mapping(t_address,t_bool)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => bool)",
+        "numberOfBytes": "32",
+        "value": "t_bool"
+      },
+      "t_mapping(t_address,t_uint256)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => uint256)",
+        "numberOfBytes": "32",
+        "value": "t_uint256"
+      },
+      "t_mapping(t_uint256,t_mapping(t_address,t_uint256))": {
+        "encoding": "mapping",
+        "key": "t_uint256",
+        "label": "mapping(uint256 => mapping(address => uint256))",
+        "numberOfBytes": "32",
+        "value": "t_mapping(t_address,t_uint256)"
+      },
+      "t_mapping(t_uint256,t_uint256)": {
+        "encoding": "mapping",
+        "key": "t_uint256",
+        "label": "mapping(uint256 => uint256)",
+        "numberOfBytes": "32",
+        "value": "t_uint256"
+      },
+      "t_uint256": {
+        "encoding": "inplace",
+        "label": "uint256",
+        "numberOfBytes": "32"
+      }
+    }
+  },
+  "userdoc": {
+    "events": {
+      "ApprovalChanged(address,bool,address)": {
+        "notice": "Inclusion of a member of the set has changed."
+      },
+      "EACRolesChanged(uint256,address,uint256,uint256)": {
+        "notice": "Emitted when roles are changed."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "ROOT_RESOURCE()": {
+        "notice": "The `ROOT_RESOURCE`."
+      },
+      "approve(address,bool)": {
+        "notice": "Add or remove a member from the set."
+      },
+      "getAssigneeCount(uint256,uint256)": {
+        "notice": "Returns the number of assignees for the roles in the given role bitmap."
+      },
+      "grantRoles(uint256,uint256,address)": {
+        "notice": "Grants all roles in the given role bitmap to `account`."
+      },
+      "grantRootRoles(uint256,address)": {
+        "notice": "Grants all roles in the given role bitmap to `account` in the ROOT_RESOURCE."
+      },
+      "hasAssignees(uint256,uint256)": {
+        "notice": "Checks if any of the roles in the given role bitmap has assignees."
+      },
+      "hasRoles(uint256,uint256,address)": {
+        "notice": "Checks if the given account has been granted all the given roles in the given resource or the `ROOT_RESOURCE`."
+      },
+      "hasRootRoles(uint256,address)": {
+        "notice": "Checks if the given account has been granted all the given roles in the `ROOT_RESOURCE`."
+      },
+      "includes(address)": {
+        "notice": "Check if `addr` is included in the set."
+      },
+      "isContractNamer(address)": {
+        "notice": "Determine if an account is authorized to name this contract.         Called by reverse registrars."
+      },
+      "isOnlyAssignee(uint256,uint256,address)": {
+        "notice": "Checks if account is the only assignee."
+      },
+      "revokeRoles(uint256,uint256,address)": {
+        "notice": "Revokes all roles in the given role bitmap from `account`."
+      },
+      "revokeRootRoles(uint256,address)": {
+        "notice": "Revokes all roles in the given role bitmap from `account` in the ROOT_RESOURCE."
+      },
+      "roleCount(uint256)": {
+        "notice": "Returns the role count bitmap for a resource."
+      },
+      "roles(uint256,address)": {
+        "notice": "Returns the roles bitmap for an account in a resource."
+      }
+    },
+    "notice": "An arbitrary set of addresses managed by EAC.",
+    "version": 1
+  },
+  "argsData": "0x00000000000000000000000084d3a426d4e12e955d1df95db0b24fe26afe39d3",
+  "transaction": {
+    "hash": "0xf568ea45411ea0c04f405595eeb82ee1aed4870099c85e22a6e553f995b02219",
+    "nonce": "0x909",
+    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+  },
+  "receipt": {
+    "blockHash": "0x0d1499b04aafcc5d1fb5464146eb933a5010357851e5c7b0701a9a0ddf29596b",
+    "blockNumber": "0xb2aaa9",
+    "transactionIndex": "0xa5"
+  }
+}

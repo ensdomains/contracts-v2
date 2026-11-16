@@ -1,23 +1,12 @@
 import { execute } from "@rocketh";
 import type { Abi_StandardRentPriceOracle } from "generated/abis/StandardRentPriceOracle.js";
 import {
+  ratioFromDecimals,
   SEPOLIA_USDC,
-  STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS,
 } from "../../script/deploy-constants.js";
 
 const SEPOLIA_CHAIN_ID = 11155111;
-const PRICE_DECIMALS = STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS;
-const SEPOLIA_USDC_DECIMALS = 6n;
-const SEPOLIA_USDC_NUMER =
-  10n **
-  (SEPOLIA_USDC_DECIMALS > PRICE_DECIMALS
-    ? SEPOLIA_USDC_DECIMALS - PRICE_DECIMALS
-    : 0n);
-const SEPOLIA_USDC_DENOM =
-  10n **
-  (PRICE_DECIMALS > SEPOLIA_USDC_DECIMALS
-    ? PRICE_DECIMALS - SEPOLIA_USDC_DECIMALS
-    : 0n);
+const SEPOLIA_USDC_DECIMALS = 6;
 
 export default execute(
   async ({
@@ -41,7 +30,7 @@ export default execute(
       await write(oracle, {
         account: oracleOwner,
         functionName: "updatePaymentToken",
-        args: [SEPOLIA_USDC, SEPOLIA_USDC_NUMER, SEPOLIA_USDC_DENOM],
+        args: [SEPOLIA_USDC, ...ratioFromDecimals(SEPOLIA_USDC_DECIMALS)],
       });
     }
   },

@@ -17,6 +17,7 @@ import {
   SEC_PER_DAY,
   STATUS,
 } from "./deploy-constants.js";
+import { httpRpcProvider, whileMiningBlocks } from "./migrations/rpc.js";
 import { main as preMigrationMain } from "./preMigration.js";
 import {
   buildMainArgs,
@@ -182,11 +183,16 @@ export async function preMigrateDevnetNames(
   // Mirror the DAO pre-migration by extending each v2 expiry with the
   // production bonus period, so names within the v1 grace period (or expiring
   // during testing) stay RESERVED on v2 rather than reading back as AVAILABLE.
-  await preMigrationMain(
-    buildMainArgs(env, csvPath, {
-      limit: labels.length,
-      bonusPeriodDays: Number(PREMIGRATION_BONUS_PERIOD / SEC_PER_DAY),
-    }),
+  // A mainnet fork takes the mainnet gas price limit, and the devnet mines only
+  // when a transaction arrives, so blocks are mined meanwhile to let a paused run
+  // see the price fall.
+  await whileMiningBlocks(httpRpcProvider(`http://${env.hostPort}`), () =>
+    preMigrationMain(
+      buildMainArgs(env, csvPath, {
+        limit: labels.length,
+        bonusPeriodDays: Number(PREMIGRATION_BONUS_PERIOD / SEC_PER_DAY),
+      }),
+    ),
   );
 
   if (target) {

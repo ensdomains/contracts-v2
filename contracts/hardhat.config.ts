@@ -11,6 +11,13 @@ import HardhatClearRemappingsPlugin from "./plugins/clear-remappings/index.ts";
 import HardhatMigrationPlugin from "./plugins/migration/index.ts";
 import HardhatStorageLayoutPlugin from "./plugins/storage-layout/index.ts";
 
+const KEY_MAINNET_RPC_URL = "MAINNET_RPC_URL";
+const KEY_SEPOLIA_RPC_URL = "SEPOLIA_RPC_URL";
+
+// defaults
+process.env[KEY_MAINNET_RPC_URL] ||= "https://mainnet.gateway.tenderly.co";
+process.env[KEY_SEPOLIA_RPC_URL] ||= "https://sepolia.gateway.tenderly.co";
+
 const version = "0.8.25";
 const hcaVersion = "0.8.27";
 const outputSelection = {
@@ -43,6 +50,17 @@ const hcaCompiler = {
     outputSelection,
   },
 } as const;
+const hcaHotRuntimeCompiler = {
+  version: hcaVersion,
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 23_000,
+    },
+    evmVersion: "cancun",
+    outputSelection,
+  },
+} as const;
 const tenderlySepoliaRpcUrl =
   process.env.TENDERLY_SEPOLIA_RPC_URL ??
   configVariable("TENDERLY_SEPOLIA_RPC_URL");
@@ -62,10 +80,18 @@ const config = {
   solidity: {
     compilers: [protocolCompiler],
     overrides: {
+      "src/hca/HCAValidatorBase.sol": hcaCompiler,
       "src/hca/HCAFundingSessionValidator.sol": hcaCompiler,
-      "src/hca/HCAOwnerAndSessionValidator.sol": hcaCompiler,
+      "src/hca/HCAOwnerAndSessionValidator.sol": hcaHotRuntimeCompiler,
       "src/hca/StandaloneHCAFactory.sol": hcaCompiler,
       "src/hca/StandaloneSingleOwnerHCA.sol": hcaCompiler,
+      "src/hca/libraries/HCAExecutionLib.sol": hcaCompiler,
+      "src/hca/libraries/HCAOperationHashLib.sol": hcaCompiler,
+      "src/hca/libraries/HCAPermit2Lib.sol": hcaCompiler,
+      "src/hca/libraries/HCARegistrarPolicyLib.sol": hcaCompiler,
+      "src/hca/libraries/HCAResolverPolicyLib.sol": hcaCompiler,
+      "src/hca/libraries/HCASignatureLib.sol": hcaCompiler,
+      "src/hca/libraries/HCASmartSessionLib.sol": hcaCompiler,
       "test/mocks/MockRegistrationIntentExecutor.sol": hcaCompiler,
       "test/mocks/MockStandaloneHCAStack.sol": hcaCompiler,
       "test/unit/hca/HCAFundingSessionValidator.t.sol": hcaCompiler,
@@ -83,14 +109,12 @@ const config = {
           outputSelection,
         },
       },
-      // 23k at 1
-      // 25k at 1000
       "src/registry/WrapperRegistry.sol": {
         version,
         settings: {
           optimizer: {
             enabled: true,
-            runs: 100,
+            runs: 1,
           },
           evmVersion: "cancun",
           outputSelection,
@@ -99,15 +123,29 @@ const config = {
     },
   },
   networks: {
+    mainnet: {
+      type: "http",
+      url: configVariable(KEY_MAINNET_RPC_URL),
+      chainId: 1,
+    },
+    mainnetFork: {
+      type: "edr-simulated",
+      allowUnlimitedContractSize: false,
+      chainId: 1,
+      forking: {
+        enabled: true,
+        url: configVariable(KEY_MAINNET_RPC_URL),
+      },
+    },
     sepolia: {
       type: "http",
-      url: configVariable("SEPOLIA_RPC_URL"),
+      url: configVariable(KEY_SEPOLIA_RPC_URL),
       accounts: [configVariable("DEPLOYER_KEY")],
       chainId: 11155111,
     },
     "sepolia-dev": {
       type: "http",
-      url: configVariable("SEPOLIA_RPC_URL"),
+      url: configVariable(KEY_SEPOLIA_RPC_URL),
       accounts: [configVariable("DEV_DEPLOYER_KEY")],
       chainId: 11155111,
     },

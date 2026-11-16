@@ -15,6 +15,47 @@ import { mainnet, sepolia } from "viem/chains";
 
 export const DEFAULT_RPC_TIMEOUT_MS = 30_000;
 
+/// How long one request may take, its reply included.
+export const RPC_REPLY_DEADLINE_MS = 120_000;
+
+/// A fetch whose deadline covers the whole reply.
+///
+/// viem's timeout ends once the headers arrive and the body is read after it, so a
+/// provider that stops sending a reply midway holds the read open for good. The
+/// deadline turns that into a failed request, which viem and the callers retry.
+export function fetchWithDeadline(ms: number) {
+  return (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const deadline = AbortSignal.timeout(ms);
+    return fetch(input, {
+      ...init,
+      signal: init?.signal
+        ? AbortSignal.any([init.signal, deadline])
+        : deadline,
+    });
+  };
+}
+
+/// How often a client polls a node on this machine, such as for a receipt.
+const LOCAL_POLLING_INTERVAL_MS = 50;
+
+/// Host names that reach a node on this machine.
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
+
+/// The polling interval for a client of the node at `rpcUrl`.
+///
+/// A local node mines each transaction as it arrives, so it is polled at a short
+/// interval rather than at viem's default, which suits a public chain's block time
+/// and adds seconds to every wait. Any other node keeps viem's default.
+export function pollingIntervalFor(rpcUrl: string): number | undefined {
+  if (!URL.canParse(rpcUrl)) return undefined;
+  return LOCAL_HOSTNAMES.has(new URL(rpcUrl).hostname)
+    ? LOCAL_POLLING_INTERVAL_MS
+    : undefined;
+}
+
 /// Canonical CREATE2 Multicall3 deployment address, identical across EVM chains.
 const MULTICALL3_ADDRESS =
   "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
@@ -36,7 +77,11 @@ export async function resolveChain(
   timeoutMs = DEFAULT_RPC_TIMEOUT_MS,
 ): Promise<Chain> {
   const probe = createPublicClient({
-    transport: http(rpcUrl, { retryCount: 0, timeout: timeoutMs }),
+    transport: http(rpcUrl, {
+      retryCount: 0,
+      timeout: timeoutMs,
+      fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+    }),
   });
   const chainId = await probe.getChainId();
   if (chainId === 1) return mainnet;
@@ -68,9 +113,19 @@ export async function createV2Clients(opts: {
 }): Promise<V2ClientBundle> {
   const timeout = opts.timeoutMs ?? DEFAULT_RPC_TIMEOUT_MS;
   const chain = await resolveChain(opts.rpcUrl, timeout);
-  const transport = http(opts.rpcUrl, { retryCount: 0, timeout });
+  const transport = http(opts.rpcUrl, {
+    retryCount: 0,
+    timeout,
+    fetchFn: fetchWithDeadline(RPC_REPLY_DEADLINE_MS),
+  });
 
-  const publicClient = createPublicClient({ chain, transport });
+  const pollingInterval = pollingIntervalFor(opts.rpcUrl);
+
+  const publicClient = createPublicClient({
+    chain,
+    transport,
+    pollingInterval,
+  });
 
   if (!opts.privateKey) {
     return { chain, account: null, publicClient, walletClient: null };
@@ -81,6 +136,7 @@ export async function createV2Clients(opts: {
     account,
     chain,
     transport,
+    pollingInterval,
   }).extend(publicActions);
 
   return { chain, account, publicClient, walletClient };

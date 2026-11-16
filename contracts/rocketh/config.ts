@@ -14,6 +14,12 @@ import type {
   UserConfig,
 } from "rocketh/types";
 import { encodeFunctionData, getAddress, type Address } from "viem";
+import {
+  DAO_WALLET,
+  DAO_TOKEN_SAFE,
+  DAO_ENDOWMENT_SAFE,
+  DAO_SECURITY_COUNCIL_SAFE,
+} from "../script/deploy-constants.js";
 
 export const config = {
   accounts: {
@@ -21,21 +27,34 @@ export const config = {
       default: 0,
     },
     owner: {
-      default: 0,
-      // admin is DAO on mainnet
-      mainnet: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
-      1: "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+      // the "dao"
+      default: "deployer",
+      mainnet: DAO_WALLET,
+      1: DAO_WALLET,
     },
     securityCouncil: {
-      // admin of ManagedUniversalResolverProxy; set per-network to the
-      // security council multisig once one is designated
+      // admin of ManagedUniversalResolverProxy; the deployer where no
+      // network names a security council
       default: "deployer",
+      mainnet: DAO_SECURITY_COUNCIL_SAFE,
       // admin of the long-lived intermediate URP that the top URP already fronts
       sepolia: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
       11155111: "0xffFffFFfFF52D316B7Bd028358089bc8066b8f80",
     },
     urManager: {
       default: "securityCouncil",
+    },
+    nameOwner: {
+      // holds the v2 root registry's `eth` token after the handover; the owner where
+      // no network names one
+      default: "owner",
+      mainnet: DAO_TOKEN_SAFE,
+    },
+    beneficiary: {
+      // receives the v2 registrar's and the v1 renewer's payments; the owner where
+      // no network names one
+      default: "owner",
+      mainnet: DAO_ENDOWMENT_SAFE,
     },
     v1Owner: {
       default: "owner",
@@ -48,7 +67,10 @@ export const config = {
       chain: 1,
       scripts: ["deploy"],
       overrides: {
-        tags: ["hasDao"],
+        // `hca` deploys the standalone HCA stack. The reverse-registrar adapter
+        // takes the factory address as a constructor argument, so without it
+        // phase 1 cannot deploy the adapter at all.
+        tags: ["hasDao", "hca"],
       },
     },
     sepolia: {
@@ -269,7 +291,16 @@ async function waitForReceipt(
         params: [hash],
       })) as EIP1193TransactionReceipt | null;
     } catch {}
-    if (receipt?.blockHash) return receipt;
+    if (receipt?.blockHash) {
+      // A mined transaction that reverted still has a receipt, with a zero status;
+      // saving its deployment would record a contract that was never created.
+      if (receipt.status != null && Number(receipt.status) === 0) {
+        throw new Error(
+          `transaction ${hash} reverted (status 0) in block ${receipt.blockNumber}`,
+        );
+      }
+      return receipt;
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }

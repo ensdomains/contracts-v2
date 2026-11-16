@@ -133,10 +133,10 @@ Roles granted during core deployment.
 
 | Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | CAN_NAME | UPGRADE |
 | --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | -------- | ------- |
-| RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       |         |
-| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       |                 | AR           | AR                 |          |         |
-| RootRegistry    | .reverse | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |          |         |
-| ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       |         |
+| RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       | AR      |
+| RootRegistry    | .eth     | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | A                  | AR       | AR      |
+| RootRegistry    | .reverse | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | A                  | AR       | AR      |
+| ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       | AR      |
 | ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |          |         |
 | ETHRegistry     | Root     | `BatchRegistrar`              | R         |                   |            |            | R     |                 |              |                    |          |         |
 | ETHRegistry     | Root     | `UnlockedMigrationController` |           | R                 |            |            |       |                 |              |                    |          |         |
@@ -147,9 +147,21 @@ Legend: A = admin only, R = regular only, AR = admin and regular
 
 _`ETHRegistrar` and `ETHRenewerV1` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
 
-_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller)._
+_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller). The `deferMigration` tag, also always set, does the same for the migration controllers' `REGISTER_RESERVED`._
 
-_The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
+_The tokens for `eth` and `reverse` are registered to the deployer with every role and admin role (`ROLES.ALL`); `addr.reverse` is reserved._
+
+_These are the roles at deploy. Where the owner is not the deployer (mainnet), phase 8 of the
+migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over.
+On both `RootRegistry` and `ETHRegistry` the owner takes every root role except the dangerous ones
+(setting a name's child registry or resolver, unregistering it, letting its owner transfer it, and
+upgrading the registry), each with its admin role. It can add top-level names, give reserved ones,
+such as DNS top-level names, to their operators, and authorize `.eth` registrars, but no root role
+reaches a registered name, so both registries' names are emancipated. The `eth` and `reverse` tokens move to the name owner (the ENS DAO name owner
+Safe on mainnet) with every role they carry. The deployer drops every role it holds, on these
+registries and on any root registry a root replacement set aside, and renounces every batch
+registrar. `phase verify-roles` records
+the roles actually held in `deployments/<namespace>/roles.md`._
 
 #### Creating Emancipated Names
 
@@ -337,10 +349,20 @@ address resolved = abi.decode(result, (address));
 
 ## Deployed Addresses
 
-Generated contract address tables, regenerated automatically at the end of `phase deploy-v2` (or on demand with `bun run docs:addresses`):
+Generated contract address tables, regenerated at the end of `phase deploy-v2` and after each live `bun run deploy:contract` (or on demand with `bun run docs:addresses --network <network>`, which reads block times from `--rpc-url` or `<NETWORK>_RPC_URL`):
 
 - [Sepolia](docs/addresses/sepolia.md)
 - [Mainnet](docs/addresses/mainnet.md)
+
+## Audits
+
+ENSv2 contracts have been reviewed by two independent auditors. The reports are in [docs/audits](docs/audits):
+
+| Auditor    | Report                                                                                                                                     | Date         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| Certora    | [Security Assessment & Formal Verification](<docs/audits/Certora - ENS V2 - Security Assessment &  Formal Verification  Final Report.pdf>) | May 2026     |
+| Nethermind | [NM-0591 ENS V2](docs/audits/NM_0591_ENS.pdf)                                                                                              | June 2026    |
+| Nethermind | [NM-0965 ENS V2 Additions](docs/audits/NM_0965_ENS_FINAL.pdf)                                                                              | October 2026 |
 
 ## Getting started
 
@@ -426,6 +448,8 @@ Instead of a synthetic chain, the devnet can fork mainnet so that real ENS v1 na
 FORK_URL=<mainnet-rpc> bun run devnet         # or --forkUrl <mainnet-rpc>
 FORK_URL=<mainnet-rpc> FORK_BLOCK=<block> bun run devnet   # pin the fork block (or --forkBlock)
 ```
+
+On a fork the v1 contracts belong to the ENS DAO, so deploy steps that write as the v1 owner are sent as the DAO multisig through anvil's auto-impersonation. The devnet's test-mnemonic accounts carry EIP-7702 delegations on mainnet; the fork clears that code first, so the accounts can receive ERC-721 and ERC-1155 tokens like plain accounts.
 
 On a fork you can also **pre-migrate** a curated set of real names — reserving them on the v2 registry (RESERVED state, `ENSV1Resolver` fallback) once the devnet is up, mirroring the DAO's pre-migration so the frontend can drive the v1 → v2 migrate flow:
 

@@ -13,11 +13,13 @@ interface IStandaloneHCAFactory {
     /// @param approved Whether new HCAs may be initialized from the implementation.
     function setImplementationApproval(address implementation, bool approved) external;
 
-    /// @notice Deploys and initializes an HCA using an approved implementation.
+    /// @notice Returns an existing certified HCA or deploys one using an approved implementation.
+    /// @dev Existing HCAs are returned without initialization or deployment events, even if the
+    ///      initial implementation is no longer approved. Their current implementation is unchanged.
     /// @param owner The immutable owner assigned to the HCA.
     /// @param hcaImplementation The approved initial implementation.
     /// @param userSalt An optional namespace or account-version salt.
-    /// @return hca The deployed HCA proxy.
+    /// @return hca The existing or newly deployed HCA proxy.
     function deploy(address owner, address hcaImplementation, uint256 userSalt)
         external
         returns (address hca);

@@ -1,6 +1,5 @@
 import { execute } from "@rocketh";
 import type { Abi_ENS } from "generated/abis/ENS.js";
-import type { Abi_OffchainDNSResolver } from "generated/abis/OffchainDNSResolver.js";
 import type { Abi_SimplePublicSuffixList } from "generated/abis/SimplePublicSuffixList.js";
 import type { Abi_DNSSECImpl } from "generated/abis/DNSSECImpl.js";
 import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
@@ -25,9 +24,6 @@ export default execute(
     tags,
   }) => {
     const ensRegistry = await getV1<Abi_ENS>("ENSRegistry");
-    const dnsTLDResolverV1 = await getV1<Abi_OffchainDNSResolver>(
-      "OffchainDNSResolver",
-    );
     const publicSuffixList = await getV1<Abi_SimplePublicSuffixList>(
       "SimplePublicSuffixList",
     );
@@ -46,7 +42,6 @@ export default execute(
       artifact: Artifact_DNSTLDResolver,
       args: [
         ensRegistry.address,
-        dnsTLDResolverV1.address,
         rootRegistry.address,
         dnssecOracle.address,
         dnssecGatewayProvider.address,
@@ -92,7 +87,6 @@ export default execute(
       "RootRegistry",
       "ENSRegistry",
       "DNSSECImpl",
-      "OffchainDNSResolver",
       "SimplePublicSuffixList",
       "BatchGatewayProvider",
       "DNSSECGatewayProvider",

@@ -15,7 +15,7 @@ import {
   SEC_PER_YEAR,
   GRACE_PERIOD_V2,
 } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migration.js";
+import { migrationDataComponents } from "../../script/migrate.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
   COIN_TYPE_ETH,
@@ -806,12 +806,10 @@ describe("Migration", () => {
       await lockedChild.migrate({
         target: lockedRegistry.address,
       });
-      const state = await lockedRegistry.read.getState([
+      const expiry = await lockedRegistry.read.getExpiry([
         idFromLabel(lockedChild.label),
       ]);
-      await lockedRegistry.write.renew([state.tokenId, state.expiry + 1n], {
-        account: lockedChild.account,
-      });
+      expectVar({ expiry }).toStrictEqual(MAX_EXPIRY);
     });
 
     it("invalid owner", async () => {

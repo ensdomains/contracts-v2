@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {
+    IERC1155MetadataURI
+} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
+
 import {IERC1155Singleton} from "../../erc1155/interfaces/IERC1155Singleton.sol";
 
 import {IOwnedRegistry} from "./IOwnedRegistry.sol";
 
 /// @notice A tokenized registry.
 /// @dev Interface selector: `0x91b3c037`
-interface ITokenizedRegistry is IOwnedRegistry, IERC1155Singleton {
+interface ITokenizedRegistry is IOwnedRegistry, IERC1155Singleton, IERC1155MetadataURI {
     /// @notice Fetches the token ID for a label.
     /// @param label The label to query.
     /// @return The token ID of the label.
