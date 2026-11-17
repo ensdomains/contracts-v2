@@ -514,6 +514,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             emit TokenResource(tokenId, resource);
             _grantRoles(resource, roleBitmap, owner, false);
             _mint(owner, tokenId, 1, "");
+            tokenId = _constructTokenId(tokenId, entry); // may have regenerated
         }
     }
 

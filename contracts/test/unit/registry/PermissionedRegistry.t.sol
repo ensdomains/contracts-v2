@@ -2164,7 +2164,24 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertEq(registry.__roles(resource, testOwner), testRoles);
     }
 
-    // scenerio: register to receiver and regenerate then invoke a setter
+    // scenerio: register to receiver and regenerate
+    function test_mutatingReceiver_registerWithRegeneration() external {
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
+
+        MutatingReceiver r = new MutatingReceiver();
+        r.addCall(
+            abi.encodeCall(
+                PermissionedRegistry.grantRoles,
+                (tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER, user2)
+            )
+        );
+
+        testOwner = address(r);
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        assertEq(this._register(), tokenId + 1);
+    }
+
+    // scenerio: register to receiver, regenerate, then invoke a setter
     function test_mutatingReceiver_registerWithRegenerationAndSetters() external {
         uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
 
