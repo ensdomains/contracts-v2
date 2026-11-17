@@ -81,14 +81,16 @@ Technical details:
 
 - Assigning a role via the external methods (`grantRole`, `revokeRole`, etc) requires the caller to hold the corresponding admin role for that role.
 
-- Admin roles cannot be assigned to someone else via the external EAC methods. This means admin roles can only be granted via internal logic in derived contracts.
+- Holding an admin role lets you grant and revoke both its base role and the admin role itself.
 
-- Admin roles can, however, be revoked from oneself.
+- Derived contracts can narrow this. In registries, admin roles on a name can only be given at registration, but they can still be revoked by anyone who holds the matching admin role on that name or at root (see [Admin Role Capabilities](#eac-in-registry-contracts)).
 
 **Permission Inheritance**: When checking permissions for a resource, EAC combines (via bitwise OR) the roles from:
 
 - The specific resource (e.g., your name's permissions)
 - The root resource (root-level permissions)
+
+This applies to granting and revoking as well: an admin role held at root lets its holder grant or revoke that role on every name in the registry.
 
 #### EAC in Registry Contracts
 
@@ -104,22 +106,28 @@ In registry contracts, EAC is used with these specific behaviors:
 | `ROLE_REGISTER_RESERVED`  | 4    | 132       | Root-only     | Promote reserved name to registered                                    |
 | `ROLE_SET_PARENT`         | 8    | 136       | Root-only     | Set parent registry                                                    |
 | `ROLE_UNREGISTER`         | 12   | 140       | Root or token | Unregister names                                                       |
-| `ROLE_RENEW`              | 16   | 144       | Root or token | Extend name expiry                                                     |
+| `ROLE_RENEW`              | 16   | 144       | Root-only     | Extend name expiry                                                     |
 | `ROLE_SET_SUBREGISTRY`    | 20   | 148       | Root or token | Change child registry                                                  |
 | `ROLE_SET_RESOLVER`       | 24   | 152       | Root or token | Change resolver address                                                |
-| `ROLE_CAN_TRANSFER_ADMIN` | 28\* | 156       | Root or token | Admin-only. Auto-granted to name owner. Revoke to make soulbound.      |
+| `ROLE_CAN_TRANSFER`       | 28   | —         | Registry      | Marks a registry for transfer                                          |
+| `ROLE_CAN_TRANSFER_ADMIN` | —    | 156\*     | Token\*       | Allows the name to be transferred. Auto-granted to name owner. Revoke to make soulbound. |
+| `ROLE_WAS_RESERVED`       | 32   | —         | Token-only    | Marks a name registered from a reservation. Set at registration. No named admin role |
+| `ROLE_SET_URI`            | 36   | 164       | Root-only     | Set the metadata URI and renderer                                      |
 | `ROLE_CAN_NAME`           | 120  | 248       | Root-only     | Name contract                                                          |
 | `ROLE_UPGRADE`            | 124  | 252       | Root-only     | UUPS proxy upgrades. WrapperRegistry targets must also be DAO-approved |
 
-\*`ROLE_CAN_TRANSFER_ADMIN` has no base role; it is admin-only (upper 128 bits).
+\*`ROLE_CAN_TRANSFER_ADMIN` is only checked on the name owner's own roles; holding it at root does not allow transfers. Holding it at root does allow revoking it from any name.
 
-**Note**: Root-only roles have no resource-specific equivalent (e.g. `ROLE_REGISTRAR` — the resource doesn't exist until the name is created).
+**Note**: Root-only roles have no effect on a name. They can still be put on one (through the `roleBitmap` passed to `register()`, or a grant by a holder of the admin role), but are ignored there. For example, `ROLE_RENEW` on a name does not let its owner renew.
+
+Granting or revoking `ROLE_CAN_TRANSFER`, `ROLE_CAN_TRANSFER_ADMIN`, `ROLE_UNREGISTER`, `ROLE_SET_SUBREGISTRY`, `ROLE_SET_RESOLVER` or their admin roles on a name burns and re-mints its token under a new token ID. This includes changes made by root holders to someone else's name.
 
 **Admin Role Capabilities**
 
-- In registries, **only the name owner can hold admin roles**
+- In registries, **only the name owner can hold admin roles on a name**, and only those given at registration
 - **Why this restriction?** To prevent granting admin rights to another account and retaining control after a transfer. While theoretically secure (auditable), this was judged too risky.
-- Admin roles can be revoked from oneself. The `ROLE_CAN_TRANSFER_ADMIN` role is one such example - this role is automatically granted to the owner of a name when the name is registered. Revoking this admin role will essentially make the name soulbound and un-transferrable.
+- The owner can revoke their own admin roles. The `ROLE_CAN_TRANSFER_ADMIN` role is one such example - this role is automatically granted to the owner of a name when the name is registered. Revoking this admin role will essentially make the name soulbound and un-transferrable.
+- Anyone holding the matching admin role at root can also revoke a name's admin roles, including `ROLE_CAN_TRANSFER_ADMIN`. A revoked admin role can't be granted back without registering the name again.
 
 **Transfer Behavior**
 
@@ -149,7 +157,7 @@ _`ETHRegistrar` and `ETHRenewerV1` use `Ownable`, not `EnhancedAccessControl`. I
 
 _Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller). The `deferMigration` tag, also always set, does the same for the migration controllers' `REGISTER_RESERVED`._
 
-_The tokens for `eth` and `reverse` are registered to the deployer with every role and admin role (`ROLES.ALL`); `addr.reverse` is reserved._
+_The tokens for `eth` and `reverse` are registered to the deployer with every role and admin role (`ROLES.ALL`); `addr.reverse` is reserved. The root-only roles among them, such as `RENEW`, have no effect on a name. Registries deployed before renewal became root-only (mainnet `RootRegistry` and `ETHRegistry`, which can't be upgraded) still let a name's own `ROLE_RENEW` renew it._
 
 _These are the roles at deploy. Where the owner is not the deployer (mainnet), phase 8 of the
 migration ([docs/migration.md](docs/migration.md#phase-8-hand-the-registries-over)) hands them over.
@@ -157,7 +165,7 @@ On both `RootRegistry` and `ETHRegistry` the owner takes every root role except 
 (setting a name's child registry or resolver, unregistering it, letting its owner transfer it, and
 upgrading the registry), each with its admin role. It can add top-level names, give reserved ones,
 such as DNS top-level names, to their operators, and authorize `.eth` registrars, but no root role
-reaches a registered name, so both registries' names are emancipated. The `eth` and `reverse` tokens move to the name owner (the ENS DAO name owner
+can take a registered name or change its settings, so both registries' names are emancipated. The `eth` and `reverse` tokens move to the name owner (the ENS DAO name owner
 Safe on mainnet) with every role they carry. The deployer drops every role it holds, on these
 registries and on any root registry a root replacement set aside, and renounces every batch
 registrar. `phase verify-roles` records
@@ -170,6 +178,12 @@ You can create the equivalent of Name Wrapper "emancipated" names by:
 1. Creating a subregistry where the owner has no root roles
 2. Locking the subregistry into the parent registry
 3. Result: Parent registry owner cannot interfere with subname operations
+
+Emancipation means no root role can take a name or change its settings. Some root roles can still affect a name's expiry and roles:
+
+- Root `ROLE_RENEW` can extend any name, and can revive an expired name at any time. The registry itself has no grace-period limit; only registrar contracts enforce one. Reviving restores the previous owner and all roles the name had, including ones delegated to other accounts.
+- `ROLE_REGISTER_RESERVED` sets the expiry when it promotes a reserved name, so it can extend or shorten that name's expiry without `ROLE_RENEW`.
+- `ROLE_REGISTRAR` and `ROLE_REGISTER_RESERVED` choose which roles the new owner gets, with no restriction.
 
 #### Usage Examples
 

@@ -110,15 +110,15 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
             address(this)
         );
         vm.expectEmit();
+        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
+        vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(tokenId, testOwner, 0, testRoles);
         vm.expectEmit();
         emit IERC1155.TransferSingle(address(this), address(0), testOwner, tokenId, 1);
-        vm.expectEmit();
-        emit IRegistryEvents.SubregistryUpdated(tokenId, testRegistry, address(this));
-        vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
         assertEq(this._register(), tokenId, "token");
         assertEq(registry.getExpiry(tokenId), testExpiry, "expiry");
         assertEq(registry.ownerOf(tokenId), testOwner, "owner");
@@ -372,12 +372,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.renew(tokenId, testExpiry);
     }
 
-    function test_renew_notAuthorized() external {
+    function test_renew_notAuthorized_asRoot() external {
         uint256 tokenId = this._register();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.getResource(tokenId),
+                registry.ROOT_RESOURCE(),
                 RegistryRolesLib.ROLE_RENEW,
                 actor
             )
@@ -387,6 +387,21 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         // retry with permissions
         registry.grantRootRoles(RegistryRolesLib.ROLE_RENEW, actor);
         vm.prank(actor);
+        registry.renew(tokenId, testExpiry);
+    }
+
+    function test_renew_notAuthorized_asOwner() external {
+        testRoles = RegistryRolesLib.ROLE_RENEW;
+        uint256 tokenId = this._register();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                registry.ROOT_RESOURCE(),
+                RegistryRolesLib.ROLE_RENEW,
+                testOwner
+            )
+        );
+        vm.prank(testOwner);
         registry.renew(tokenId, testExpiry);
     }
 
@@ -400,31 +415,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
                 testExpiry
             )
         );
-        registry.renew(tokenId, testExpiry);
-    }
-
-    function test_renew_self() external {
-        testRoles = RegistryRolesLib.ROLE_RENEW;
-        uint256 tokenId = this._register();
-        vm.prank(testOwner);
-        registry.renew(tokenId, testExpiry);
-    }
-
-    function test_renew_self_notAuthorized() external {
-        uint256 tokenId = this._register();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
-                registry.getResource(tokenId),
-                RegistryRolesLib.ROLE_RENEW,
-                testOwner
-            )
-        );
-        vm.prank(testOwner);
-        registry.renew(tokenId, testExpiry);
-        // retry with permissions
-        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_RENEW, actor);
-        vm.prank(actor);
         registry.renew(tokenId, testExpiry);
     }
 
@@ -615,12 +605,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     function test_setResolver() external {
         testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
         uint256 tokenId = this._register();
-        vm.recordLogs();
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(testOwner));
         vm.prank(testOwner);
         registry.setResolver(tokenId, testResolver);
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        assertEq(logs.length, 1, "logs");
-        _assertResolverUpdated(logs[0], tokenId, testResolver, testOwner);
         vm.assertEq(registry.getResolver(testLabel), testResolver, "before");
         vm.warp(testExpiry);
         vm.assertEq(registry.getResolver(testLabel), address(0), "after");
@@ -2174,6 +2162,45 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         this._register();
 
         assertEq(registry.__roles(resource, testOwner), testRoles);
+    }
+
+    // scenerio: register to receiver and regenerate
+    function test_mutatingReceiver_registerWithRegeneration() external {
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
+
+        MutatingReceiver r = new MutatingReceiver();
+        r.addCall(
+            abi.encodeCall(
+                PermissionedRegistry.grantRoles,
+                (tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER, user2)
+            )
+        );
+
+        testOwner = address(r);
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        assertEq(this._register(), tokenId + 1);
+    }
+
+    // scenerio: register to receiver, regenerate, then invoke a setter
+    function test_mutatingReceiver_registerWithRegenerationAndSetters() external {
+        uint256 tokenId = LibLabel.withVersion(LibLabel.id(testLabel), 0);
+
+        MutatingReceiver r = new MutatingReceiver();
+        r.addCall(
+            abi.encodeCall(
+                PermissionedRegistry.grantRoles,
+                (tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER, user2)
+            )
+        );
+        r.addCall(abi.encodeCall(PermissionedRegistry.setResolver, (tokenId, actor)));
+
+        testOwner = address(r);
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId, testResolver, address(this));
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId + 1, actor, address(r));
+        this._register();
     }
 
     ////////////////////////////////////////////////////////////////////////

@@ -524,6 +524,14 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             address(migrationController)
         );
         vm.expectEmit();
+        emit IRegistryEvents.SubregistryUpdated(
+            tokenId,
+            IRegistry(expectedRegistry),
+            address(migrationController)
+        );
+        vm.expectEmit();
+        emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
+        vm.expectEmit();
         emit IPermissionedRegistry.TokenResource(tokenId, tokenId);
         vm.expectEmit();
         emit IEnhancedAccessControl.EACRolesChanged(
@@ -537,14 +545,6 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         vm.expectEmit();
         emit IERC1155.TransferSingle(address(migrationController), address(0), md.owner, tokenId, 1);
-        vm.expectEmit();
-        emit IRegistryEvents.SubregistryUpdated(
-            tokenId,
-            IRegistry(expectedRegistry),
-            address(migrationController)
-        );
-        vm.expectEmit();
-        emit IRegistryEvents.ResolverUpdated(tokenId, md.resolver, address(migrationController));
         vm.prank(testOwner);
         uint256 g = gasleft();
         nameWrapper.safeTransferFrom(

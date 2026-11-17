@@ -25,7 +25,7 @@ library RegistryRolesLib {
     /// @dev Nybble 35: authorizes setting `ROLE_UNREGISTER`.
     uint256 internal constant ROLE_UNREGISTER_ADMIN = ROLE_UNREGISTER << 128;
 
-    /// @dev Nybble 4: authorizes extending name expiry. Root or token.
+    /// @dev Nybble 4: authorizes extending name expiry. Root-only.
     uint256 internal constant ROLE_RENEW = 1 << 16;
     /// @dev Nybble 36: authorizes setting `ROLE_RENEW`.
     uint256 internal constant ROLE_RENEW_ADMIN = ROLE_RENEW << 128;
