@@ -95,7 +95,6 @@ contract UpgradeablePermissionedRegistry is
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc IProxyAuthorization
     /// @notice Declares this implementation as an eligible verifiable proxy upgrade target.
     /// @dev Upgrade authorization is also enforced during `_authorizeUpgrade()`.
     /// @param previousImplementation Previous implementation address.
