@@ -1,4 +1,6 @@
 import hre from "hardhat";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   type Account,
   type Address,
@@ -14,18 +16,16 @@ import {
 import {
   encodeFunctionData,
   encodePacked,
+  getAddress,
   parseAbi,
   toFunctionSignature,
 } from "viem/utils";
-import {
-  DAO_WALLET,
-  DAO_TOKEN_SAFE,
-  DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
-} from "../../script/deploy-constants.js";
+import { loadLatestAddresses } from "../../script/addressDocs.js";
+import { DAO_WALLET, DAO_TOKEN_SAFE } from "../../script/deploy-constants.js";
+
+const rootDir = join(import.meta.dirname, "../../");
 
 // USAGE: bun run test:hardhat test/fork/<Test>.test.ts
-
-// TODO: make this robust once deployments are consolidated
 
 // https://docs.safe.global/reference-smart-account/transactions/execTransaction
 const SAFE_PROXY_ABI = parseAbi([
@@ -45,48 +45,51 @@ export async function forkAndAttach(network = "mainnet") {
     throw new Error(`unsupported fork: ${network}`);
   }
 
+  const v1Dir = join(rootDir, `lib/ens-contracts/deployments/${network}`);
+  const v2 = await loadLatestAddresses(join(rootDir, "deployments"), network);
+
   const connection = await hre.network.connect(`${network}Fork`);
 
   const forkedFixture = async () => {
     const ENSRegistry = await connection.viem.getContractAt(
       "ENSRegistry",
-      "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e",
+      getV1DeploymentAddress("ENSRegistry"),
     );
     const Root = await connection.viem.getContractAt(
       "Root",
-      "0xaB528d626EC275E3faD363fF1393A41F581c5897",
+      getV1DeploymentAddress("Root"),
     );
     const OffchainDNSResolver = await connection.viem.getContractAt(
       "OffchainDNSResolver",
-      "0xA4A2d86B30896fe5c4f2A7F2Ee0BDE3dbff26924",
+      getV1DeploymentAddress("OffchainDNSResolver"),
     );
     const DNSRegistrar = await connection.viem.getContractAt(
       "DNSRegistrar",
-      "0x084462610a20efbdb686b30fe587eca0e234d2ef",
+      getV1DeploymentAddress("DNSRegistrar"),
     );
     const SimplePublicSuffixList = await connection.viem.getContractAt(
       "SimplePublicSuffixList",
-      "0x823BDa9cA8c47d072376eCD595530c8fb2fAa3ED",
+      getV1DeploymentAddress("SimplePublicSuffixList"),
     );
     const UniversalResolver = await connection.viem.getContractAt(
       "UniversalResolverV2",
-      DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+      getV2DeploymentAddress("UpgradableUniversalResolverProxy"),
     );
     const RootRegistry = await connection.viem.getContractAt(
       "PermissionedRegistry",
-      "0x2553c09bE6447BeFfdB86FA622ad41fB8f77A91e",
+      getV2DeploymentAddress("RootRegistry"),
     );
     const DNSTLDResolver = await connection.viem.getContractAt(
       "DNSTLDResolver",
-      "0x6695327EE70F41151d2cBADC3ABBb6e4a58e739c",
+      getV2DeploymentAddress("DNSTLDResolver"),
     );
     const ContractNamer = await connection.viem.getContractAt(
       "ContractNamer",
-      "0x5cdaf63d4c2a01218149dde707e5bc239c68730c",
+      getV2DeploymentAddress("ContractNamer"),
     );
     const TemporaryDNSRegistrar = await connection.viem.getContractAt(
       "TemporaryDNSRegistrar",
-      "0x9d6D535f08be25A9A2FdA1a1C21217D27d81cC61",
+      getV2DeploymentAddress("TemporaryDNSRegistrar"),
     );
 
     // derivable
@@ -231,5 +234,26 @@ export async function forkAndAttach(network = "mainnet") {
   return {
     connection,
     forkedFixture,
+    getV1DeploymentAddress,
+    getV2DeploymentAddress,
   };
+
+  function getV1DeploymentAddress(name: string) {
+    try {
+      const { address } = JSON.parse(
+        readFileSync(join(v1Dir, `${name}.json`), "utf8"),
+      ) as { address: Address };
+      return getAddress(address);
+    } catch {
+      throw new Error(`missing V1 deployment: ${name}`);
+    }
+  }
+
+  function getV2DeploymentAddress(name: string) {
+    const address = v2[name];
+    if (!address) {
+      throw new Error(`missing V2 deployment: ${name}`);
+    }
+    return address;
+  }
 }
