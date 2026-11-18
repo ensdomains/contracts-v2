@@ -379,6 +379,23 @@ contract UserRegistryTest is Test, ERC1155Holder {
         proxy.upgradeToAndCall(newImpl, "");
     }
 
+    function test_upgrade_nested() external {
+        address[] memory upgradeable = new address[](1);
+        upgradeable[0] = address(implementation);
+        address newImpl =
+            address(
+                new UserRegistry(labelStore, address(this), upgradeSet, upgradeable, uriRenderer)
+            );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(UpgradeablePermissionedRegistry.NestedUpgradeNotAllowed.selector)
+        );
+        proxy.upgradeToAndCall(
+            newImpl,
+            abi.encodeWithSelector(UUPSUpgradeable.upgradeToAndCall.selector)
+        );
+    }
+
     function test_upgrade_notEmancipated() external {
         address[] memory upgradeable = new address[](1);
         upgradeable[0] = address(implementation);

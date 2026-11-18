@@ -51,6 +51,10 @@ contract UpgradeablePermissionedRegistry is
     /// @param implementation Disallowed implementation address.
     error UpgradeTargetNotApproved(address implementation);
 
+    /// @notice Upgrade attempted to call `upgradeToAndCall()` again.
+    /// @dev Error selector: `0x8c5d8cf3`
+    error NestedUpgradeNotAllowed();
+
     ////////////////////////////////////////////////////////////////////////
     // Initialization
     ////////////////////////////////////////////////////////////////////////
@@ -103,6 +107,15 @@ contract UpgradeablePermissionedRegistry is
         returns (bool)
     {
         return _storage().canUpgradeFrom[previousImplementation];
+    }
+
+    /// @inheritdoc UUPSUpgradeable
+    /// @dev Override: reject nested `upgradeToAndCall()`.
+    function upgradeToAndCall(address newImplementation, bytes memory data) public payable override {
+        if (bytes4(data) == this.upgradeToAndCall.selector) {
+            revert NestedUpgradeNotAllowed();
+        }
+        super.upgradeToAndCall(newImplementation, data);
     }
 
     ////////////////////////////////////////////////////////////////////////
