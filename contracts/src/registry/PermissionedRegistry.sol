@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
+import {
+    IERC1155MetadataURI
+} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
+import {IUnsafeTransferable} from "../utils/interfaces/IUnsafeTransferable.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IOwnedRegistry} from "./interfaces/IOwnedRegistry.sol";
@@ -124,13 +129,14 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (bool)
     {
         return
+            interfaceId == type(IRegistry).interfaceId ||
             interfaceId == type(IPermissionedRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
+            interfaceId == type(IUnsafeTransferable).interfaceId ||
+            interfaceId == type(IContractNamer).interfaceId ||
             interfaceId == type(ITokenizedRegistry).interfaceId ||
             interfaceId == type(ITemporalRegistry).interfaceId ||
             interfaceId == type(IOwnedRegistry).interfaceId ||
-            interfaceId == type(IRegistry).interfaceId ||
-            interfaceId == type(IContractNamer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -154,9 +160,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         emit ResolverUpdated(tokenId, resolver, msg.sender);
     }
 
-    /// @notice Set the URI for the registry.
-    /// @param uri_ The new URI.
-    /// @param renderer The new renderer address.
+    /// @inheritdoc IPermissionedRegistry
     function setURI(string calldata uri_, IRegistryURIRenderer renderer)
         public
         virtual
@@ -175,6 +179,31 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         _parentRegistry = parent;
         _childLabel = label;
         emit ParentUpdated(parent, label, msg.sender);
+    }
+
+    /// @inheritdoc IUnsafeTransferable
+    function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) public {
+        _checkReceiver(to);
+        address owner = ownerOf(tokenId);
+        _checkApproval(owner, msg.sender);
+        _updateOneWithAcceptanceCheck(owner, to, tokenId, 1, false, data);
+    }
+
+    /// @inheritdoc IUnsafeTransferable
+    function unsafeBatchTransfer(address to, uint256[] calldata tokenIds, bytes calldata data)
+        public
+    {
+        _checkReceiver(to);
+        if (tokenIds.length == 0) {
+            revert ERC1155InvalidSender(address(0));
+        }
+        address owner = ownerOf(tokenIds[0]);
+        _checkApproval(owner, msg.sender);
+        uint256[] memory amounts = new uint256[](tokenIds.length);
+        for (uint256 i; i < tokenIds.length; ++i) {
+            amounts[i] = 1;
+        }
+        _updateWithAcceptanceCheck(owner, to, tokenIds, amounts, false, data, true);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -199,17 +228,19 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         (uint256 tokenId, Entry storage entry) =
             _checkExpiryAndTokenRoles(anyId, RegistryRolesLib.ROLE_UNREGISTER);
         emit LabelUnregistered(tokenId, msg.sender);
-        address owner = super.ownerOf(tokenId);
+        address owner = latestOwnerOf(tokenId);
         if (owner != address(0)) {
             _burn(owner, tokenId, 1);
             ++entry.eacVersionId;
             ++entry.tokenVersionId;
         }
         entry.expiry = uint64(block.timestamp);
+        delete entry.resolver;
+        delete entry.subregistry;
     }
 
     /// @inheritdoc IStandardRegistry
-    /// @dev If `REGISTERED | RESERVED`, requires `ROLE_RENEW`.
+    /// @dev If `REGISTERED | RESERVED`, requires `ROLE_RENEW` on root.
     ///      If `AVAILABLE`, requires expiry > 0 and `ROLE_RENEW` on root.
     function renew(uint256 anyId, uint64 newExpiry) public override {
         Entry storage entry = _entry(anyId);
@@ -220,7 +251,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
                 revert LabelExpired(tokenId); // never registered OR cannot revive
             }
         } else {
-            _checkRoles(_constructResource(anyId, entry), RegistryRolesLib.ROLE_RENEW, msg.sender);
+            _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_RENEW, msg.sender);
         }
         if (newExpiry < expiry) {
             revert CannotReduceExpiry(expiry, newExpiry);
@@ -264,6 +295,11 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return (_parentRegistry, _childLabel);
     }
 
+    /// @inheritdoc IPermissionedRegistry
+    function getURI() public view returns (string memory uri_, IRegistryURIRenderer renderer) {
+        return (_uri, _uriRenderer);
+    }
+
     /// @inheritdoc IContractNamer
     function isContractNamer(address namer) public view virtual returns (bool) {
         return hasRootRoles(RegistryRolesLib.ROLE_CAN_NAME, namer);
@@ -285,7 +321,12 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc ERC1155Singleton
-    function uri(uint256 tokenId) public view override returns (string memory) {
+    function uri(uint256 tokenId)
+        public
+        view
+        override(ERC1155Singleton, IERC1155MetadataURI)
+        returns (string memory)
+    {
         return
             address(_uriRenderer) != address(0)
                 ? _uriRenderer.renderURI(this, tokenId)
@@ -309,13 +350,13 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
 
     /// @inheritdoc IPermissionedRegistry
     function getOwner(uint256 anyId) public view returns (address) {
-        return _isExpired(getExpiry(anyId)) ? address(0) : super.ownerOf(getTokenId(anyId));
+        return _isExpired(getExpiry(anyId)) ? address(0) : latestOwnerOf(getTokenId(anyId));
     }
 
     /// @inheritdoc IPermissionedRegistry
     function getStatus(uint256 anyId) public view returns (Status) {
         Entry storage entry = _entry(anyId);
-        return _constructStatus(entry.expiry, super.ownerOf(_constructTokenId(anyId, entry)));
+        return _constructStatus(entry.expiry, latestOwnerOf(_constructTokenId(anyId, entry)));
     }
 
     /// @inheritdoc IPermissionedRegistry
@@ -326,7 +367,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         uint256 tokenId = _constructTokenId(anyId, entry);
         state.tokenId = tokenId;
         state.resource = _constructResource(anyId, entry);
-        address owner = super.ownerOf(tokenId);
+        address owner = latestOwnerOf(tokenId);
         state.latestOwner = owner;
         state.status = _constructStatus(expiry, owner);
     }
@@ -347,7 +388,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return
             tokenId != _constructTokenId(tokenId, entry) || _isExpired(entry.expiry)
                 ? address(0)
-                : super.ownerOf(tokenId);
+                : latestOwnerOf(tokenId);
     }
 
     /// @inheritdoc IEnhancedAccessControl
@@ -381,16 +422,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc IEnhancedAccessControl
-    function hasAssignees(uint256 anyId, uint256 roleBitmap)
-        public
-        view
-        override(EnhancedAccessControl, IEnhancedAccessControl)
-        returns (bool)
-    {
-        return super.hasAssignees(getResource(anyId), roleBitmap);
-    }
-
-    /// @inheritdoc IEnhancedAccessControl
     function getAssigneeCount(uint256 anyId, uint256 roleBitmap)
         public
         view
@@ -398,6 +429,14 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (uint256 counts, uint256 mask)
     {
         return super.getAssigneeCount(getResource(anyId), roleBitmap);
+    }
+
+    /// @inheritdoc IPermissionedRegistry
+    function isEmancipated() public view virtual returns (bool) {
+        return
+            (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP &
+                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
+            0;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -424,7 +463,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         uint256 labelId = LibLabel.id(label);
         Entry storage entry = _entry(labelId);
         tokenId = _constructTokenId(labelId, entry);
-        address prevOwner = super.ownerOf(tokenId);
+        address prevOwner = latestOwnerOf(tokenId);
         if (_isExpired(entry.expiry)) {
             if (checkRoles) {
                 _checkRoles(ROOT_RESOURCE, RegistryRolesLib.ROLE_REGISTRAR, msg.sender);
@@ -462,11 +501,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             emit LabelReserved(tokenId, bytes32(labelId), label, expiry, msg.sender);
         } else {
             emit LabelRegistered(tokenId, bytes32(labelId), label, owner, expiry, msg.sender);
-            _mint(owner, tokenId, 1, "");
-            uint256 resource = _constructResource(tokenId, entry);
-            assert(resource != ROOT_RESOURCE);
-            emit TokenResource(tokenId, resource);
-            _grantRoles(resource, roleBitmap, owner, false);
         }
         if (address(registry) != address(0)) {
             emit SubregistryUpdated(tokenId, registry, msg.sender);
@@ -474,24 +508,47 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         if (address(resolver) != address(0)) {
             emit ResolverUpdated(tokenId, resolver, msg.sender);
         }
+        if (owner != address(0)) {
+            uint256 resource = _constructResource(tokenId, entry);
+            assert(resource != ROOT_RESOURCE);
+            emit TokenResource(tokenId, resource);
+            _grantRoles(resource, roleBitmap, owner, false);
+            _mint(owner, tokenId, 1, "");
+            tokenId = _constructTokenId(tokenId, entry); // may have regenerated
+        }
     }
 
     /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
-    function _update(address from, address to, uint256[] memory tokenIds, uint256[] memory amounts)
+    function _update(
+        address from,
+        address to,
+        uint256[] memory tokenIds,
+        uint256[] memory amounts,
+        bool safe
+    )
         internal
         override
     {
-        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
+        super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
             // only transfers (skip mint and burn)
+            if (safe && !isEmancipated()) {
+                revert TransferUnsafeUntilRegistryIsEmancipated();
+            }
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
+                uint256 resource = getResource(tokenId);
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
-                // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
-                if (!hasRoles(tokenId, RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN, from)) {
+                // ROLE_CAN_TRANSFER_ADMIN is a property of the token (not grantable, ignored on root)
+                if ((_getRoles(resource, from) & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
                     revert TransferDisallowed(tokenId, from);
+                } else if (
+                    safe &&
+                    !isOnlyAssignee(tokenId, RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, from)
+                ) {
+                    revert TransferUnsafeWithMultipleAssignees(tokenId, from);
                 } else if (amounts[i] > 0) {
-                    _transferRoles(getResource(tokenId), from, to, false);
+                    _transferRoles(resource, from, to, false);
                 }
             }
         }
@@ -501,36 +558,40 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     function _onRolesGranted(
         uint256 resource,
         address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        uint256 oldRoles,
+        uint256 newRoles,
         uint256 /*roleBitmap*/
     )
         internal
         override
     {
-        _regenerate(resource);
+        _regenerate(resource, oldRoles, newRoles);
     }
 
     /// @dev Override the base registry _onRolesRevoked function to regenerate the token when the roles are revoked.
     function _onRolesRevoked(
         uint256 resource,
         address /*account*/,
-        uint256 /*oldRoles*/,
-        uint256 /*newRoles*/,
+        uint256 oldRoles,
+        uint256 newRoles,
         uint256 /*roleBitmap*/
     )
         internal
         override
     {
-        _regenerate(resource);
+        _regenerate(resource, oldRoles, newRoles);
     }
 
     /// @dev Bump `tokenVersionId` via burn+mint if token is not expired.
-    function _regenerate(uint256 resource) internal {
-        if (resource != ROOT_RESOURCE) {
+    ///      Skip if regeneration-related roles were unchanged.
+    function _regenerate(uint256 resource, uint256 oldRoles, uint256 newRoles) internal {
+        if (
+            resource != ROOT_RESOURCE &&
+            ((oldRoles ^ newRoles) & RegistryRolesLib.REGENERATION_ROLE_BITMAP != 0)
+        ) {
             Entry storage entry = _entry(resource);
             uint256 tokenId = _constructTokenId(resource, entry);
-            address owner = super.ownerOf(tokenId); // grant/revoke only on registered
+            address owner = latestOwnerOf(tokenId); // grant/revoke only on registered
             _burn(owner, tokenId, 1);
             ++entry.tokenVersionId;
             uint256 newTokenId = _constructTokenId(tokenId, entry);
@@ -569,10 +630,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @dev Override for token-dependent logic:
-    ///
-    /// * if caller is approved by token owner, combine the caller's roles with the owner's roles
-    ///
+    /// @dev If caller is approved by token owner, combine the caller's roles with the owner's roles.
     function _getRoles(uint256 resource, address account)
         internal
         view

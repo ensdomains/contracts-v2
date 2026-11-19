@@ -11,6 +11,7 @@ contracts/typechain-types/
 
 # Deployments
 contracts/deployments/
+!contracts/deployments/v1/mainnet/
 
 # ENS contracts build artifacts (will be regenerated)
 contracts/lib/ens-contracts/artifacts/

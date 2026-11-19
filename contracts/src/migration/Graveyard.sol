@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {
     BaseRegistrarImplementation
@@ -86,8 +86,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
         override(ERC1155Holder, DelegatedContractNamer)
         returns (bool)
     {
-        return
-            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -143,7 +142,8 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
         } else if (parentState == State.ETH) {
             address owner = _REGISTRY_V1.owner(node);
             if (owner == address(this)) {
-                // resolver is cleared by migration
+                // a holder can hand the node over with a resolver set
+                _clearResolver(node);
                 return (node, State.OWNED);
             }
             uint32 fuses;
@@ -164,9 +164,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 type(uint64).max - block.timestamp - _GRACE_PERIOD // max duration?
             );
             // lock expired? so clear it
-            if (_REGISTRY_V1.resolver(node) != address(0)) {
-                _REGISTRY_V1.setResolver(node, address(0));
-            }
+            _clearResolver(node);
             return (node, State.OWNED);
         } else if (parentState == State.OWNED) {
             _REGISTRY_V1.setSubnodeRecord(parentNode, labelHash, address(this), address(0), 0);
@@ -200,6 +198,14 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
                 NAME_WRAPPER.unwrap(parentNode, labelHash, address(this));
             }
             return (node, State.OWNED);
+        }
+    }
+
+    /// @dev Clear the resolver of a node this contract owns in the registry.
+    /// @param node The namehash of the node.
+    function _clearResolver(bytes32 node) internal {
+        if (_REGISTRY_V1.resolver(node) != address(0)) {
+            _REGISTRY_V1.setResolver(node, address(0));
         }
     }
 }

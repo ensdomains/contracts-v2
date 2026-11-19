@@ -1,0 +1,644 @@
+{
+  "address": "0xb7cfeceed32dba66c507b3c002dad510b8399928",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "contract IVerifiableFactory",
+          "name": "verifiableFactory",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "HCAImplementationCannotBeZero",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hcaImplementation",
+          "type": "address"
+        }
+      ],
+      "name": "HCAImplementationNotApproved",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "name": "HCAOwnerUnavailable",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "OwnerCannotBeZero",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "expectedImplementation",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "actualImplementation",
+          "type": "address"
+        }
+      ],
+      "name": "UnexpectedHCAImplementation",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "expectedOwner",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "actualOwner",
+          "type": "address"
+        }
+      ],
+      "name": "UnexpectedHCAOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "VerifiableFactoryCannotBeZero",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "userSalt",
+          "type": "uint256"
+        }
+      ],
+      "name": "HCADeployed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        }
+      ],
+      "name": "ImplementationApprovalChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "VERIFIABLE_FACTORY",
+      "outputs": [
+        {
+          "internalType": "contract IVerifiableFactory",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "approvedImplementations",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "name": "authorizedOwnerOf",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "hcaImplementation",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "userSalt",
+          "type": "uint256"
+        }
+      ],
+      "name": "deploy",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "hcaImplementation",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "userSalt",
+          "type": "uint256"
+        }
+      ],
+      "name": "deploymentSalt",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "name": "hcaOwners",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        }
+      ],
+      "name": "setImplementationApproval",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "contractName": "StandaloneHCAFactory",
+  "sourceName": "src/hca/StandaloneHCAFactory.sol",
+  "bytecode": "0x60a060405234801561000f575f5ffd5b50604051610b22380380610b2283398101604081905261002e91610105565b806001600160a01b03811661005c57604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b6100658161009f565b506001600160a01b03821661008d576040516305e07fb560e51b815260040160405180910390fd5b506001600160a01b031660805261013d565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b0381168114610102575f5ffd5b50565b5f5f60408385031215610116575f5ffd5b8251610121816100ee565b6020840151909250610132816100ee565b809150509250929050565b6080516109c761015b5f395f818160c2015261035a01526109c75ff3fe608060405234801561000f575f5ffd5b50600436106100b9575f3560e01c806396b78cbe11610072578063e093b82211610058578063e093b822146101a9578063e537b27b146101d4578063f2fde38b146101e7575f5ffd5b806396b78cbe14610156578063a407ffa614610188575f5ffd5b8063715018a6116100a2578063715018a614610114578063862c38c01461011e5780638da5cb5b14610146575f5ffd5b806318ad9b71146100bd5780631b3671bf14610101575b5f5ffd5b6100e47f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b6100e461010f366004610848565b6101fa565b61011c610658565b005b6100e461012c366004610886565b60026020525f90815260409020546001600160a01b031681565b5f546001600160a01b03166100e4565b610178610164366004610886565b60016020525f908152604090205460ff1681565b60405190151581526020016100f8565b61019b610196366004610848565b61066b565b6040519081526020016100f8565b6100e46101b7366004610886565b6001600160a01b039081165f908152600260205260409020541690565b61011c6101e23660046108a8565b6106bb565b61011c6101f5366004610886565b61073d565b5f6001600160a01b03841661023b576040517f9b15e16f00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6001600160a01b038316610262576040516330eb1e6560e01b815260040160405180910390fd5b6001600160a01b0383165f9081526001602052604090205460ff166102c3576040517f1a127e840000000000000000000000000000000000000000000000000000000081526001600160a01b03841660048201526024015b60405180910390fd5b604080516001600160a01b03861660208201525f910160408051601f19818403018152908290526102f691602401610911565b60408051601f198184030181529190526020810180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff167f4b6a14190000000000000000000000000000000000000000000000000000000017905290506001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016635d84121a8561038b88828861066b565b846040518463ffffffff1660e01b81526004016103aa93929190610923565b6020604051808303815f875af11580156103c6573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103ea9190610953565b91505f826001600160a01b03166395c5c9736040518163ffffffff1660e01b81526004016040805180830381865afa158015610428573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061044c919061096e565b915050846001600160a01b0316816001600160a01b0316146104ad576040517fa6a6d0080000000000000000000000000000000000000000000000000000000081526001600160a01b038087166004830152821660248201526044016102ba565b6001600160a01b038381165f818152600260209081526040808320805473ffffffffffffffffffffffffffffffffffffffff1916958c169590951790945583517f8da5cb5b00000000000000000000000000000000000000000000000000000000815293519193638da5cb5b92600480830193928290030181865afa925050508015610556575060408051601f3d908101601f1916820190925261055391810190610953565b60015b610597576040517f15bd01c50000000000000000000000000000000000000000000000000000000081526001600160a01b03851660048201526024016102ba565b9050866001600160a01b0316816001600160a01b0316146105f7576040517f6a2382770000000000000000000000000000000000000000000000000000000081526001600160a01b038089166004830152821660248201526044016102ba565b856001600160a01b0316876001600160a01b0316856001600160a01b03167f2f6f28fd05c32050ef9075770f6272930a2c8f0001007bcbac54bbf1084a736b8860405161064691815260200190565b60405180910390a45050509392505050565b610660610793565b6106695f6107d8565b565b5f81848460405160200161069b939291909283526001600160a01b03918216602084015216604082015260600190565b60408051601f198184030181529190528051602090910120949350505050565b6106c3610793565b6001600160a01b0382166106ea576040516330eb1e6560e01b815260040160405180910390fd5b6001600160a01b0382165f81815260016020526040808220805460ff191685151590811790915590519092917fdf2de8f46c1295aaa5eaaea8c458190346b99f2dd813bd0a543dff50c0c4106e91a35050565b610745610793565b6001600160a01b038116610787576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024016102ba565b610790816107d8565b50565b5f546001600160a01b03163314610669576040517f118cdaa70000000000000000000000000000000000000000000000000000000081523360048201526024016102ba565b5f80546001600160a01b0383811673ffffffffffffffffffffffffffffffffffffffff19831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b0381168114610790575f5ffd5b5f5f5f6060848603121561085a575f5ffd5b833561086581610834565b9250602084013561087581610834565b929592945050506040919091013590565b5f60208284031215610896575f5ffd5b81356108a181610834565b9392505050565b5f5f604083850312156108b9575f5ffd5b82356108c481610834565b9150602083013580151581146108d8575f5ffd5b809150509250929050565b5f81518084528060208401602086015e5f602082860101526020601f19601f83011685010191505092915050565b602081525f6108a160208301846108e3565b6001600160a01b0384168152826020820152606060408201525f61094a60608301846108e3565b95945050505050565b5f60208284031215610963575f5ffd5b81516108a181610834565b5f5f6040838503121561097f575f5ffd5b8251915060208301516108d88161083456fea2646970667358221220824d0714765be1830e0716ca46eab6ed04c14fb7e3aa7bb3c78934cfa5d9a55464736f6c634300081b0033",
+  "deployedBytecode": "0x608060405234801561000f575f5ffd5b50600436106100b9575f3560e01c806396b78cbe11610072578063e093b82211610058578063e093b822146101a9578063e537b27b146101d4578063f2fde38b146101e7575f5ffd5b806396b78cbe14610156578063a407ffa614610188575f5ffd5b8063715018a6116100a2578063715018a614610114578063862c38c01461011e5780638da5cb5b14610146575f5ffd5b806318ad9b71146100bd5780631b3671bf14610101575b5f5ffd5b6100e47f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b6100e461010f366004610848565b6101fa565b61011c610658565b005b6100e461012c366004610886565b60026020525f90815260409020546001600160a01b031681565b5f546001600160a01b03166100e4565b610178610164366004610886565b60016020525f908152604090205460ff1681565b60405190151581526020016100f8565b61019b610196366004610848565b61066b565b6040519081526020016100f8565b6100e46101b7366004610886565b6001600160a01b039081165f908152600260205260409020541690565b61011c6101e23660046108a8565b6106bb565b61011c6101f5366004610886565b61073d565b5f6001600160a01b03841661023b576040517f9b15e16f00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6001600160a01b038316610262576040516330eb1e6560e01b815260040160405180910390fd5b6001600160a01b0383165f9081526001602052604090205460ff166102c3576040517f1a127e840000000000000000000000000000000000000000000000000000000081526001600160a01b03841660048201526024015b60405180910390fd5b604080516001600160a01b03861660208201525f910160408051601f19818403018152908290526102f691602401610911565b60408051601f198184030181529190526020810180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff167f4b6a14190000000000000000000000000000000000000000000000000000000017905290506001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016635d84121a8561038b88828861066b565b846040518463ffffffff1660e01b81526004016103aa93929190610923565b6020604051808303815f875af11580156103c6573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103ea9190610953565b91505f826001600160a01b03166395c5c9736040518163ffffffff1660e01b81526004016040805180830381865afa158015610428573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061044c919061096e565b915050846001600160a01b0316816001600160a01b0316146104ad576040517fa6a6d0080000000000000000000000000000000000000000000000000000000081526001600160a01b038087166004830152821660248201526044016102ba565b6001600160a01b038381165f818152600260209081526040808320805473ffffffffffffffffffffffffffffffffffffffff1916958c169590951790945583517f8da5cb5b00000000000000000000000000000000000000000000000000000000815293519193638da5cb5b92600480830193928290030181865afa925050508015610556575060408051601f3d908101601f1916820190925261055391810190610953565b60015b610597576040517f15bd01c50000000000000000000000000000000000000000000000000000000081526001600160a01b03851660048201526024016102ba565b9050866001600160a01b0316816001600160a01b0316146105f7576040517f6a2382770000000000000000000000000000000000000000000000000000000081526001600160a01b038089166004830152821660248201526044016102ba565b856001600160a01b0316876001600160a01b0316856001600160a01b03167f2f6f28fd05c32050ef9075770f6272930a2c8f0001007bcbac54bbf1084a736b8860405161064691815260200190565b60405180910390a45050509392505050565b610660610793565b6106695f6107d8565b565b5f81848460405160200161069b939291909283526001600160a01b03918216602084015216604082015260600190565b60408051601f198184030181529190528051602090910120949350505050565b6106c3610793565b6001600160a01b0382166106ea576040516330eb1e6560e01b815260040160405180910390fd5b6001600160a01b0382165f81815260016020526040808220805460ff191685151590811790915590519092917fdf2de8f46c1295aaa5eaaea8c458190346b99f2dd813bd0a543dff50c0c4106e91a35050565b610745610793565b6001600160a01b038116610787576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024016102ba565b610790816107d8565b50565b5f546001600160a01b03163314610669576040517f118cdaa70000000000000000000000000000000000000000000000000000000081523360048201526024016102ba565b5f80546001600160a01b0383811673ffffffffffffffffffffffffffffffffffffffff19831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b0381168114610790575f5ffd5b5f5f5f6060848603121561085a575f5ffd5b833561086581610834565b9250602084013561087581610834565b929592945050506040919091013590565b5f60208284031215610896575f5ffd5b81356108a181610834565b9392505050565b5f5f604083850312156108b9575f5ffd5b82356108c481610834565b9150602083013580151581146108d8575f5ffd5b809150509250929050565b5f81518084528060208401602086015e5f602082860101526020601f19601f83011685010191505092915050565b602081525f6108a160208301846108e3565b6001600160a01b0384168152826020820152606060408201525f61094a60608301846108e3565b95945050505050565b5f60208284031215610963575f5ffd5b81516108a181610834565b5f5f6040838503121561097f575f5ffd5b8251915060208301516108d88161083456fea2646970667358221220824d0714765be1830e0716ca46eab6ed04c14fb7e3aa7bb3c78934cfa5d9a55464736f6c634300081b0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {
+    "11000": [
+      {
+        "length": 32,
+        "start": 194
+      },
+      {
+        "length": 32,
+        "start": 858
+      }
+    ]
+  },
+  "inputSourceName": "project/src/hca/StandaloneHCAFactory.sol",
+  "buildInfoId": "solc-0_8_27-d6dfcb48abc12486aced0281ae03c0d4a133c591",
+  "devdoc": {
+    "details": "Anyone may deploy an HCA from an approved implementation. A successful deployment is      permanently bound to the owner verified immediately after initialization.",
+    "errors": {
+      "HCAImplementationCannotBeZero()": [
+        {
+          "details": "Error selector: `0x30eb1e65`"
+        }
+      ],
+      "HCAImplementationNotApproved(address)": [
+        {
+          "details": "Error selector: `0x1a127e84`"
+        }
+      ],
+      "HCAOwnerUnavailable(address)": [
+        {
+          "details": "Error selector: `0x15bd01c5`"
+        }
+      ],
+      "OwnableInvalidOwner(address)": [
+        {
+          "details": "The owner is not a valid owner account. (eg. `address(0)`)"
+        }
+      ],
+      "OwnableUnauthorizedAccount(address)": [
+        {
+          "details": "The caller account is not authorized to perform an operation."
+        }
+      ],
+      "OwnerCannotBeZero()": [
+        {
+          "details": "Error selector: `0x9b15e16f`"
+        }
+      ],
+      "UnexpectedHCAImplementation(address,address)": [
+        {
+          "details": "Error selector: `0xa6a6d008`"
+        }
+      ],
+      "UnexpectedHCAOwner(address,address)": [
+        {
+          "details": "Error selector: `0x6a238277`"
+        }
+      ],
+      "VerifiableFactoryCannotBeZero()": [
+        {
+          "details": "Error selector: `0xbc0ff6a0`"
+        }
+      ]
+    },
+    "events": {
+      "HCADeployed(address,address,address,uint256)": {
+        "params": {
+          "hca": "The deployed HCA proxy.",
+          "implementation": "The approved initial implementation.",
+          "owner": "The immutable owner certified for the HCA.",
+          "userSalt": "The caller-supplied account namespace."
+        }
+      },
+      "ImplementationApprovalChanged(address,bool)": {
+        "params": {
+          "approved": "Whether the implementation may initialize new HCAs.",
+          "implementation": "The implementation whose approval changed."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "authorizedOwnerOf(address)": {
+        "params": {
+          "hca": "The candidate HCA proxy."
+        },
+        "returns": {
+          "owner": "The certified owner, or zero for an unknown HCA."
+        }
+      },
+      "constructor": {
+        "params": {
+          "owner_": "The governance account controlling implementation approval.",
+          "verifiableFactory": "The underlying factory used for every HCA deployment."
+        }
+      },
+      "deploy(address,address,uint256)": {
+        "params": {
+          "hcaImplementation": "The approved initial implementation.",
+          "owner": "The immutable owner assigned to the HCA.",
+          "userSalt": "An optional namespace or account-version salt."
+        },
+        "returns": {
+          "hca": "The deployed HCA proxy."
+        }
+      },
+      "deploymentSalt(address,address,uint256)": {
+        "params": {
+          "hcaImplementation": "The HCA's initial implementation.",
+          "owner": "The owner assigned to the HCA.",
+          "userSalt": "An optional namespace or account-version salt."
+        },
+        "returns": {
+          "_0": "The owner- and implementation-bound VerifiableFactory salt."
+        }
+      },
+      "owner()": {
+        "details": "Returns the address of the current owner."
+      },
+      "renounceOwnership()": {
+        "details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
+      },
+      "setImplementationApproval(address,bool)": {
+        "details": "Approval changes affect only future deployments.",
+        "params": {
+          "approved": "Whether new HCAs may be initialized from the implementation.",
+          "implementation": "The implementation whose approval changes."
+        }
+      },
+      "transferOwnership(address)": {
+        "details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
+      }
+    },
+    "stateVariables": {
+      "approvedImplementations": {
+        "params": {
+          "implementation": "The candidate initial implementation."
+        },
+        "return": "approved Whether the implementation is approved.",
+        "returns": {
+          "approved": "Whether the implementation is approved."
+        }
+      },
+      "hcaOwners": {
+        "params": {
+          "hca": "The candidate HCA proxy."
+        },
+        "return": "owner The certified owner, or zero if the factory did not deploy the HCA.",
+        "returns": {
+          "owner": "The certified owner, or zero if the factory did not deploy the HCA."
+        }
+      }
+    },
+    "title": "Standalone HCA Factory",
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "500600",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "VERIFIABLE_FACTORY()": "infinite",
+        "approvedImplementations(address)": "2545",
+        "authorizedOwnerOf(address)": "2569",
+        "deploy(address,address,uint256)": "infinite",
+        "deploymentSalt(address,address,uint256)": "infinite",
+        "hcaOwners(address)": "2583",
+        "owner()": "2385",
+        "renounceOwnership()": "infinite",
+        "setImplementationApproval(address,bool)": "28448",
+        "transferOwnership(address)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.27+commit.40a35a09\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"contract IVerifiableFactory\",\"name\":\"verifiableFactory\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"HCAImplementationCannotBeZero\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hcaImplementation\",\"type\":\"address\"}],\"name\":\"HCAImplementationNotApproved\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"name\":\"HCAOwnerUnavailable\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"OwnerCannotBeZero\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"expectedImplementation\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"actualImplementation\",\"type\":\"address\"}],\"name\":\"UnexpectedHCAImplementation\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"expectedOwner\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"actualOwner\",\"type\":\"address\"}],\"name\":\"UnexpectedHCAOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"VerifiableFactoryCannotBeZero\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"userSalt\",\"type\":\"uint256\"}],\"name\":\"HCADeployed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"}],\"name\":\"ImplementationApprovalChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"VERIFIABLE_FACTORY\",\"outputs\":[{\"internalType\":\"contract IVerifiableFactory\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"approvedImplementations\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"name\":\"authorizedOwnerOf\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"hcaImplementation\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"userSalt\",\"type\":\"uint256\"}],\"name\":\"deploy\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"hcaImplementation\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"userSalt\",\"type\":\"uint256\"}],\"name\":\"deploymentSalt\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"name\":\"hcaOwners\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"}],\"name\":\"setImplementationApproval\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"Anyone may deploy an HCA from an approved implementation. A successful deployment is      permanently bound to the owner verified immediately after initialization.\",\"errors\":{\"HCAImplementationCannotBeZero()\":[{\"details\":\"Error selector: `0x30eb1e65`\"}],\"HCAImplementationNotApproved(address)\":[{\"details\":\"Error selector: `0x1a127e84`\"}],\"HCAOwnerUnavailable(address)\":[{\"details\":\"Error selector: `0x15bd01c5`\"}],\"OwnableInvalidOwner(address)\":[{\"details\":\"The owner is not a valid owner account. (eg. `address(0)`)\"}],\"OwnableUnauthorizedAccount(address)\":[{\"details\":\"The caller account is not authorized to perform an operation.\"}],\"OwnerCannotBeZero()\":[{\"details\":\"Error selector: `0x9b15e16f`\"}],\"UnexpectedHCAImplementation(address,address)\":[{\"details\":\"Error selector: `0xa6a6d008`\"}],\"UnexpectedHCAOwner(address,address)\":[{\"details\":\"Error selector: `0x6a238277`\"}],\"VerifiableFactoryCannotBeZero()\":[{\"details\":\"Error selector: `0xbc0ff6a0`\"}]},\"events\":{\"HCADeployed(address,address,address,uint256)\":{\"params\":{\"hca\":\"The deployed HCA proxy.\",\"implementation\":\"The approved initial implementation.\",\"owner\":\"The immutable owner certified for the HCA.\",\"userSalt\":\"The caller-supplied account namespace.\"}},\"ImplementationApprovalChanged(address,bool)\":{\"params\":{\"approved\":\"Whether the implementation may initialize new HCAs.\",\"implementation\":\"The implementation whose approval changed.\"}}},\"kind\":\"dev\",\"methods\":{\"authorizedOwnerOf(address)\":{\"params\":{\"hca\":\"The candidate HCA proxy.\"},\"returns\":{\"owner\":\"The certified owner, or zero for an unknown HCA.\"}},\"constructor\":{\"params\":{\"owner_\":\"The governance account controlling implementation approval.\",\"verifiableFactory\":\"The underlying factory used for every HCA deployment.\"}},\"deploy(address,address,uint256)\":{\"params\":{\"hcaImplementation\":\"The approved initial implementation.\",\"owner\":\"The immutable owner assigned to the HCA.\",\"userSalt\":\"An optional namespace or account-version salt.\"},\"returns\":{\"hca\":\"The deployed HCA proxy.\"}},\"deploymentSalt(address,address,uint256)\":{\"params\":{\"hcaImplementation\":\"The HCA's initial implementation.\",\"owner\":\"The owner assigned to the HCA.\",\"userSalt\":\"An optional namespace or account-version salt.\"},\"returns\":{\"_0\":\"The owner- and implementation-bound VerifiableFactory salt.\"}},\"owner()\":{\"details\":\"Returns the address of the current owner.\"},\"renounceOwnership()\":{\"details\":\"Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner.\"},\"setImplementationApproval(address,bool)\":{\"details\":\"Approval changes affect only future deployments.\",\"params\":{\"approved\":\"Whether new HCAs may be initialized from the implementation.\",\"implementation\":\"The implementation whose approval changes.\"}},\"transferOwnership(address)\":{\"details\":\"Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner.\"}},\"stateVariables\":{\"approvedImplementations\":{\"params\":{\"implementation\":\"The candidate initial implementation.\"},\"return\":\"approved Whether the implementation is approved.\",\"returns\":{\"approved\":\"Whether the implementation is approved.\"}},\"hcaOwners\":{\"params\":{\"hca\":\"The candidate HCA proxy.\"},\"return\":\"owner The certified owner, or zero if the factory did not deploy the HCA.\",\"returns\":{\"owner\":\"The certified owner, or zero if the factory did not deploy the HCA.\"}}},\"title\":\"Standalone HCA Factory\",\"version\":1},\"userdoc\":{\"events\":{\"HCADeployed(address,address,address,uint256)\":{\"notice\":\"An owner-bound HCA was deployed and certified.\"},\"ImplementationApprovalChanged(address,bool)\":{\"notice\":\"Initial-deployment approval changed for an implementation.\"}},\"kind\":\"user\",\"methods\":{\"VERIFIABLE_FACTORY()\":{\"notice\":\"The underlying factory used for every HCA deployment.\"},\"approvedImplementations(address)\":{\"notice\":\"Returns whether an implementation may initialize new HCAs.\"},\"authorizedOwnerOf(address)\":{\"notice\":\"Returns the owner authorized through a factory-certified HCA.\"},\"deploy(address,address,uint256)\":{\"notice\":\"Deploys and initializes an HCA using an approved implementation.\"},\"deploymentSalt(address,address,uint256)\":{\"notice\":\"Derives the VerifiableFactory salt for an owner, implementation, and user salt.\"},\"hcaOwners(address)\":{\"notice\":\"Returns the owner certified when an HCA was deployed.\"},\"setImplementationApproval(address,bool)\":{\"notice\":\"Sets whether an implementation may initialize new HCAs through this factory.\"}},\"notice\":\"Governs initial HCA implementations and certifies immutable HCA owner bindings.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/hca/StandaloneHCAFactory.sol\":\"StandaloneHCAFactory\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:account-abstraction/=project/lib/account-abstraction/contracts/\",\"project/:composability/=project/lib/composability/contracts/\",\"project/:excessively-safe-call/=project/lib/excessively-safe-call/src/\",\"project/:nexus/=project/lib/nexus/contracts/\",\"project/:sentinellist/=project/lib/sentinellist/src/\",\"project/:solady/=project/lib/solady/src/\"]},\"sources\":{\"project/lib/account-abstraction/contracts/interfaces/IAggregator.sol\":{\"keccak256\":\"0xf100d6fcc0c3b450b13e979b6a42c628c292a1bc340eccc2e7796b80e3975588\",\"license\":\"GPL-3.0\",\"urls\":[\"bzz-raw://192938b5b27234d35c8098a319e879363c79f750eea4d0e409dc889a8ce5b155\",\"dweb:/ipfs/QmURpaJFPqEtkKP2ngBsgZhAGN8wAWh5XQpYmCkiz4Urz5\"]},\"project/lib/account-abstraction/contracts/interfaces/IEntryPoint.sol\":{\"keccak256\":\"0x1972a5fcb3a808b58c85af5741949ef6af11ab0debd3ae8c708171ae1ae0d0c4\",\"license\":\"GPL-3.0\",\"urls\":[\"bzz-raw://baa9837ae73b9e2362a47d42d081d7c0f3d8e878e5edb381117d94a6968949c9\",\"dweb:/ipfs/QmUmo6FUE7fv5z1WzW1YFjxp8PqaeN2JrEee9au59w3Xhe\"]},\"project/lib/account-abstraction/contracts/interfaces/INonceManager.sol\":{\"keccak256\":\"0xd575af0f6ebbd5f0b2933307d44cd7b4e03a69f4b817a67db5409bd3c89aeecb\",\"license\":\"GPL-3.0\",\"urls\":[\"bzz-raw://3b1e2dea9b05cfba9d13339ed16d96457dc861013cc4f3f35b71a80f82448db3\",\"dweb:/ipfs/QmVaGy5uGDMSiU2SzyokTjoHFyb39VVG5wtaM9KTnHyZSk\"]},\"project/lib/account-abstraction/contracts/interfaces/IStakeManager.sol\":{\"keccak256\":\"0xbe5ca9e7f254d031687419e7b96ef48c9c63e9398bbe992dc72ffc6dc14e0a04\",\"license\":\"GPL-3.0-only\",\"urls\":[\"bzz-raw://1fffec71c38627a26fabb423350148009579f092623fb02b471a12d973763a00\",\"dweb:/ipfs/QmRBi31QEYXHj3x1AnQ2jKa2eziZH1b9av396P3b4dw6bj\"]},\"project/lib/account-abstraction/contracts/interfaces/PackedUserOperation.sol\":{\"keccak256\":\"0x1129b46381db68eddbc5cb49e50664667b66b03c480453858e7b25eabe444359\",\"license\":\"GPL-3.0\",\"urls\":[\"bzz-raw://499a948aba60480dba6e25c763b8d918f1c246eb7a3302e04f493e080f3295be\",\"dweb:/ipfs/QmeRhhswf4NACcBKam2PyjpTP2ddSm648kah5kkQJsvwz3\"]},\"project/lib/composability/contracts/ComposableExecutionBase.sol\":{\"keccak256\":\"0x1741d8ecd88090057f8b9085c82e7fbf4ae6565133d4a38b047f2c4afdef25a7\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://cbd6ff5ec5f514d66de8d396a60855841e7ac1dd0186b431e2eef07d90d46a6a\",\"dweb:/ipfs/QmUwZoy2giqw9Gh4JWLFdYS2UKX7ZdpUU7MZ3pH4k65XGm\"]},\"project/lib/composability/contracts/ComposableExecutionLib.sol\":{\"keccak256\":\"0x916adee132e36c678023d42eaa3b2d70c011e6efb1de5b2333075622b67abf6f\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://3176d6e5060275ad20e6d246b25615a674ec4c9509a76878e5b3d6ae091e5f10\",\"dweb:/ipfs/QmV86XrXvggLe5gy8bY8YpYWxvVnn5CMddkmpvrupckS6Y\"]},\"project/lib/composability/contracts/Storage.sol\":{\"keccak256\":\"0xa8aae0a378caec658ff62b660f55c9f1902908ad3157c7b2fc5987a5f0089d42\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://bbaba7b3b196dde80fc37f5473a2f8b5145c55537fa50419049f2799b46f12ba\",\"dweb:/ipfs/QmbSpLpFsmv5iALZtfNDJp86Pgx6MVgp3dyDztYV1wZJ41\"]},\"project/lib/composability/contracts/interfaces/IComposableExecution.sol\":{\"keccak256\":\"0xd0d6329185ed4a2c0ab0e263812b477bff0a2c8ddc59787f77bfb892c5eae2c1\",\"license\":\"LGPL-3.0-only\",\"urls\":[\"bzz-raw://80ccbe52f9ba93563324b944526434c2694b92c9a4711e2a85c3ef5c2666fc11\",\"dweb:/ipfs/QmZoPZGRDsMPoUHnWmQi9Abvg88u3GmFDgA3rWh413BXLm\"]},\"project/lib/composability/contracts/types/ComposabilityDataTypes.sol\":{\"keccak256\":\"0xe01ffd5de5c56e0242f9a7615e5cae489bba2facd8f919dd785458af3b6f4dc8\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://52fe347325bbd59aec73e780099d2ec7a7dca0648428ce50cc1588c89ee11c82\",\"dweb:/ipfs/QmdpazzvmUDPb9RvtUXxyHHYFuVjyk1Pkdf7vzXUxK4i8W\"]},\"project/lib/excessively-safe-call/src/ExcessivelySafeCall.sol\":{\"keccak256\":\"0x7d9d432e8f02168bf3f790e3dabcf36402782acf7ffa476cabe86fc4d8962eb2\",\"license\":\"MIT OR Apache-2.0\",\"urls\":[\"bzz-raw://1adc13e7f399f500ea5f81480ad149a50408fde7990a2c6347e6377486f389dc\",\"dweb:/ipfs/QmSvm5TUBJqknsqNJLLHqNS4MLSH5k3vNrbquVg6ZKSfx9\"]},\"project/lib/nexus/contracts/Nexus.sol\":{\"keccak256\":\"0xdf28616b1f0ab272604dcd282a90c4556c0807018846cefce7c07f9c0ca6ac0b\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://706c448eab0c449336f2122f8017ce1659a850efd63e2813a17d50b81a89e0ff\",\"dweb:/ipfs/QmQfwX3WbBgbKFbvGFvizNg4ovGi47QQcsKgBwr1XaYxE8\"]},\"project/lib/nexus/contracts/base/BaseAccount.sol\":{\"keccak256\":\"0x3ea6dd11beb7f809fc6528144b6cde9c26cb7549b950246acca863855fc6eef0\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://9ef013c35080e3b5b54b38a8787b54478e2c2a33fa138560b9aaee129386b295\",\"dweb:/ipfs/QmXEkKYfSNzjHB9CXjb9fZTYFPNttzs4MXfMDAgfyJFVSC\"]},\"project/lib/nexus/contracts/base/ExecutionHelper.sol\":{\"keccak256\":\"0x30435e4d2897e96d92fa971c53e28156ddea8b1d06fc80449abe771df2147ada\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b92893a08447ac3093ff9d199f3a5acfcaa7de2d23c9b0b631910c8d7652c99f\",\"dweb:/ipfs/QmeTxYadRbYHnxZAeYS4TpgVyBxjp8KxbDSSUWrdX2Caca\"]},\"project/lib/nexus/contracts/base/ModuleManager.sol\":{\"keccak256\":\"0xd7d4af591d31947a98e1396f70946765e97ad7788d3ab96c0f6708b572adebec\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b764189eb047145589078d78a1c23ae0f563ec8a6b8bdd45c4ea303cea234cb9\",\"dweb:/ipfs/Qmef9qV4VSxdSznP4ESCTX438tmoK3E3rqXVJiX2dZdkyD\"]},\"project/lib/nexus/contracts/base/RegistryAdapter.sol\":{\"keccak256\":\"0xb8637d6f683ec10376a823418cc7b3b7335ff20e9e48415cafdea255eb09a9f5\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://82978d1de43f9ed70521f726f126607a36d0b1461294bdcd8fda038a440c6194\",\"dweb:/ipfs/QmdQrYdvus1cqJuhRYf8NzT3ZmzN1BovP7LyvJ98Wxk2re\"]},\"project/lib/nexus/contracts/base/Storage.sol\":{\"keccak256\":\"0x7c041360d450627e16aa7b4b755c7ad126334568015e489a50131614a23c67fe\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://6ccdfad79d6b44cff8feb4cd4b2112d275f473fe64e2985516f74a071eeb3147\",\"dweb:/ipfs/QmSJUCXn1QTFYYTDSjBkubRcatYt1P9NrjKA9iEySfzJ2R\"]},\"project/lib/nexus/contracts/interfaces/IERC4337Account.sol\":{\"keccak256\":\"0xa00364ff67797d87dce279fdc7434bf6ac8605910d3adef2a99fcc5c2be69d16\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://58b277f0b5f0730a44ed7def72d17f2bcbca93da82e2f2961a4ae70b57e2bef9\",\"dweb:/ipfs/QmZDNkzZwgJuL46asCUNpPsSDMWRbBjpmiTJ6e625nyuXb\"]},\"project/lib/nexus/contracts/interfaces/IERC7484.sol\":{\"keccak256\":\"0xd4716aff712f465c2d3b1597c7a0f55ac89c4e931d142531fffe136c4d686d02\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://5a37b21ff1bd81eb17980f8e733b9d37fd631f966e9dc351d01500d68340aebc\",\"dweb:/ipfs/QmUgZzWb4xVEedLSuJaTzQbnkRoCn8UEjRxeKSY2PZ5oee\"]},\"project/lib/nexus/contracts/interfaces/IERC7579Account.sol\":{\"keccak256\":\"0xc98accf285a99e897753de366cd446b91a3abcd86011095b56e669a668922e7a\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://e58acc694576b1207afbd7e64252a66bae14dfa50adcf79013faa207c7ac289e\",\"dweb:/ipfs/QmaLw8fyJpnoYAN3EQZ5zyHkwTDdgMz3pCmNhQ8grNHEQv\"]},\"project/lib/nexus/contracts/interfaces/INexus.sol\":{\"keccak256\":\"0xdf4dab6600a6bf34181b82dabe692fb0267696b00d22004673e3d5654bf8a8ca\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://0b7eae2e5ed0508291daa5603d241c040caeb0e5af2484e384b6d3e7b21e2da7\",\"dweb:/ipfs/QmUpVUWi9M4PfSn8MXkuY4gr5tH67QrSmMVpSGAaiFWktG\"]},\"project/lib/nexus/contracts/interfaces/INexusEventsAndErrors.sol\":{\"keccak256\":\"0xbd26878d75adc15ba8617f5fc6ced7163edee8e4d0e5a5194d1e6568db2298aa\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://3916fdac418a16d993c90660fbd959c7b9d77e8a34d8ecc30bad1b2ceca13fed\",\"dweb:/ipfs/QmTQsjnbkvQ8jcUA5yNbAz8eZ34T8N4PoPeR6Sq2ncXHQD\"]},\"project/lib/nexus/contracts/interfaces/base/IAccountConfig.sol\":{\"keccak256\":\"0x645ab323dc2cf84a7eb17a0ee7ea52bd316d233ecdf6f20c30fe869126b2079c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://038f6a9e95a1f0e490759f2b62f1104e911b61f517f55887917e962b94edebe3\",\"dweb:/ipfs/Qmf82W7gomkrDT4AMNFPDdRNDWnUua4aFCy24KQCyeXj3N\"]},\"project/lib/nexus/contracts/interfaces/base/IBaseAccount.sol\":{\"keccak256\":\"0x046172cfff4ed4d62f89375010c47a90ffef247d38f0cfb2715ab81da4a76076\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://d82076f85ffc220fc7e20b3870277c5881ed59d28e715e5590f48e92e2dab3b1\",\"dweb:/ipfs/QmdA237KJRjMxeM1VRmrXgVYRv97bf7VehiGUkFgk8rVWm\"]},\"project/lib/nexus/contracts/interfaces/base/IBaseAccountEventsAndErrors.sol\":{\"keccak256\":\"0x5cd183015736b1bd82a75b80f67543ad70479d5abc006c85a84312bc2374ef4a\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://9239805bd1666a2daea1b622c00ca7493134522b428cc0b2f54fd6527b051652\",\"dweb:/ipfs/QmYgd5DqZYMdfPMgYo7i9u8mqiFwo7rUdwFpqCL2UdZ5mk\"]},\"project/lib/nexus/contracts/interfaces/base/IExecutionHelper.sol\":{\"keccak256\":\"0xb3f244e7c2cab9ac312ad1f8e5754c835d9fef445f5fd43cf37f0dd6299ab928\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://f14fd5def41c659541e64996ea34128e9ecee9aa2651511fd1cd1a87beb00f4a\",\"dweb:/ipfs/QmeJp4aR3NxmFs3FKiW1nSs4qzJuh94vgDeYq5RgRDmk5W\"]},\"project/lib/nexus/contracts/interfaces/base/IExecutionHelperEventsAndErrors.sol\":{\"keccak256\":\"0x57050699d9f3d6f9a72d2cbc48b6f1611cd3eb8f0d0a63444eac0778805fa4f5\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://cb4d8d0068b2ba0f23a36db69a6e09d348070c4eaa102862fe4af68acd60b791\",\"dweb:/ipfs/QmX1zoB44UijEu1SnQhFun1msBcu8MmvQ7kLuXt8UJPpzT\"]},\"project/lib/nexus/contracts/interfaces/base/IModuleManager.sol\":{\"keccak256\":\"0x18326b973e182567dd37ca1404bc4f7ba47c143870a185cfb161c18e752e881f\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ef2256f1e8daab2e5e2902ece2ec0e1eaacbb946454fcb3b7a1c7284359bdc14\",\"dweb:/ipfs/QmYxZEeAsZpZd1bAiBs7853GU9mAi4NHqNZTEkVNMXxcVp\"]},\"project/lib/nexus/contracts/interfaces/base/IModuleManagerEventsAndErrors.sol\":{\"keccak256\":\"0x5a088da6b801948c84d6a066a3d367130f439542a89c24e2bf6939a6c8508d46\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://df1b02568b2cea642c01c0f304af786db3674fa420d821c7aac8ee5220c529f7\",\"dweb:/ipfs/QmSs4SceF1cSUEtfvcsPBNQCas7e28MhxSbxCh33anEhUc\"]},\"project/lib/nexus/contracts/interfaces/base/IStorage.sol\":{\"keccak256\":\"0xe4dd86b935c7d9ccee8e829bc4ae608023ceeac24267b2ad863ca0bcbdff9fc5\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://6e7df35d22edaeff4866a47da0cfc8d5aae5489db23f9c1103b88080c530a9b4\",\"dweb:/ipfs/Qmejh9pC8M3cqGAhiJJ3y2bJ2WaJEya5J9ms9qBU23MSFh\"]},\"project/lib/nexus/contracts/interfaces/modules/IExecutor.sol\":{\"keccak256\":\"0x88d04d3d3171006caabf550cd1bb19445eedf1b7ee9a60173e8efa43a0ae8464\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://fcc8d4c7ec328f62a6dd37ae2665332d4996932ada8d4c75e53a2979c61d8650\",\"dweb:/ipfs/QmRY9FPQPTWmHZ4H14Q1cPX8qiBr5bbJpAf5ZbKSer9chi\"]},\"project/lib/nexus/contracts/interfaces/modules/IFallback.sol\":{\"keccak256\":\"0xaeecc60ce2c112982bbe8710b629f855987662385e9b6a8a05a07d1c0f7fb66c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://d8b9d29d55639cfde068a6535a410498f26b8f3e3345d1394b0f3a2b5abaa5a8\",\"dweb:/ipfs/QmV7xXTtwwDDZu1TCSwtZrPY6s2QB6STrKWRe6RMdBg9JP\"]},\"project/lib/nexus/contracts/interfaces/modules/IHook.sol\":{\"keccak256\":\"0x90a31916078c36843eab155a0f839862b167da7f7223a702b8695576db83d467\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://e00858cfcbe5e7c779f8b94f7fe14b7b100b9d66656be00b3cd9450ec020355f\",\"dweb:/ipfs/QmYtvMTrGUn4aqHj5bjA34iYG5k8pkpQaF1iV7eG6TXKhs\"]},\"project/lib/nexus/contracts/interfaces/modules/IModule.sol\":{\"keccak256\":\"0x46a524672d8b36bf3ac32757e364ed022b9a14cbe8f766754759088cc70ffa53\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://566f229a87e59f9bec065c5c98bcd0953992011818e899b2cf5fab04f97ea7e5\",\"dweb:/ipfs/QmQx97wRFjA8PLU593ETk9vXyUfsKzHo5aatKxA8VUQttL\"]},\"project/lib/nexus/contracts/interfaces/modules/IPreValidationHook.sol\":{\"keccak256\":\"0x571e8e998a3986ac82be03997309c80f5254f5fc0008619e3156c8515e2101e2\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://8de863747787e20855dc533ea5a99ca9c95a23b0c0d85985490253170782b13c\",\"dweb:/ipfs/QmYV8Rcbs1fs3icWxLFhdcqTSiEwFZAiCExA6dyDAjtZ1E\"]},\"project/lib/nexus/contracts/interfaces/modules/IValidator.sol\":{\"keccak256\":\"0x4ef15ca8499a125d834734658076dccb23e3e720375220d4fe41b75651f2f42c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://951cc7383e0b3b454b09024b7947e96f42357d3d5a64c982f7784cee81dd84d0\",\"dweb:/ipfs/QmVhpwvSk9EEUxzV7e5eQ1djNhP44k8DuJLRkqy4cH4oHi\"]},\"project/lib/nexus/contracts/lib/ExecLib.sol\":{\"keccak256\":\"0x4b6d0e0e366bfb738a6c3b460cd364e1b234dfa8e880401fd41c2db13333fee9\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ad95c1245d2f7d9db8fbf35d94c94353e4a981d8f5cf0ca05754e1c7cab8dff7\",\"dweb:/ipfs/Qmak1jCQpFeNfZdCCjXryUAMfiPzNT324kdUozUWZbjxRC\"]},\"project/lib/nexus/contracts/lib/Initializable.sol\":{\"keccak256\":\"0x14ddff6a7fa89926b6f2aca8d1b09dea45c41d0b971484ef3530b57266741a1e\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://66b7cbb775e331a3da20e9d6d308e2524c97470ee3b47effa7bc7f3a054ce660\",\"dweb:/ipfs/QmcX7H8A74h9UDpeDA3V3xRqMtvuL1KbbqByXRgHo9XnuF\"]},\"project/lib/nexus/contracts/lib/InitializeLib.sol\":{\"keccak256\":\"0x7e644ce2d920d4c60a5958e9579554caa8c2a8698d0dd0cab69d4f321b171f8c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://e29159fc4520551ec0c9f5af0c6e92090d9579bd82383ff9bdbee2a5337689a4\",\"dweb:/ipfs/QmQhTVwywan71VQLNdgvQz61rgwFt16wBTSmCMvxrjSfy9\"]},\"project/lib/nexus/contracts/lib/LibPREP.sol\":{\"keccak256\":\"0xab23050f65505b10507d00aee1aff8bf7b8884f84bd3a1c60ba83d91b93bd949\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ad9c360e273d79a6fe85c76a6157a4027e052d04777e7013895a19d71b9641a3\",\"dweb:/ipfs/Qmd6eUaGMjPSo5qC4xSL4VJF8wADN4pQFWPhuaydVENWej\"]},\"project/lib/nexus/contracts/lib/ModeLib.sol\":{\"keccak256\":\"0x3ba1dac01ac90dd197d3ff18a55562a41a2d9d7a986006b323ad3ae653cc87a8\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://66fd61848bf6679ed2eb573e10e7641530ceeff20e0cd0069ff8bb13a2b8a1cf\",\"dweb:/ipfs/QmbaxHoTgKCSDNeRBYwdZcbSUuFoe1GBvYp7GnzbH3QGmP\"]},\"project/lib/nexus/contracts/lib/NonceLib.sol\":{\"keccak256\":\"0xcce7df291217a8c9b7f6153e0c4b13d7eef4666424f69996478798be2cf602b0\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://caaa8a14052c1a833ac9b090fd74b2bd7fdb7d3daa187be0d917a37fee10cc74\",\"dweb:/ipfs/QmaQqScXaX8XTGVsqcGp678yoNM4yxtimNNvHCVTWfo64k\"]},\"project/lib/nexus/contracts/lib/local/LocalCallDataParserLib.sol\":{\"keccak256\":\"0xb9e49181984672efec3d9cb7cd3ade79545c18e91d1f3aa1b9d7482eccc0e451\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b7d376c3933526bc6a049f5ba2f55a9f70014a881cc3b868b102a2d09cd4150c\",\"dweb:/ipfs/Qmamjdu5pJjUz1PZKuka1kuQ7v5UrhthfSabQL7iNkCxnQ\"]},\"project/lib/nexus/contracts/types/Constants.sol\":{\"keccak256\":\"0x3a3a98db45564ab5fca68cdc842966f480d0f4b32e2452f11166e57475bca5d7\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://df331e690f9bcb550a8e5ac087d7fee15ae9a36d6f9b7b6c259800103e986ebf\",\"dweb:/ipfs/Qmaf4R79quQ9vdzBeN3CyovbyFMhS93XgPn6F8sSrQrDYC\"]},\"project/lib/nexus/contracts/types/DataTypes.sol\":{\"keccak256\":\"0x13ab777d40089592150474bc75606f50405c29da90cb2144eb2052cba4d9e920\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://42650c1c7a2f6661198e539b783647754647d4bca2da314fd1769d637b894bed\",\"dweb:/ipfs/QmWz5hVX4QKq5zWc2QL6A7uNncz8AuZjzr8Dkvvpjf5PHX\"]},\"project/lib/openzeppelin-contracts/contracts/access/Ownable.sol\":{\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://8ed324d3920bb545059d66ab97d43e43ee85fd3bd52e03e401f020afb0b120f6\",\"dweb:/ipfs/QmfEckWLmZkDDcoWrkEvMWhms66xwTLff9DDhegYpvHo1a\"]},\"project/lib/openzeppelin-contracts/contracts/token/ERC1155/IERC1155Receiver.sol\":{\"keccak256\":\"0x61a23d601c2ab69dd726ac55058604cbda98e1d728ba31a51c379a3f9eeea715\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://d8cbb06152d82ebdd5ba1d33454e5759492040f309a82637c7e99c948a04fa20\",\"dweb:/ipfs/QmQQuLr6WSfLu97pMEh6XLefk99TSj9k5Qu1zXGPepwGiK\"]},\"project/lib/openzeppelin-contracts/contracts/token/ERC721/IERC721Receiver.sol\":{\"keccak256\":\"0xb5afb8e8eebc4d1c6404df2f5e1e6d2c3d24fd01e5dfc855314951ecfaae462d\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://78586466c424f076c6a2a551d848cfbe3f7c49e723830807598484a1047b3b34\",\"dweb:/ipfs/Qmb717ovcFxm7qgNKEShiV6M9SPR3v1qnNpAGH84D6w29p\"]},\"project/lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://6a708e8a5bdb1011c2c381c9a5cfd8a9a956d7d0a9dc1bd8bcdaf52f76ef2f12\",\"dweb:/ipfs/Qmax9WHBnVsZP46ZxEMNRQpLQnrdE4dK8LehML1Py8FowF\"]},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"keccak256\":\"0x79796192ec90263f21b464d5bc90b777a525971d3de8232be80d9c4f9fb353b8\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://f6fda447a62815e8064f47eff0dd1cf58d9207ad69b5d32280f8d7ed1d1e4621\",\"dweb:/ipfs/QmfDRc7pxfaXB2Dh9np5Uf29Na3pQ7tafRS684wd3GLjVL\"]},\"project/lib/sentinellist/src/SentinelList.sol\":{\"keccak256\":\"0x17899ac5261c8f52426ddf545be1b9f307f9648595cb01f76c714a4789cae5c0\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://efb6a0464d7241d644aff00ff6c54d2bf00f1b43334e5cb6ece80dac9fd8bb87\",\"dweb:/ipfs/QmXinMkwWGTnMHbLieivYqg36DHcnax8tKug2KuYxih1UP\"]},\"project/lib/solady/src/accounts/LibEIP7702.sol\":{\"keccak256\":\"0x86b43015b751e82c21930b81e1a4e5e139a63a08aee768ecbd3521943780e146\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://da5172c22bf982ebfc1b0f312cd9f1817cb6536e3736c85b77132e7db46849aa\",\"dweb:/ipfs/QmVeDpAoL2JuPARRS9keGFVsNb1FaXFEVb6xqpBXhAkHup\"]},\"project/lib/solady/src/utils/CallContextChecker.sol\":{\"keccak256\":\"0xc54c743a03f4909826712e9c6b683ca95e8b0c120c55284a9e3572621ebd734b\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://3d3138009aba3d2fd310636f3cc1d6029e970c57ddb74693bebf2a02d3e6f12d\",\"dweb:/ipfs/QmauMpcVDyQqVnAUF75DXy831LvtxyFS7GND7kge1Zgw55\"]},\"project/lib/solady/src/utils/ECDSA.sol\":{\"keccak256\":\"0xefb8644cfd04a9be40a32cb3d6f97a0d75f9f439a057c15292aa6960b1478bfe\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://d482403daf34f838c944b1c3466ca31b3e470789ccf7fff90f852df4dc6cb439\",\"dweb:/ipfs/QmP8XKyVKdBWv7ENxFJ2z1CCBEyVGoJEcPuNmVPV7bjZbj\"]},\"project/lib/solady/src/utils/EIP712.sol\":{\"keccak256\":\"0x53ccaa757944900e7423347c3c35ea5a905580f3f075452b8468a501a9c39839\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://aa5688d98319fbeb5b3c46330a394e15a0f2c862d651415e183da4179b918351\",\"dweb:/ipfs/QmZZFrFWmUCFL1qkZDVm3oqrDkQfumYnnksF6cpPkAHdtJ\"]},\"project/lib/solady/src/utils/EfficientHashLib.sol\":{\"keccak256\":\"0x5bd419290a3ced76e65a619fcc959fc6305136282708223c0ddbb3b810a24d83\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://7ad96185ac75e72590d2e3f264656195058daababf2025a75f56addf9974ab7d\",\"dweb:/ipfs/QmTJCyyMmfqhFmuRstDsV4s59mvDZhZrdJu5P65pgRdE9b\"]},\"project/lib/solady/src/utils/LibBit.sol\":{\"keccak256\":\"0x7b639e5674dcd47d8ab54b97890302ff184ec35884fdff874cb6ca044100b532\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://82e21832e5ee0979d207dd83fcda551f90d7f6ef40d4c8daccd8e4fd19c79375\",\"dweb:/ipfs/QmV5yfmw6YRR6HB2K8xF5LK4CG7zfjTWqxzwE3LmUqcth9\"]},\"project/lib/solady/src/utils/LibBytes.sol\":{\"keccak256\":\"0xbfbb197a488cb9bb54813381f1aef6f06e0a3b3991a81f273a7b1d471077abe6\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://749fdca338e466a5d454f2a593cc1101fe68eb66ac0ced055bf676d8bbbe8dd5\",\"dweb:/ipfs/QmYLip4G7RS1M2hnK8X6MiPKCKFgjzbVa6tRDMcJrGDMNM\"]},\"project/lib/solady/src/utils/UUPSUpgradeable.sol\":{\"keccak256\":\"0x33f5a8bfb9f80b43e82c4eb55bc1220062e1ec1d4eaf8ae7d3d0bda605faeb11\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b460e92c5d471671b57e49fd46fed1ec8c6b2ce9c479446c6b8e9db9d98a3902\",\"dweb:/ipfs/QmaBnfiRkthifzFDbgw28MrkBZY29vxdwrF2F3vYRvz6pt\"]},\"project/lib/verifiable-factory/src/IProxyAuthorization.sol\":{\"keccak256\":\"0x4673387a703cc87c280a44e6682cdf77797600b0a75de37f2d64af731fa8cb9e\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://40f30fe28a969241e3dcfc38561ccb8e0104828a09ea27ec242acf4cf17813b3\",\"dweb:/ipfs/QmZakqRvVvZaoePUKMsUJ6F5iEuGKCcDBb9z4WxB9wvXak\"]},\"project/lib/verifiable-factory/src/IUUPSProxy.sol\":{\"keccak256\":\"0x5de1b176834f853b0aba3d6e6b188a158f4b0f75744c7ffebb01bf6f51518233\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://44c1837f05e9405b5fd1a16e6e17ba0a68652da4e8b34e41a98ac79e6686a46d\",\"dweb:/ipfs/QmRRKaBDy8R6FoRTzbRzV2TzageYcpSfBBe7F4vQSmWvU2\"]},\"project/lib/verifiable-factory/src/IVerifiableFactory.sol\":{\"keccak256\":\"0xe6c1b487e41bb6e89383f8f63942d6db67bd140539df2755b82d999624c6050a\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://dca6e0fc73587d2c427468d8861d575600e8a5ff522309cae9a5741d1056b3b8\",\"dweb:/ipfs/QmemFDNL52CMWDZvbnMSBCSXL7RLXkRDugWxDp6d35hL8T\"]},\"project/src/hca/StandaloneHCAFactory.sol\":{\"keccak256\":\"0xeff8dde06ed349e0926846b87118770201dda13096da93a75b43e69202c0d312\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://d8c1f69eabe200b6d4bbf9dfbeb460eaec54789e04c49662eb89690036ea6f2a\",\"dweb:/ipfs/QmW2mhoCX6pmBAaoqGnpJW953zFRxxc7TMv6Jt41vXWtzg\"]},\"project/src/hca/StandaloneSingleOwnerHCA.sol\":{\"keccak256\":\"0xce5e6e27f4dfad8a3300e3a377dfc4a969f545a3a7a9779fa26968f941de7c46\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://c12f5164b61e4d972242e2e9ab7e14fb5e520960ab2c6956a25a55717c5cdff9\",\"dweb:/ipfs/QmWMB5g5GqEfd2pHaSSHLr2sMjeGH47BNeaaoJs3PjJmnG\"]},\"project/src/hca/interfaces/IStandaloneHCAFactory.sol\":{\"keccak256\":\"0x32284ee0ff2d8c05b3d8e5ac65e1815aba5e0bf967e547362317a31829012c12\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://f5c09933ba3361bccba05c7d02186b3bf65a614fb5e510ca197f87fb4d4cfcdc\",\"dweb:/ipfs/QmTHYYVjhpEynhRwLcGSyeUNJzWP1yHYLeVRStuVVYqg56\"]},\"project/src/hca/interfaces/IStandaloneHCAOwner.sol\":{\"keccak256\":\"0x276486abd22223b678ce1ee1edde5eee159a6515d43f26641552ee926189f1c6\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://9f961b33d43568a6b2dac03bb54d282bef4ef6b28dcf173dac77a811841d9106\",\"dweb:/ipfs/QmaC3yoRzteV84g6WVs9ADkADiMDLzewRHH4XqWLZ8YmSj\"]},\"project/src/utils/interfaces/IAddressSet.sol\":{\"keccak256\":\"0xcb4f9c6364c1cf8a737591088f488ede7a7c6bc9d7d87f2dbdac731b492bd862\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://68ad6de4f0bbef675c58894dc19356d7e724fe8c19d5626d8450284b5f370fe5\",\"dweb:/ipfs/QmTNQ6LpeuAwC4X76nEKezwwixrAfQjmiXvcpvJ9KQGN1x\"]}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 7246,
+        "contract": "project/src/hca/StandaloneHCAFactory.sol:StandaloneHCAFactory",
+        "label": "_owner",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_address"
+      },
+      {
+        "astId": 11006,
+        "contract": "project/src/hca/StandaloneHCAFactory.sol:StandaloneHCAFactory",
+        "label": "approvedImplementations",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_mapping(t_address,t_bool)"
+      },
+      {
+        "astId": 11012,
+        "contract": "project/src/hca/StandaloneHCAFactory.sol:StandaloneHCAFactory",
+        "label": "hcaOwners",
+        "offset": 0,
+        "slot": "2",
+        "type": "t_mapping(t_address,t_address)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_bool": {
+        "encoding": "inplace",
+        "label": "bool",
+        "numberOfBytes": "1"
+      },
+      "t_mapping(t_address,t_address)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => address)",
+        "numberOfBytes": "32",
+        "value": "t_address"
+      },
+      "t_mapping(t_address,t_bool)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => bool)",
+        "numberOfBytes": "32",
+        "value": "t_bool"
+      }
+    }
+  },
+  "userdoc": {
+    "events": {
+      "HCADeployed(address,address,address,uint256)": {
+        "notice": "An owner-bound HCA was deployed and certified."
+      },
+      "ImplementationApprovalChanged(address,bool)": {
+        "notice": "Initial-deployment approval changed for an implementation."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "VERIFIABLE_FACTORY()": {
+        "notice": "The underlying factory used for every HCA deployment."
+      },
+      "approvedImplementations(address)": {
+        "notice": "Returns whether an implementation may initialize new HCAs."
+      },
+      "authorizedOwnerOf(address)": {
+        "notice": "Returns the owner authorized through a factory-certified HCA."
+      },
+      "deploy(address,address,uint256)": {
+        "notice": "Deploys and initializes an HCA using an approved implementation."
+      },
+      "deploymentSalt(address,address,uint256)": {
+        "notice": "Derives the VerifiableFactory salt for an owner, implementation, and user salt."
+      },
+      "hcaOwners(address)": {
+        "notice": "Returns the owner certified when an HCA was deployed."
+      },
+      "setImplementationApproval(address,bool)": {
+        "notice": "Sets whether an implementation may initialize new HCAs through this factory."
+      }
+    },
+    "notice": "Governs initial HCA implementations and certifies immutable HCA owner bindings.",
+    "version": 1
+  },
+  "argsData": "0x0000000000000000000000009e726eb570beb6bceb495ab8cda7df517d4e841c00000000000000000000000084d3a426d4e12e955d1df95db0b24fe26afe39d3",
+  "transaction": {
+    "hash": "0xff431079b6daebb389ce782b34ac7919b5d6d795dbcdbe775561b47e391439e6",
+    "nonce": "0x8f5",
+    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+  },
+  "receipt": {
+    "blockHash": "0x5821dd55e3ff7d875e07214f3cd779e1db19e5338e82410784d08755ce430df4",
+    "blockNumber": "0xb2aa95",
+    "transactionIndex": "0x86"
+  }
+}

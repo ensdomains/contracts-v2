@@ -11,14 +11,16 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {LibMigration} from "~src/migration/libraries/LibMigration.sol";
 import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
 import {LockedMigrationController} from "~src/migration/LockedMigrationController.sol";
-import {ApprovedUpgradeGate} from "~src/registry/ApprovedUpgradeGate.sol";
 import {WrapperRegistry} from "~src/registry/WrapperRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {MigrationHelper, LockedChildren} from "~src/migration/MigrationHelper.sol";
-import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
+import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
 import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract MigrationHelperTest is MigrationControllerFixture {
+    string internal constant STANDALONE_HCA_FACTORY_ARTIFACT =
+        "src/hca/StandaloneHCAFactory.sol:StandaloneHCAFactory";
+
     UnlockedMigrationController unlockedController;
     LockedMigrationController lockedController;
     WrapperRegistry wrapperRegistryImpl;
@@ -43,18 +45,20 @@ contract MigrationHelperTest is MigrationControllerFixture {
         );
 
         // locked
-        ApprovedUpgradeGate approvedUpgradeGate = new ApprovedUpgradeGate(address(this));
-        PermissionedAddressSet publicResolverSet = new PermissionedAddressSet(address(this));
         wrapperRegistryImpl = new WrapperRegistry(
-            nameWrapper,
-            address(graveyard),
-            verifiableFactory,
-            address(ensV1Resolver),
-            approvedUpgradeGate,
-            labelStore,
-            publicResolverSet,
-            address(0), // publicResolver
-            address(this) // namer
+            WrapperRegistry.ConstructorArgs({
+                nameWrapper: nameWrapper,
+                graveyard: address(graveyard),
+                verifiableFactory: verifiableFactory,
+                publicResolverSet: publicResolverSet,
+                publicResolver: address(0), // unused
+                labelStore: labelStore,
+                namer: address(this),
+                upgradeSet: registryUpgradeSet,
+                upgradeable: new address[](0),
+                uriRenderer: boxedRenderer,
+                ensV1Resolver: address(ensV1Resolver)
+            })
         );
         lockedController = new LockedMigrationController(
             nameWrapper,
@@ -76,6 +80,12 @@ contract MigrationHelperTest is MigrationControllerFixture {
             rootRegistry,
             unlockedController,
             lockedController,
+            IStandaloneHCAFactory(
+                deployCode(
+                    STANDALONE_HCA_FACTORY_ARTIFACT,
+                    abi.encode(verifiableFactory, address(this))
+                )
+            ),
             contractNamer
         );
     }
