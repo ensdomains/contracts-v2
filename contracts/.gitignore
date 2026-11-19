@@ -2,6 +2,7 @@
 cache/
 .solgrid_cache/
 out/
+__pycache__/
 
 # Ignores development broadcast logs
 !/broadcast
@@ -10,6 +11,8 @@ out/
 
 # Dotenv file
 .env
+.venv-hca/
+script/formal/__pycache__/
 
 node_modules/
 cache_hardhat/
