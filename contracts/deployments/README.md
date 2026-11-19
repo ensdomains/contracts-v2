@@ -151,8 +151,22 @@ bun run migration -- phase deploy-v2 --network sepolia
   `.deployment.json` is stamped.
 
 This works identically for `--network mainnet` (the namespace defaults to the
-network name). Manually moving or clearing the namespace directory first is
-equivalent; the default archive just automates it with a dated name.
+network name). Manually moving the namespace directory to a name of the same
+`<env>-<YYYYMMDD>-r<N>` form first is equivalent; the default archive just
+automates it. Clearing the directory instead also discards the pinned `MockUSDC`
+described below.
+
+On Sepolia the faucet `MockUSDC` keeps the address that consumers pin outside this
+repository (the Rhinestone orchestrator whitelists it). When the namespace has no
+`MockUSDC` record, fresh or `--resume`, the record is copied from the newest dated
+archive that holds one. The deploy step then keeps whatever `MockUSDC` record the
+namespace holds only while its executable code (ignoring the compiler's metadata
+trailer) and constructor arguments match the current build and the address still
+has code on chain. Anything else — an uncapped mock from an earlier deploy, a
+different supply ceiling, or a record from a reset chain — is replaced by a new
+deployment, which is pinned from then on. A namespace that holds nothing but that
+record is not archived by a fresh run, so a failed fresh run does not leave an
+empty archive behind. Every other contract, including `MockDAI`, is redeployed.
 
 Phase 1 sends many transactions and can be interrupted partway. Re-run with
 `--resume` to continue into the **existing** namespace instead of archiving:
