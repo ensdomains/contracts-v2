@@ -128,22 +128,27 @@ async function reassignOwner(
   }
 
   const labelId = baseRegistrarId(label);
-  const registrant = await env.v1.BaseRegistrar.read.ownerOf([labelId]);
+  const registrant = await env.v1.BaseRegistrarImplementation.read.ownerOf([
+    labelId,
+  ]);
   if (registrant === zeroAddress) {
     console.log(`  ⊘ ${label}.eth: no v1 owner — left reserve-only`);
     return "skipped";
   }
   await fund(env, registrant);
   await env.waitFor(
-    env.v1.BaseRegistrar.write.transferFrom([registrant, target, labelId], {
-      account: registrant,
-    }),
+    env.v1.BaseRegistrarImplementation.write.transferFrom(
+      [registrant, target, labelId],
+      {
+        account: registrant,
+      },
+    ),
   );
   // Align the ENS registry record with the new token owner. Non-fatal.
   try {
     await fund(env, target);
     await env.waitFor(
-      env.v1.BaseRegistrar.write.reclaim([labelId, target], {
+      env.v1.BaseRegistrarImplementation.write.reclaim([labelId, target], {
         account: target,
       }),
     );

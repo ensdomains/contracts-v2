@@ -72,9 +72,9 @@ describe("Resolve", () => {
   });
 
   describe("DNS", () => {
-    it("dnstxt.ens.eth + addr() => DNSTXTResolver", () =>
+    it("dnsname.ens.eth + addr() => DNSTXTResolver", () =>
       expectResolve({
-        name: "dnstxt.ens.eth",
+        name: "dnsname.ens.eth",
         addresses: [
           {
             coinType: COIN_TYPE_ETH,
@@ -107,8 +107,8 @@ describe("Resolve", () => {
       }),
     );
 
-    itLiveDns("onchain txt: dnstxt.raffy.xyz", () =>
-      // `dnstxt.ens.eth t[avatar]=https://raffy.xyz/ens.jpg a[e0]=0x51050ec063d393217B436747617aD1C2285Aeeee`
+    itLiveDns("onchain txt: dnsname.raffy.xyz", () =>
+      // `dnsname.ens.eth t[avatar]=https://raffy.xyz/ens.jpg a[e0]=0x51050ec063d393217B436747617aD1C2285Aeeee`
       expectResolve({
         name: "dnstxt.raffy.xyz",
         addresses: [

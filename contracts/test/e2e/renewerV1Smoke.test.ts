@@ -73,7 +73,7 @@ describe("ETHRenewerV1 renewal smoke", () => {
   // make, so that what phase 4 grants is checked against what it promises.
   function writeDeploymentArtifacts() {
     writeDeploymentNamespace(v1DeploymentsDir, NETWORK, [
-      ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
+      ["BaseRegistrarImplementation", env.v1.BaseRegistrarImplementation],
       ["RegistrarSecurityController", env.v1.RegistrarSecurityController],
     ]);
     writeDeploymentNamespace(deploymentsDir, NETWORK, [
@@ -116,8 +116,8 @@ describe("ETHRenewerV1 renewal smoke", () => {
       ethRenewerV1: env.rocketh.get("ETHRenewerV1"),
       ethRegistry: env.rocketh.get("ETHRegistry"),
       v1BaseRegistrar: {
-        address: env.v1.BaseRegistrar.address,
-        abi: env.v1.BaseRegistrar.abi,
+        address: env.v1.BaseRegistrarImplementation.address,
+        abi: env.v1.BaseRegistrarImplementation.abi,
       },
       nameWrapper: {
         address: env.v1.NameWrapper.address,
@@ -183,7 +183,7 @@ describe("ETHRenewerV1 renewal smoke", () => {
     // Wrap it, so the NameWrapper holds its own copy of the expiry — the third
     // place a renewal has to keep in step, and the branch an unwrapped name
     // never reaches.
-    await env.v1.BaseRegistrar.write.safeTransferFrom(
+    await env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
       [
         user.address,
         env.v1.NameWrapper.address,

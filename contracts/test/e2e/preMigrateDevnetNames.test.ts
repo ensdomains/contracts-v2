@@ -67,7 +67,9 @@ describe("preMigrateDevnetNames", () => {
     const state = await verifyV2State(env, label);
     expect(state.status).toBe(STATUS.RESERVED);
 
-    const owner = await env.v1.BaseRegistrar.read.ownerOf([idFromLabel(label)]);
+    const owner = await env.v1.BaseRegistrarImplementation.read.ownerOf([
+      idFromLabel(label),
+    ]);
     expect(owner.toLowerCase()).toBe(user.address.toLowerCase());
   });
 });

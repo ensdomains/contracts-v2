@@ -38,6 +38,7 @@ import {
   namehash,
 } from "../utils/utils.js";
 import { bundleCalls, makeResolutions } from "../utils/resolutions.js";
+import { computeOwnedResolverSalt } from "../../script/salts.js";
 
 const REGISTRATION_DURATION = 28n * 86400n;
 const BURNER_SESSION_SIGNER_KEY =
@@ -706,10 +707,10 @@ describe("Standalone HCA", () => {
           ]
         : []),
       {
-        target: env.shared.DefaultReverseRegistrarAdapter.address,
+        target: env.v2.DefaultReverseRegistrarAdapter.address,
         value: 0n,
         callData: encodeFunctionData({
-          abi: env.shared.DefaultReverseRegistrarAdapter.abi,
+          abi: env.v2.DefaultReverseRegistrarAdapter.abi,
           functionName: "setNameWithHCA",
           args: [owner.address, name],
         }),
@@ -725,7 +726,7 @@ describe("Standalone HCA", () => {
     { walletPaid = false }: { walletPaid?: boolean } = {},
   ) {
     const hca = computeHcaAddress(owner.address);
-    const resolverSalt = env.computeOwnedResolverSalt(hca);
+    const resolverSalt = computeOwnedResolverSalt(hca);
     const resolver = env.computeVerifiableProxyAddress(hca, resolverSalt);
 
     const [basePrice, premiumPrice] =
@@ -869,9 +870,7 @@ describe("Standalone HCA", () => {
     expectVar({ primary }).toStrictEqual(name);
 
     const defaultPrimary =
-      await env.shared.DefaultReverseRegistrar.read.nameForAddr([
-        owner.address,
-      ]);
+      await env.v1.DefaultReverseRegistrar.read.nameForAddr([owner.address]);
     expectVar({ defaultPrimary }).toStrictEqual(name);
 
     const ownerIsResolverAdmin = await env.client.readContract({
@@ -887,7 +886,7 @@ describe("Standalone HCA", () => {
     const owner = env.namedAccounts.user;
     const label = "hcastandalone";
     const hca = computeHcaAddress(owner.address);
-    const resolverSalt = env.computeOwnedResolverSalt(hca);
+    const resolverSalt = computeOwnedResolverSalt(hca);
     const resolver = env.computeVerifiableProxyAddress(hca, resolverSalt);
 
     const first = await deployHCAAndCommit({ label, owner, resolver });
@@ -921,7 +920,7 @@ describe("Standalone HCA", () => {
     const hca = computeHcaAddress(owner.address);
 
     expectVar({ configuredAdapter }).toEqualAddress(
-      env.shared.DefaultReverseRegistrarAdapter.address,
+      env.v2.DefaultReverseRegistrarAdapter.address,
     );
     expectVar({ sdkAddress: account.getAddress() }).toEqualAddress(hca);
     expectVar({ initData: account.getInitData() }).toStrictEqual({
@@ -1444,10 +1443,10 @@ describe("Standalone HCA", () => {
     const laterName = `later-${label}.eth`;
     const laterExecutions: HCAExecution[] = [
       {
-        target: env.shared.DefaultReverseRegistrarAdapter.address,
+        target: env.v2.DefaultReverseRegistrarAdapter.address,
         value: 0n,
         callData: encodeFunctionData({
-          abi: env.shared.DefaultReverseRegistrarAdapter.abi,
+          abi: env.v2.DefaultReverseRegistrarAdapter.abi,
           functionName: "setNameWithHCA",
           args: [owner.address, laterName],
         }),
@@ -1467,10 +1466,9 @@ describe("Standalone HCA", () => {
       signature: laterSignature,
     });
 
-    const laterPrimary =
-      await env.shared.DefaultReverseRegistrar.read.nameForAddr([
-        owner.address,
-      ]);
+    const laterPrimary = await env.v1.DefaultReverseRegistrar.read.nameForAddr([
+      owner.address,
+    ]);
     expectVar({ laterPrimary }).toStrictEqual(laterName);
   });
 

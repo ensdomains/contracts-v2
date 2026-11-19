@@ -63,7 +63,9 @@ describe("Migration", () => {
 
   async function ensurePremigration(label: string) {
     const tokenId = idFromLabel(label);
-    const expiry = await env.v1.BaseRegistrar.read.nameExpires([tokenId]);
+    const expiry = await env.v1.BaseRegistrarImplementation.read.nameExpires([
+      tokenId,
+    ]);
     await env.v2.ETHRegistry.write.register([
       label,
       zeroAddress, // owner (must be null)
@@ -158,7 +160,7 @@ describe("Migration", () => {
     }
     override async migrate(args: Partial<MigrateArgs> = {}) {
       return env.waitFor(
-        env.v1.BaseRegistrar.write.safeTransferFrom(
+        env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
           [
             this.account.address,
             args.target ?? env.v2.UnlockedMigrationController.address,
@@ -171,7 +173,7 @@ describe("Migration", () => {
     }
     async wrap(fuses: number = FUSES.CAN_DO_EVERYTHING) {
       const { name, account, tokenId, label } = this;
-      await env.v1.BaseRegistrar.write.safeTransferFrom(
+      await env.v1.BaseRegistrarImplementation.write.safeTransferFrom(
         [
           account.address,
           env.v1.NameWrapper.address,
@@ -276,7 +278,7 @@ describe("Migration", () => {
     duration = 86400n,
     premigrate = true,
   }: BaseRegistrarArgs = {}) {
-    await env.v1.BaseRegistrar.write.register([
+    await env.v1.BaseRegistrarImplementation.write.register([
       idFromLabel(label),
       account.address,
       duration,
@@ -391,50 +393,50 @@ describe("Migration", () => {
   describe("postlaunch", () => {
     it("renew", async () => {
       const unwrapped = await registerUnwrapped();
-      const expiry0 = await env.v1.BaseRegistrar.read.nameExpires([
-        unwrapped.tokenId,
-      ]);
+      const expiry0 = await env.v1.BaseRegistrarImplementation.read.nameExpires(
+        [unwrapped.tokenId],
+      );
       await env.activateV2();
       await unwrapped.renewV1(SEC_PER_YEAR);
-      const expiry1 = await env.v1.BaseRegistrar.read.nameExpires([
-        unwrapped.tokenId,
-      ]);
+      const expiry1 = await env.v1.BaseRegistrarImplementation.read.nameExpires(
+        [unwrapped.tokenId],
+      );
       expectVar({ expiry1 }).toStrictEqual(expiry0 + SEC_PER_YEAR);
     });
 
     it("renew in grace", async () => {
       const unwrapped = await registerUnwrapped();
-      const expiry0 = await env.v1.BaseRegistrar.read.nameExpires([
-        unwrapped.tokenId,
-      ]);
+      const expiry0 = await env.v1.BaseRegistrarImplementation.read.nameExpires(
+        [unwrapped.tokenId],
+      );
       await env.activateV2();
       await env.client.setNextBlockTimestamp({ timestamp: expiry0 });
       await env.client.mine({ blocks: 1 });
       await expect(
-        env.v1.BaseRegistrar.read.ownerOf([unwrapped.tokenId]),
+        env.v1.BaseRegistrarImplementation.read.ownerOf([unwrapped.tokenId]),
       ).rejects.toThrow(); // unowned
       await expect(
-        env.v1.BaseRegistrar.read.available([unwrapped.tokenId]),
+        env.v1.BaseRegistrarImplementation.read.available([unwrapped.tokenId]),
       ).resolves.toStrictEqual(false); // not available
       await unwrapped.renewV1(SEC_PER_YEAR);
-      const expiry1 = await env.v1.BaseRegistrar.read.nameExpires([
-        unwrapped.tokenId,
-      ]);
+      const expiry1 = await env.v1.BaseRegistrarImplementation.read.nameExpires(
+        [unwrapped.tokenId],
+      );
       expectVar({ expiry1 }).toStrictEqual(expiry0 + SEC_PER_YEAR);
     });
 
     it("renew after grace", async () => {
       const unwrapped = await registerUnwrapped();
-      const expiry0 = await env.v1.BaseRegistrar.read.nameExpires([
-        unwrapped.tokenId,
-      ]);
+      const expiry0 = await env.v1.BaseRegistrarImplementation.read.nameExpires(
+        [unwrapped.tokenId],
+      );
       await env.activateV2();
       await env.client.setNextBlockTimestamp({
         timestamp: expiry0 + PREMIGRATION_BONUS_PERIOD + GRACE_PERIOD_V2,
       });
       await env.client.mine({ blocks: 1 });
       await expect(
-        env.v1.BaseRegistrar.read.available([unwrapped.tokenId]),
+        env.v1.BaseRegistrarImplementation.read.available([unwrapped.tokenId]),
       ).resolves.toStrictEqual(true); // available
       await expect(unwrapped.renewV1(SEC_PER_YEAR)).rejects.toThrow(
         "NameNotRenewable",
@@ -461,7 +463,7 @@ describe("Migration", () => {
     it("migrate with approval", async () => {
       const unwrapped = await registerUnwrapped();
       const { user2 } = env.namedAccounts;
-      await env.v1.BaseRegistrar.write.setApprovalForAll(
+      await env.v1.BaseRegistrarImplementation.write.setApprovalForAll(
         [user2.address, true],
         { account: unwrapped.account },
       );
