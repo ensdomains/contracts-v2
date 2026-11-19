@@ -12,9 +12,13 @@ import {ERC1271_MAGICVALUE} from "nexus/types/Constants.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
 
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
+import {IStandaloneHCAOwnerFunds} from "~src/hca/interfaces/IStandaloneHCAOwnerFunds.sol";
 import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
 import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
 import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
+import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
+import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 
@@ -544,6 +548,353 @@ contract HCAOwnerAndSessionValidatorTest is Test {
         );
 
         _assertInitialRefundPolicyFailure(permissionId, proof, 80, _encodeExecutions(executions));
+    }
+
+    function test_validator_acceptsOwnerPullWithinBatchApprovals() public view {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPull(paymentToken, proof.maxRefundAmount);
+
+        _assertInitialRefundPolicySuccess(permissionId, proof, 100, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPullAboveBatchApprovals() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPull(paymentToken, uint256(proof.maxRefundAmount) + 1);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 101, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPullOfAnotherToken() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPull(sourceToken, 1);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 102, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPullWithZeroAmount() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withoutExecution(_initialRefundExecutions(permissionId, proof), 0);
+        executions[0] = _ownerPull(paymentToken, 0);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 103, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsDuplicateOwnerPull() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
+        executions[0] = _ownerPull(paymentToken, 1);
+        executions[1] = _ownerPull(paymentToken, 1);
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 104, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerPullCombinedWithTokenFundingCalls() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory base = _initialRefundExecutions(permissionId, proof);
+        Execution[] memory executions = new Execution[](5);
+        executions[0] = _ownerPull(paymentToken, 1);
+        for (uint256 i; i < base.length; ++i) {
+            executions[i + 1] = base[i];
+        }
+        _assertInitialRefundPolicyFailure(permissionId, proof, 105, _encodeExecutions(executions));
+
+        executions[0] = base[0];
+        executions[1] = base[1];
+        executions[2] = _ownerPull(paymentToken, 1);
+        executions[3] = base[2];
+        executions[4] = base[3];
+        _assertInitialRefundPolicyFailure(permissionId, proof, 106, _encodeExecutions(executions));
+    }
+
+    function test_validator_acceptsOwnerReturnThatKeepsTheRefund() public view {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withOwnerReturn(
+                _initialRefundExecutions(permissionId, proof),
+                paymentToken,
+                proof.maxRefundAmount
+            );
+
+        _assertInitialRefundPolicySuccess(permissionId, proof, 107, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerReturnThatSpendsTheRefund() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withOwnerReturn(
+                _initialRefundExecutions(permissionId, proof),
+                paymentToken,
+                proof.maxRefundAmount - 1
+            );
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 108, _encodeExecutions(executions));
+    }
+
+    function test_validator_acceptsOwnerReturnOfAnotherTokenInFull() public view {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions =
+            _withOwnerReturn(_initialRefundExecutions(permissionId, proof), sourceToken, 0);
+
+        _assertInitialRefundPolicySuccess(permissionId, proof, 109, _encodeExecutions(executions));
+    }
+
+    function test_validator_acceptsOwnerReturnAsTheOnlyAction() public view {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = _ownerReturn(paymentToken, proof.maxRefundAmount);
+
+        _assertInitialRefundPolicySuccess(permissionId, proof, 110, _encodeExecutions(executions));
+    }
+
+    function test_validator_acceptsOwnerPullWhenBatchApprovalsExceedTheMaximum() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        address oracle = makeAddr("rent-price-oracle");
+        vm.etch(ethRegistrar, hex"00");
+        vm.etch(oracle, hex"00");
+        vm.mockCall(
+            ethRegistrar,
+            abi.encodeCall(IRentPriceOracleProvider.rentPriceOracle, ()),
+            abi.encode(oracle)
+        );
+        vm.mockCall(
+            oracle,
+            abi.encodeCall(IRentPriceOracle.isPaymentToken, (IERC20(paymentToken))),
+            abi.encode(true)
+        );
+        Execution[] memory executions =
+            _withoutExecution(
+                _withRefundApproval(
+                    _initialRefundExecutions(permissionId, proof),
+                    paymentToken,
+                    ethRegistrar,
+                    type(uint256).max
+                ),
+                0
+            );
+        executions[0] = _ownerPull(paymentToken, type(uint256).max);
+
+        _assertInitialRefundPolicySuccess(permissionId, proof, 112, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOwnerReturnWithTrailingCalldata() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = _ownerReturn(paymentToken, proof.maxRefundAmount);
+        executions[0].callData = bytes.concat(executions[0].callData, bytes32(0));
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 113, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsOtherCallsToTheAccount() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes4 selector = StandaloneSingleOwnerHCA.revokeSessions.selector;
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: address(hca), value: 0, callData: abi.encodeWithSelector(
+            selector
+        )});
+        bytes memory operationData = _encodeExecutions(executions);
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(address(hca), 111, operationData, gasRefund);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HCAOwnerAndSessionValidator.ActionNotAllowed.selector,
+                address(hca),
+                selector
+            )
+        );
+        hca.validate(
+            validator,
+            digest,
+            _initialRefundEnvelope(permissionId, proof, 111, gasRefund, operationData, digest)
+        );
+    }
+
+    function _ownerPull(address token, uint256 amount) internal view returns (Execution memory) {
+        return
+            Execution({target: address(hca), value: 0, callData: abi.encodeCall(
+                IStandaloneHCAOwnerFunds.pullFromOwner,
+                (
+                    IERC20(token),
+                    amount,
+                    IStandaloneHCAOwnerFunds.OwnerPermit({value: 60_000_000, deadline: block.timestamp +
+                    1 hours, v: 27, r: bytes32(uint256(1)), s: bytes32(uint256(2))})
+                )
+            )});
+    }
+
+    function _ownerReturn(address token, uint256 keep) internal view returns (Execution memory) {
+        return
+            Execution({target: address(hca), value: 0, callData: abi.encodeCall(
+                IStandaloneHCAOwnerFunds.returnToOwner,
+                (IERC20(token), keep)
+            )});
+    }
+
+    function _withOwnerReturn(Execution[] memory executions, address token, uint256 keep)
+        internal
+        view
+        returns (Execution[] memory extended)
+    {
+        extended = new Execution[](executions.length + 1);
+        for (uint256 i; i < executions.length; ++i) {
+            extended[i] = executions[i];
+        }
+        extended[executions.length] = _ownerReturn(token, keep);
+    }
+
+    function _assertInitialRefundPolicySuccess(
+        bytes32 permissionId,
+        SessionEnableProofFixture memory proof,
+        uint256 nonce,
+        bytes memory operationData
+    )
+        internal
+        view
+    {
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        assertEq(
+            hca.validate(
+                validator,
+                digest,
+                _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest)
+            ),
+            ERC1271_MAGICVALUE
+        );
+    }
+
+    function test_validator_acceptsRefundApprovalReset() public view {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
+            HCAOwnerAndSessionValidator.GasRefund({token: proof.refundToken, exchangeRate: proof.maxRefundExchangeRate, overhead: (uint256(
+                    proof.maxRefundAmount
+                ) <<
+                128) |
+            proof.maxRefundGasOverhead});
+        bytes memory operationData =
+            _encodeExecutions(
+                _withRefundApproval(
+                    _initialRefundExecutions(permissionId, proof),
+                    paymentToken,
+                    gasRefundPaymaster,
+                    0
+                )
+            );
+        uint256 nonce = 96;
+        bytes32 digest =
+            validator.singleChainDigestWithRefundHarness(
+                address(hca),
+                nonce,
+                operationData,
+                gasRefund
+            );
+
+        assertEq(
+            hca.validate(
+                validator,
+                digest,
+                _initialRefundEnvelope(permissionId, proof, nonce, gasRefund, operationData, digest)
+            ),
+            ERC1271_MAGICVALUE
+        );
+    }
+
+    function test_validator_rejectsRefundApprovalBelowSignedAmount() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+        Execution[] memory executions = _initialRefundExecutions(permissionId, proof);
+        executions[2].callData = abi.encodeWithSelector(
+            IERC20.approve.selector,
+            gasRefundPaymaster,
+            proof.maxRefundAmount - 1
+        );
+
+        _assertInitialRefundPolicyFailure(permissionId, proof, 97, _encodeExecutions(executions));
+    }
+
+    function test_validator_rejectsRefundApprovalResetForAnotherToken() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+
+        _assertInitialRefundPolicyFailure(
+            permissionId,
+            proof,
+            98,
+            _encodeExecutions(
+                _withRefundApproval(
+                    _initialRefundExecutions(permissionId, proof),
+                    sourceToken,
+                    gasRefundPaymaster,
+                    0
+                )
+            )
+        );
+    }
+
+    function test_validator_rejectsZeroApprovalForAnotherSpender() public {
+        (SessionEnableProofFixture memory proof, bytes32 permissionId) = _multiChainEnableProof();
+
+        _assertInitialRefundPolicyFailure(
+            permissionId,
+            proof,
+            99,
+            _encodeExecutions(
+                _withRefundApproval(
+                    _initialRefundExecutions(permissionId, proof),
+                    paymentToken,
+                    makeAddr("another-spender"),
+                    0
+                )
+            )
+        );
+    }
+
+    /// @dev Inserts an approval before the batch's signed refund approval.
+    function _withRefundApproval(
+        Execution[] memory executions,
+        address token,
+        address spender,
+        uint256 amount
+    )
+        internal
+        pure
+        returns (Execution[] memory extended)
+    {
+        extended = new Execution[](executions.length + 1);
+        extended[0] = executions[0];
+        extended[1] = executions[1];
+        extended[2] = Execution({target: token, value: 0, callData: abi.encodeWithSelector(
+            IERC20.approve.selector,
+            spender,
+            amount
+        )});
+        for (uint256 i = 2; i < executions.length; ++i) {
+            extended[i + 1] = executions[i];
+        }
     }
 
     function _assertFirstPermit2OperationRevert(bytes memory operationData, bytes4 revertSelector)

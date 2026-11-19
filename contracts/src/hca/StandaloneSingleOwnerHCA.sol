@@ -3,6 +3,9 @@ pragma solidity 0.8.27;
 
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
@@ -25,13 +28,14 @@ import {Execution} from "nexus/types/DataTypes.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
 import {IStandaloneHCAFactory} from "./interfaces/IStandaloneHCAFactory.sol";
+import {IStandaloneHCAOwnerFunds} from "./interfaces/IStandaloneHCAOwnerFunds.sol";
 
 /// @title Standalone Single Owner HCA
 /// @notice Nexus account whose owner is set once during account initialization.
 /// @dev Module changes are disabled after initialization and the configured default validator
 ///      remains the only validator path for the account. Upgrades are owner-triggered and require
 ///      DAO approval for both the target and its predecessor.
-contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
+contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization, IStandaloneHCAOwnerFunds {
     using ModeLib for ExecutionMode;
     using NonceLib for uint256;
 
@@ -96,6 +100,10 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @dev Error selector: `0x6e29a697`
     error NoNFTAllowed();
 
+    /// @notice Owner fund movements are reachable only through the account's own execution.
+    /// @dev Error selector: `0x42ecf1a7`
+    error CallerNotAccount();
+
     /// @notice Delegatecall execution is disabled to protect account storage invariants.
     /// @dev Error selector: `0x0d89438e`
     error DelegateCallNotAllowed();
@@ -108,6 +116,14 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     modifier onlyOwner() {
         if (msg.sender != _accountOwner()) {
             revert CallerNotOwner();
+        }
+        _;
+    }
+
+    /// @dev Restricts a function to calls the account makes to itself during execution.
+    modifier onlyAccount() {
+        if (msg.sender != address(this)) {
+            revert CallerNotAccount();
         }
         _;
     }
@@ -232,6 +248,39 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @param executions The calls to execute in order.
     function executeByOwner(Execution[] calldata executions) external payable onlyProxy onlyOwner {
         _executeBatchNoReturndata(executions);
+    }
+
+    /// @inheritdoc IStandaloneHCAOwnerFunds
+    /// @dev Callable only by the account itself, from a session batch or `executeByOwner`.
+    ///      The transfer, not the permit, enforces the allowance: a token without `permit`
+    ///      or with a permit that was already used still needs a sufficient allowance.
+    function pullFromOwner(IERC20 token, uint256 amount, OwnerPermit calldata permit)
+        external
+        override
+        onlyAccount
+    {
+        address owner_ = _accountOwner();
+        if (permit.deadline != 0) {
+            try IERC20Permit(address(token)).permit(
+                owner_,
+                address(this),
+                permit.value,
+                permit.deadline,
+                permit.v,
+                permit.r,
+                permit.s
+            ) {} catch {}
+        }
+        SafeERC20.safeTransferFrom(token, owner_, address(this), amount);
+    }
+
+    /// @inheritdoc IStandaloneHCAOwnerFunds
+    /// @dev Callable only by the account itself, from a session batch or `executeByOwner`.
+    function returnToOwner(IERC20 token, uint256 keep) external override onlyAccount {
+        uint256 balance = token.balanceOf(address(this));
+        if (balance > keep) {
+            SafeERC20.safeTransfer(token, _accountOwner(), balance - keep);
+        }
     }
 
     /// @inheritdoc Nexus
