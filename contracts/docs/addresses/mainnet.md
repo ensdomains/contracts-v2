@@ -47,7 +47,7 @@
 | UnlockedMigrationController | [0xab821ca676cf2e0790fa273526a165cfa86aeb64](https://etherscan.io/address/0xab821ca676cf2e0790fa273526a165cfa86aeb64) |
 | UpgradableUniversalResolverProxy | [0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe) |
 | UserRegistryImpl | [0x3269b830b61b3186dc6d2f57cab118e2fbc3e2df](https://etherscan.io/address/0x3269b830b61b3186dc6d2f57cab118e2fbc3e2df) |
-| VerifiableFactory | [0x77510ba162dfea3d8989e3f0928a691b345730d2](https://etherscan.io/address/0x77510ba162dfea3d8989e3f0928a691b345730d2) |
+| VerifiableFactory | [0x6b9bcaad92b05ed24d3e01950048b73e8633053f](https://etherscan.io/address/0x6b9bcaad92b05ed24d3e01950048b73e8633053f) |
 | WrapperRegistryImpl | [0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888](https://etherscan.io/address/0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888) |
 
 ## Changelog
@@ -56,6 +56,7 @@ Every address of each contract that was deployed more than once, or deployed out
 
 | Deployed (UTC) | Contract | Address | Recorded in |
 | --- | --- | --- | --- |
+| [2026-11-19 05:15:35](https://etherscan.io/block/26446971) | VerifiableFactory | [0x6b9bcaad92b05ed24d3e01950048b73e8633053f](https://etherscan.io/address/0x6b9bcaad92b05ed24d3e01950048b73e8633053f) | `mainnet-adhoc` |
 | [2026-11-17 22:07:47](https://etherscan.io/block/26437652) | UserRegistryImpl | [0x3269b830b61b3186dc6d2f57cab118e2fbc3e2df](https://etherscan.io/address/0x3269b830b61b3186dc6d2f57cab118e2fbc3e2df) | `mainnet-adhoc` |
 | [2026-11-11 23:35:11](https://etherscan.io/block/26395009) | UserRegistryImpl | [0x86013382f943c6214e1433d1e64936f4000925cb](https://etherscan.io/address/0x86013382f943c6214e1433d1e64936f4000925cb) | `mainnet-adhoc-redeploy-20261117` |
 | [2026-11-11 09:32:47](https://etherscan.io/block/26390806) | UserRegistryImpl | [0x43d937f91ec7597c096a1e2e6b7cbd2ddcaeb23d](https://etherscan.io/address/0x43d937f91ec7597c096a1e2e6b7cbd2ddcaeb23d) | `mainnet-adhoc-redeploy-20261111-r2` |
@@ -110,5 +111,6 @@ Every address of each contract that was deployed more than once, or deployed out
 | [2026-10-02 15:05:47](https://etherscan.io/block/26105422) | RootBatchRegistrar | [0x4547fe3a831b041aecdfb2f1616d6faae99e6cc1](https://etherscan.io/address/0x4547fe3a831b041aecdfb2f1616d6faae99e6cc1) | `mainnet-root-20261013` |
 | [2026-10-02 14:41:35](https://etherscan.io/block/26105302) | DNSTLDResolver | [0x73a2647840f79f15f2f208d985b11ae0c6035664](https://etherscan.io/address/0x73a2647840f79f15f2f208d985b11ae0c6035664) | `mainnet-root-20261013` |
 | [2026-10-02 14:41:23](https://etherscan.io/block/26105301) | DNSAliasResolver | [0x553a06ebd55b366dd45fad8e1245eed16ae2faa2](https://etherscan.io/address/0x553a06ebd55b366dd45fad8e1245eed16ae2faa2) | `mainnet-root-20261013` |
+| [2026-10-02 14:40:59](https://etherscan.io/block/26105299) | VerifiableFactory | [0x77510ba162dfea3d8989e3f0928a691b345730d2](https://etherscan.io/address/0x77510ba162dfea3d8989e3f0928a691b345730d2) | `mainnet` |
 | [2026-10-02 14:40:47](https://etherscan.io/block/26105298) | ENSV2Resolver | [0x8486d32948cdef5c24236718318c6326d5d006a9](https://etherscan.io/address/0x8486d32948cdef5c24236718318c6326d5d006a9) | `mainnet-root-20261013` |
 | [2026-10-02 14:39:59](https://etherscan.io/block/26105295) | RootRegistry | [0x51bbc58b3dae7d45b14fba8cf31b7c8f7904a750](https://etherscan.io/address/0x51bbc58b3dae7d45b14fba8cf31b7c8f7904a750) | `mainnet-root-20261013` |
