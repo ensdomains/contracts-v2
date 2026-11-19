@@ -172,9 +172,9 @@ Manager means the ENS Manager application. Explorer means the ENS Explorer appli
 
 Manager must select the supported route with the fewest wallet interactions. Explorer can show all supported routes and their interaction counts.
 
-The same-chain and cross-chain stablecoin routes have current live proofs.
+The same-chain and cross-chain stablecoin routes have historical live proofs. The ENS-domain authorization needs a new live proof after compatible validator deployment.
 
-One multi-chain session authorization can support either stablecoin route. The wallet signs it before route selection. A same-chain route uses the HCA session. A cross-chain route also uses the session for the selected source Nexus.
+One multi-chain session authorization can support either stablecoin route. The wallet signs it under the `ENS HCA Authorization` EIP-712 domain before route selection. A same-chain route uses the HCA session. A cross-chain route also uses the session for the selected source Nexus.
 
 ## Registration
 
@@ -521,13 +521,15 @@ Create these sessions before the wallet selects a same-chain or cross-chain rout
 - One destination session for the HCA
 - One or more source sessions for the payment options in the authorization
 
-Each session must name its account, chain, salt, and session key. Call `experimental_getSessionDetails(sessions)` on the HCA account. Then call `experimental_signEnableSession(details)` once. The result does not select a payment route and does not move funds.
+Each session must name its account, chain, salt, and session key. Call `experimental_getSessionDetails(sessions)` on the HCA account. Change `details.data.domain` to `{ name: "ENS HCA Authorization", version: "1" }` before calling `experimental_signEnableSession(details)` once. Keep the SDK's session types, message, and ordered chain digests. The result does not select a payment route and does not move funds. Both HCA validators require this domain; the SDK's default `SmartSessionEmissary` domain authorizes the Nexus emissary and must not be used for HCA sessions.
 
 Use the HCA entry for a same-chain route. For a cross-chain route, also use the entry for the selected source Nexus. One source session is sufficient when the user selects the source first. Include each offered source when the user selects it after authorization. Do not ask the wallet to sign a Permit2 message.
 
 Pass the signed authorization as `enableData` for every destination session request. The SDK packages it into the HCA signature envelope; do not add a validator call to the HCA action list. The same authorization can be reused until its expiry or until the owner increments the HCA session nonce.
 
 `experimental_isSessionEnabled(session)` remains false for the stateless destination validator. Persist the signed authorization with the session state instead of treating on-chain enablement as the resume signal.
+
+Previously saved authorizations signed under the SDK's default domain must be discarded and replaced. A new HCA validator does not revoke those old signatures on a source Nexus. Revoke the source Nexus's emissary session nonce before using that Nexus again; retire the Nexus if revocation cannot be confirmed. Removing its intent executor can stop the reported execution path while it remains uninstalled, but does not invalidate the signature. The HCA session nonce only invalidates HCA validator use; it does not revoke an emissary authorization.
 
 The patched SDK and HCA validators use this compact transport encoding:
 

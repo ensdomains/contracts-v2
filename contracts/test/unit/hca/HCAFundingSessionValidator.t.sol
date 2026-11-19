@@ -451,6 +451,38 @@ contract HCAFundingSessionValidatorTest is Test {
         );
     }
 
+    function test_ownerAuthorizationCannotEnableEmissarySession() public view {
+        HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
+        bytes32[] memory chainSessionHashes = new bytes32[](proof.hashesAndChainIds.length);
+        for (uint256 i; i < proof.hashesAndChainIds.length; ++i) {
+            HCASmartSessionLib.HashAndChainId memory entry = proof.hashesAndChainIds[i];
+            chainSessionHashes[i] = keccak256(
+                abi.encode(CHAIN_SESSION_TYPEHASH, entry.chainId, entry.sessionDigest)
+            );
+        }
+        bytes32 structHash =
+            keccak256(
+                abi.encode(
+                    MULTI_CHAIN_SESSION_TYPEHASH,
+                    keccak256(abi.encodePacked(chainSessionHashes))
+                )
+            );
+        bytes32 emissaryDomain =
+            keccak256(
+                abi.encode(
+                    SMART_SESSION_DOMAIN_TYPEHASH,
+                    SMART_SESSION_NAME_HASH,
+                    SMART_SESSION_VERSION_HASH
+                )
+            );
+        bytes32 emissaryDigest = MessageHashUtils.toTypedDataHash(emissaryDomain, structHash);
+
+        assertNotEq(
+            HCASignatureLib.recover(emissaryDigest, proof.ownerR, proof.ownerS, proof.ownerV),
+            owner
+        );
+    }
+
     function test_rejectsClaimWithoutReusableOwnerAuthorization() public {
         bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
         (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
@@ -849,22 +881,7 @@ contract HCAFundingSessionValidatorTest is Test {
                 abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
             );
         }
-        bytes32 structHash =
-            keccak256(
-                abi.encode(
-                    MULTI_CHAIN_SESSION_TYPEHASH,
-                    keccak256(abi.encodePacked(chainSessionHashes))
-                )
-            );
-        bytes32 domainSeparator =
-            keccak256(
-                abi.encode(
-                    SMART_SESSION_DOMAIN_TYPEHASH,
-                    SMART_SESSION_NAME_HASH,
-                    SMART_SESSION_VERSION_HASH
-                )
-            );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
+        bytes32 digest = HCASmartSessionLib.multiChainDigest(chainSessionHashes);
         (proof.ownerV, proof.ownerR, proof.ownerS) = vm.sign(OWNER_KEY, digest);
     }
 

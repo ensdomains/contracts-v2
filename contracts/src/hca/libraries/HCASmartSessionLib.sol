@@ -42,9 +42,15 @@ library HCASmartSessionLib {
     /// @dev Canonical one-of-one session validator.
     address private constant OWNABLE_SESSION_VALIDATOR = 0x000000000013fdB5234E4E3162a810F54d9f7E98;
 
-    /// @dev Smart Session EIP-712 domain separator.
-    bytes32 private constant SMART_SESSION_DOMAIN_SEPARATOR =
-        0xe4b7e03cf1e8e7a6af0eec6f72a68d532e03fdaad0b8326461731cb31803a084;
+    /// @dev EIP-712 domain type used by the ENS authorization.
+    bytes32 private constant _AUTHORIZATION_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version)");
+
+    /// @dev ENS authorization domain name hash.
+    bytes32 private constant _AUTHORIZATION_NAME_HASH = keccak256("ENS HCA Authorization");
+
+    /// @dev ENS authorization domain version hash.
+    bytes32 private constant _AUTHORIZATION_VERSION_HASH = keccak256("1");
 
     /// @dev Signed-session type hash.
     bytes32 private constant SIGNED_SESSION_TYPEHASH =
@@ -58,7 +64,7 @@ library HCASmartSessionLib {
     bytes32 private constant MULTI_CHAIN_SESSION_TYPEHASH =
         0xb4323194e4ca3723804b96dc7a0960bde1afff2b080b8b288fdc264c82e21357;
 
-    /// @dev Hash of the default empty Smart Session permissions.
+    /// @dev Hash of the SDK's default SUDO Smart Session permissions.
     bytes32 private constant DEFAULT_SIGNED_PERMISSIONS_HASH =
         0x242b79d1322c5e6b12b617584cc2d5766cf18be6feb6acfa469ccf289e11e504;
 
@@ -67,7 +73,7 @@ library HCASmartSessionLib {
     ////////////////////////////////////////////////////////////////////////
 
     /// @notice Validates the selected chain session and its multi-chain owner signature.
-    /// @dev Reconstructs the Smart Session digest before recovering the authorizing signer.
+    /// @dev Reconstructs the ENS-specific digest before recovering the authorizing signer.
     /// @param expectedOwner The owner that authorized the session set.
     /// @param expectedSessionDigest The session digest authorized for the current chain.
     /// @param selectedIndex The current chain's index in `hashesAndChainIds`.
@@ -175,9 +181,9 @@ library HCASmartSessionLib {
     }
 
     /// @notice Produces the owner-signature digest for a multi-chain session authorization.
-    /// @dev Applies the Smart Session EIP-712 domain to the ordered chain-session hash.
+    /// @dev Applies the ENS domain so the signature cannot enable a Smart Session on a Nexus.
     /// @param chainSessionHashes The ordered chain-session struct hashes.
-    /// @return result The Smart Session EIP-712 digest.
+    /// @return result The ENS EIP-712 digest.
     function multiChainDigest(bytes32[] memory chainSessionHashes)
         internal
         pure
@@ -189,6 +195,14 @@ library HCASmartSessionLib {
                 keccak256(add(chainSessionHashes, 0x20), shl(5, mload(chainSessionHashes)))
         }
         bytes32 structHash = keccak256(abi.encode(MULTI_CHAIN_SESSION_TYPEHASH, chainSessionsHash));
-        return MessageHashUtils.toTypedDataHash(SMART_SESSION_DOMAIN_SEPARATOR, structHash);
+        bytes32 domainSeparator =
+            keccak256(
+                abi.encode(
+                    _AUTHORIZATION_DOMAIN_TYPEHASH,
+                    _AUTHORIZATION_NAME_HASH,
+                    _AUTHORIZATION_VERSION_HASH
+                )
+            );
+        return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
     }
 }
