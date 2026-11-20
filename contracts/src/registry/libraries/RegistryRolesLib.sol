@@ -73,16 +73,16 @@ library RegistryRolesLib {
     /// @dev Nybble 63: authorizes setting `ROLE_UPGRADE`.
     uint256 internal constant ROLE_UPGRADE_ADMIN = ROLE_UPGRADE << 128;
 
+    /// @dev Roles that safe transfers must revoke from non-owners.
+    uint256 internal constant TOKEN_EMANCIPATION_ROLE_BITMAP =
+        ROLE_SET_SUBREGISTRY | ROLE_SET_RESOLVER | ROLE_UNREGISTER;
+
     /// @dev Roles that should cause token regeneration.
     uint256 internal constant REGENERATION_ROLE_BITMAP =
         ROLE_PARENT_CONTROL |
         ROLE_PARENT_CONTROL_ADMIN |
         ROLE_CAN_TRANSFER |
         ROLE_CAN_TRANSFER_ADMIN |
-        ROLE_SET_SUBREGISTRY |
-        ROLE_SET_SUBREGISTRY_ADMIN |
-        ROLE_SET_RESOLVER |
-        ROLE_SET_RESOLVER_ADMIN |
-        ROLE_UNREGISTER |
-        ROLE_UNREGISTER_ADMIN;
+        TOKEN_EMANCIPATION_ROLE_BITMAP |
+        TOKEN_EMANCIPATION_ROLE_BITMAP << 128;
 }

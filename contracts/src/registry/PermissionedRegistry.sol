@@ -8,7 +8,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
-import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
@@ -444,7 +443,14 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEmancipatableRegistry
-    function isTokenEmancipated(uint256 anyId) public view returns (bool) {
+    function isTokenEmancipated(string calldata label) public view returns (bool) {
+        return isEmancipated() && isTokenEmancipated(LibLabel.id(label));
+    }
+
+    /// @notice Determine if token is emancipated.
+    /// @param anyId The labelhash, token ID, or resource.
+    /// @return `true` if the token is emancipated.
+    function isTokenEmancipated(uint256 anyId) public view virtual returns (bool) {
         address owner = getOwner(anyId);
         return owner != address(0) && _isTokenEmancipated(_getRoles(getResource(anyId), owner));
     }
@@ -542,9 +548,7 @@ contract PermissionedRegistry is
         super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
             // only transfers (skip mint and burn)
-            if (safe && !isEmancipated()) {
-                revert TransferUnsafeUntilRegistryIsEmancipated();
-            }
+            bool implFixed;
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
                 uint256 resource = getResource(tokenId);
@@ -555,12 +559,19 @@ contract PermissionedRegistry is
                     revert TransferDisallowed(tokenId, from);
                 }
                 if (safe) {
-                    if (!_isTokenEmancipated(ownerRoles)) {
+                    if (!implFixed) {
+                        implFixed = isEmancipated(); // compute once
+                    }
+                    // same as: isTokenEmancipated()
+                    if (!implFixed || !_isTokenEmancipated(ownerRoles)) {
                         revert TransferUnsafeUntilTokenIsEmancipated(tokenId);
                     }
-                    uint256 nonOwnerRoles =
-                        EACBaseRolesLib.fromCounts(super.roleCount(resource) - ownerRoles);
-                    if (nonOwnerRoles != 0 && !isOnlyAssignee(tokenId, nonOwnerRoles, from)) {
+                    // ensure owner is only assignee of the emancipated roles
+                    if (
+                        ((super.roleCount(resource) ^ ownerRoles) &
+                            RegistryRolesLib.TOKEN_EMANCIPATION_ROLE_BITMAP) !=
+                        0
+                    ) {
                         revert TransferUnsafeWithMultipleAssignees(tokenId, from);
                     }
                 }

@@ -56,11 +56,11 @@ interface IPermissionedRegistry is
     /// @dev Error selector: `0xe58f6d5a`
     error TransferDisallowed(uint256 tokenId, address from);
 
-    /// @notice Safe transfer is not allowed because the registry is not emancipated.
-    /// @dev Error selector: `0x54838f98`
-    error TransferUnsafeUntilRegistryIsEmancipated();
+    /// @notice Safe transfer is not allowed because token is not emancipated.
+    /// @dev Error selector: `0xb4733dce`
+    error TransferUnsafeUntilTokenIsEmancipated(uint256 tokenId);
 
-    /// @notice Safe transfer is not allowed because the token has non-owner roles.
+    /// @notice Safe transfer is not allowed because token has unrevokable non-owner roles.
     /// @dev Error selector: `0x677f1c18`
     error TransferUnsafeWithMultipleAssignees(uint256 tokenId, address from);
 
@@ -110,6 +110,8 @@ interface IPermissionedRegistry is
     /// @return owner The token owner.
     function getOwner(uint256 anyId) external view returns (address owner);
 
-    /// @notice Return `true` if the registry is emancipated.
+    /// @notice Return `true` if the registry cannot violate token emancipation.
+    /// @dev This function was repurposed from its original intent.
+    ///      Should return `false` if arbitrarily upgradeable.
     function isEmancipated() external view returns (bool);
 }
