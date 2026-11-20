@@ -154,12 +154,9 @@ describe("PrepareMigration", () => {
 
   it("aborts when signer lacks required admin roles", async () => {
     const addrs = getAddresses();
-    // "owner" account is funded but has CAN_NAME for root on ETHRegistry
     const { owner } = env.namedAccounts;
     const privateKey = toHex(owner.getHdKey().privateKey!);
-    expect((await readRoles(owner.address)) & ROLES.REGISTRY.CAN_NAME).toBe(
-      ROLES.REGISTRY.CAN_NAME,
-    );
+    expect(await readRoles(owner.address)).toBe(0n);
 
     await expect(
       main(buildArgs(addrs, { privateKey, execute: true })),

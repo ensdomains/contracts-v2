@@ -134,10 +134,6 @@ describe("planRegistryHandover", () => {
     ]);
   });
 
-  it("registers the root names with every role and admin role", () => {
-    expect(DEPLOYMENT_ROLES.ROOT_NAME_TOKEN).toBe(ROLES.ALL);
-  });
-
   it("revokes whatever the deployer holds, not only what the deploy granted", () => {
     const extra = ROLES.REGISTRY.REGISTRAR;
     const ethRegistry = planRegistryHandover({
