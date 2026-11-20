@@ -217,6 +217,34 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_unregister_asRoot() external {
+        WrapperRegistry registry = _migratedWrapperRegistry();
+
+        vm.prank(testOwner);
+        uint256 tokenId =
+            registry.register(
+                testLabel,
+                friend,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_PARENT_CONTROL,
+                _soon()
+            );
+
+        vm.prank(testOwner);
+        registry.unregister(tokenId);
+    }
+
+    function test_register_isEmancipated() external {
+        WrapperRegistry registry = _migratedWrapperRegistry();
+
+        vm.prank(testOwner);
+        uint256 tokenId =
+            registry.register(testLabel, friend, IRegistry(address(0)), address(0), 0, _soon());
+
+        assertTrue(registry.isTokenEmancipated(tokenId));
+    }
+
     function test_wrapperRegistryUpgrade_revertsForUnapprovedTarget() external {
         WrapperRegistry registry = _migratedWrapperRegistry();
 
@@ -1105,6 +1133,48 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             0,
             "no ROLE_RENEW"
         );
+    }
+
+    function test_migrate_unregister() external {
+        bytes memory name2 = registerWrappedETH2LD(testLabel, CANNOT_UNWRAP);
+        bytes32 node2 = NameCoder.namehash(name2, 0);
+        bytes memory name3 = createWrappedChild(name2, "sub", PARENT_CANNOT_CONTROL);
+
+        // migrate 2LD
+        LibMigration.Data memory data2 = _lockedData(name2);
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(migrationController),
+            uint256(node2),
+            1,
+            abi.encode(data2)
+        );
+        IWrapperRegistry registry2 =
+            IWrapperRegistry(address(ethRegistry.getSubregistry(data2.label)));
+
+        // migrate 3LD
+        LibMigration.Data memory data3 = _unlockedData(name3);
+        vm.prank(testOwner);
+        nameWrapper.safeTransferFrom(
+            testOwner,
+            address(registry2),
+            uint256(NameCoder.namehash(name3, 0)),
+            1,
+            abi.encode(data3)
+        );
+
+        uint256 tokenId = registry2.findTokenId(data3.label);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                tokenId,
+                RegistryRolesLib.ROLE_UNREGISTER,
+                testOwner
+            )
+        );
+        vm.prank(testOwner);
+        registry2.unregister(tokenId);
     }
 
     function test_migrate_lockedChildren() external {
