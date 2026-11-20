@@ -18,6 +18,7 @@ import {LibLabel} from "../utils/LibLabel.sol";
 import {IEmancipatableRegistry} from "./interfaces/IEmancipatableRegistry.sol";
 import {IOwnedRegistry} from "./interfaces/IOwnedRegistry.sol";
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
+import {IPermissionedRegistryExtended} from "./interfaces/IPermissionedRegistryExtended.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
@@ -63,8 +64,7 @@ import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 contract PermissionedRegistry is
     ERC1155Singleton,
     EnhancedAccessControl,
-    IPermissionedRegistry,
-    IEmancipatableRegistry
+    IPermissionedRegistryExtended
 {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -443,13 +443,11 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEmancipatableRegistry
-    function isTokenEmancipated(string calldata label) public view returns (bool) {
+    function isChildEmancipated(string calldata label) public view returns (bool) {
         return isEmancipated() && isTokenEmancipated(LibLabel.id(label));
     }
 
-    /// @notice Determine if token is emancipated.
-    /// @param anyId The labelhash, token ID, or resource.
-    /// @return `true` if the token is emancipated.
+    /// @inheritdoc IPermissionedRegistryExtended
     function isTokenEmancipated(uint256 anyId) public view virtual returns (bool) {
         address owner = getOwner(anyId);
         return owner != address(0) && _isTokenEmancipated(_getRoles(getResource(anyId), owner));

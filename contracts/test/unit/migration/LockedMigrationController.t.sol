@@ -217,6 +217,42 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
     }
 
+    function test_setResolver_asRoot() external {
+        WrapperRegistry registry = _migratedWrapperRegistry();
+
+        vm.prank(testOwner);
+        uint256 tokenId =
+            registry.register(
+                testLabel,
+                friend,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_PARENT_CONTROL,
+                _soon()
+            );
+
+        vm.prank(testOwner);
+        registry.setResolver(tokenId, address(1));
+    }
+
+    function test_setSubregistry_asRoot() external {
+        WrapperRegistry registry = _migratedWrapperRegistry();
+
+        vm.prank(testOwner);
+        uint256 tokenId =
+            registry.register(
+                testLabel,
+                friend,
+                IRegistry(address(0)),
+                address(0),
+                RegistryRolesLib.ROLE_PARENT_CONTROL,
+                _soon()
+            );
+
+        vm.prank(testOwner);
+        registry.setSubregistry(tokenId, IRegistry(address(1)));
+    }
+
     function test_unregister_asRoot() external {
         WrapperRegistry registry = _migratedWrapperRegistry();
 
@@ -529,6 +565,10 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_REGISTRAR |
             RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+            RegistryRolesLib.ROLE_SET_RESOLVER |
+            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN |
+            RegistryRolesLib.ROLE_SET_SUBREGISTRY |
+            RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
             RegistryRolesLib.ROLE_UNREGISTER |
             RegistryRolesLib.ROLE_UNREGISTER_ADMIN |
             RegistryRolesLib.ROLE_RENEW |

@@ -222,9 +222,9 @@ describe("registry handover", () => {
           STRANGER,
         ]),
       ).toBe(true);
-      expect(
-        await env.v2.RootRegistry.read.isTokenEmancipated([idFromLabel("eth")]),
-      ).toBe(true);
+      expect(await env.v2.RootRegistry.read.isChildEmancipated(["eth"])).toBe(
+        true,
+      );
 
       // The registrar keeps the roles it registers and renews with.
       expect(
@@ -284,9 +284,9 @@ describe("registry handover", () => {
       await handOver();
       const asOwner = { account: env.namedAccounts.owner };
 
-      expect(
-        await env.v2.RootRegistry.read.isTokenEmancipated([idFromLabel("eth")]),
-      ).toBe(true);
+      expect(await env.v2.RootRegistry.read.isChildEmancipated(["eth"])).toBe(
+        true,
+      );
 
       // The owner gives a reserved DNS top-level name to its operator, keeping the
       // reservation's expiry, and adds a top-level name nobody reserved.

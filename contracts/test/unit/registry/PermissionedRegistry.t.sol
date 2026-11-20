@@ -1759,12 +1759,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     function test_isTokenEmancipated() external {
         uint256 tokenId = this._register();
-        assertFalse(registry.isTokenEmancipated(testLabel));
+        assertFalse(registry.isChildEmancipated(testLabel));
         assertFalse(registry.isTokenEmancipated(tokenId));
 
         // revoke control
         registry.revokeRoles(tokenId, testRoles, testOwner);
-        assertTrue(registry.isTokenEmancipated(testLabel));
+        assertTrue(registry.isChildEmancipated(testLabel));
         assertTrue(registry.isTokenEmancipated(tokenId));
 
         // cannot restore control
