@@ -618,29 +618,32 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @dev Override: if token is expired, none
-    /// @dev Override: if token is emancipated and not owner, none
-    /// @dev Override: if token, only regular of admin roles
+    /// @dev Override for token-dependent logic:
+    ///
+    /// Token non-admin roles can only be granted to registered tokens.
+    ///
+    /// Token admin roles are only assigned during name registration to maintain
+    /// controlled permission management. This ensures that role delegation
+    /// follows the intended security model where admin privileges are granted at
+    /// registration time and cannot be arbitrarily granted afterward.
+    ///
+    /// Root admin roles are unaffected.
+    ///
+    /// @param resource The resource to get settable roles for.
+    /// @param account The account to get settable roles for.
+    /// @return The settable roles (regular roles only, not admin roles).
     function _getSettableRoles(uint256 resource, address account)
         internal
         view
         virtual
         override
-        returns (uint256 roleBitmap)
+        returns (uint256)
     {
-        if (resource != ROOT_RESOURCE) {
-            address owner = getOwner(resource);
-            if (owner == address(0)) {
-                return 0; // expired
-            }
-            if (account != owner && _isEmancipated(_getRoles(resource, owner))) {
-                return 0; // emancipated
-            }
+        if (resource != ROOT_RESOURCE && getOwner(resource) == address(0)) {
+            return 0;
         }
-        roleBitmap = super._getSettableRoles(resource, account);
-        if (resource != ROOT_RESOURCE) {
-            roleBitmap >>= 128; // can only grant regular of admins
-        }
+        uint256 roleBitmap = super._getSettableRoles(resource, account);
+        return resource == ROOT_RESOURCE ? roleBitmap : roleBitmap >> 128;
     }
 
     /// @inheritdoc EnhancedAccessControl
