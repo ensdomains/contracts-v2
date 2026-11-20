@@ -128,34 +128,24 @@ export function toRequiredGrantRevokeRoles(roleBitmap: bigint) {
 // Role bitmaps for static deployment per README Static Deployment Permissions.
 export const DEPLOYMENT_ROLES = {
   // RootRegistry root at deploy: every safe root role with its admin role.
-  ROOT_REGISTRY_ROOT: FLAGS.ALL,
+  ROOT_REGISTRY_ROOT: ROLES.ALL,
   // RootRegistry and ETHRegistry root, held by the owner after the handover: every
   // safe root role with its admin role. None of them reaches a name, so both
   // registries leave their names emancipated.
-  REGISTRY_OWNER_ROOT: FLAGS.ALL,
+  REGISTRY_OWNER_ROOT: ROLES.ALL,
   // The root registry's `eth` and `reverse` tokens: every role and admin role,
   // registered to the deployer and moved with the token to the name owner at the
   // handover.
-  ROOT_NAME_TOKEN: FLAGS.ALL,
+  ROOT_NAME_TOKEN:
+    ROLES.ALL &
+    ~(ROLES.REGISTRY.PARENT_CONTROL | ROLES.ADMIN.REGISTRY.PARENT_CONTROL),
   // A `.eth` name registered straight to its owner outside pre-migration, such as
   // on.eth for the name owner: every role and admin role.
-  DIRECT_REGISTRATION: FLAGS.ALL,
+  DIRECT_REGISTRATION: ROLES.ALL,
   // ETHRegistry root at deploy: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓,
   // RENEW✓, CAN_NAME✓✓, SET_URI✓✓, UPGRADE✓✓. None of these reaches a name, so a
   // holder leaves .eth names emancipated.
-  ETH_REGISTRY_ROOT:
-    ROLES.ADMIN.REGISTRY.REGISTRAR |
-    ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
-    ROLES.REGISTRY.SET_PARENT |
-    ROLES.ADMIN.REGISTRY.SET_PARENT |
-    ROLES.ADMIN.REGISTRY.RENEW |
-    ROLES.REGISTRY.CAN_NAME |
-    ROLES.ADMIN.REGISTRY.CAN_NAME |
-    ROLES.REGISTRY.SET_URI |
-    ROLES.ADMIN.REGISTRY.SET_URI,
-  // Restricted roles granted to manager of core registries:
-  ROOT_REGISTRY_MANAGER: ROLES.REGISTRY.CAN_NAME | ROLES.REGISTRY.SET_URI,
-  ETH_REGISTRY_MANAGER: ROLES.REGISTRY.CAN_NAME | ROLES.REGISTRY.SET_URI,
+  ETH_REGISTRY_ROOT: ROLES.ALL,
   // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW on ETHRegistry root at static deploy.
   ETH_REGISTRAR_ROOT: ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
   ETH_RENEWER_V1_ROOT: ROLES.REGISTRY.RENEW,

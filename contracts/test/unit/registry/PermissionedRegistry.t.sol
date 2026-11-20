@@ -1761,11 +1761,11 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     function test_isEmancipated() external {
         uint256 tokenId = this._register();
-        assertFalse(registry.isEmancipated(tokenId));
+        assertFalse(registry.isTokenEmancipated(tokenId));
 
         // revoke control
         registry.revokeRoles(tokenId, testRoles, testOwner);
-        assertTrue(registry.isEmancipated(tokenId));
+        assertTrue(registry.isTokenEmancipated(tokenId));
 
         // cannot restore control
         vm.expectRevert(
@@ -1788,7 +1788,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2); // non-owner grant
         tokenId = registry.getTokenId(tokenId); // token has regenerated
         assertFalse(registry.isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, user1), "2");
-        assertTrue(registry.isEmancipated(tokenId), "emancipated");
+        assertTrue(registry.isTokenEmancipated(tokenId), "emancipated");
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1807,7 +1807,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     function test_transferWhileNotEmancipated() external {
         testRoles |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
-        assertFalse(registry.isEmancipated(tokenId), "emancipated");
+        assertFalse(registry.isTokenEmancipated(tokenId), "emancipated");
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(

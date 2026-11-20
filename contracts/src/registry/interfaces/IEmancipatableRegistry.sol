@@ -20,5 +20,5 @@ interface IEmancipatableRegistry is ITokenizedRegistry {
     /// @notice Determine if token is emancipated.
     /// @param anyId The labelhash, token ID, or resource.
     /// @return `true` if the token is emancipated.
-    function isEmancipated(uint256 anyId) external view returns (bool);
+    function isTokenEmancipated(uint256 anyId) external view returns (bool);
 }

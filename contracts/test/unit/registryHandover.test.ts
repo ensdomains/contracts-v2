@@ -56,9 +56,9 @@ const deployed: RegistryHandoverState = {
     { contract: "BatchRegistrar", owner: DEPLOYER },
     { contract: "RootBatchRegistrar", owner: DEPLOYER },
   ],
-  ownerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER,
+  ownerRootRoles: 0n,
   deployerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
-  ownerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
+  ownerEthRegistryRoles: 0n,
   deployerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
   archivedRoots: [],
 };
@@ -98,21 +98,13 @@ describe("planRegistryHandover", () => {
       {
         contract: "RootRegistry",
         functionName: "grantRootRoles",
-        args: [
-          DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT &
-            ~DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER,
-          OWNER,
-        ],
+        args: [DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT, OWNER],
         label: expect.stringContaining("grant the owner"),
       },
       {
         contract: "ETHRegistry",
         functionName: "grantRootRoles",
-        args: [
-          DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT &
-            ~DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
-          OWNER,
-        ],
+        args: [DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT, OWNER],
         label: expect.stringContaining(".eth registry"),
       },
       {

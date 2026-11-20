@@ -52,7 +52,7 @@ describe("describeRoleBitmap", () => {
 
   it("reports an unrecognised bit rather than dropping it", () => {
     // Bit 44 is inside the role space but carries no name in this build.
-    expect(describeRoleBitmap(1n << 44n)).toContain("unknown");
+    expect(describeRoleBitmap(1n << 48n)).toContain("unknown");
   });
 
   it("reads the empty bitmap as no roles", () => {

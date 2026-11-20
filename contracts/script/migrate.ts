@@ -2210,6 +2210,12 @@ async function sendAdminWrite(opts: {
     account: opts.impersonateAccount,
     provider: opts.provider,
   });
+  await wallet.estimateContractGas({
+    address: opts.target.address,
+    abi: opts.target.abi,
+    functionName: opts.functionName,
+    args: opts.args,
+  });
   const hash = await wallet.writeContract({
     address: opts.target.address,
     abi: opts.target.abi,
@@ -3962,7 +3968,6 @@ const EXPECTED_ROOT_ROLES: Record<
       roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
       stages: DEPLOYER_STAGES,
     },
-    { deployment: "@owner", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER },
     // The handover gives the owner every safe root role with its admin role.
     {
       deployment: "@owner",
@@ -3979,7 +3984,6 @@ const EXPECTED_ROOT_ROLES: Record<
       roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
       stages: DEPLOYER_STAGES,
     },
-    { deployment: "@owner", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER },
     {
       deployment: "@owner",
       roles: DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT,

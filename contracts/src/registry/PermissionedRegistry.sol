@@ -444,9 +444,9 @@ contract PermissionedRegistry is
     }
 
     /// @inheritdoc IEmancipatableRegistry
-    function isEmancipated(uint256 anyId) public view returns (bool) {
+    function isTokenEmancipated(uint256 anyId) public view returns (bool) {
         address owner = getOwner(anyId);
-        return owner != address(0) && _isEmancipated(_getRoles(getResource(anyId), owner));
+        return owner != address(0) && _isTokenEmancipated(_getRoles(getResource(anyId), owner));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -555,7 +555,7 @@ contract PermissionedRegistry is
                     revert TransferDisallowed(tokenId, from);
                 }
                 if (safe) {
-                    if (!_isEmancipated(ownerRoles)) {
+                    if (!_isTokenEmancipated(ownerRoles)) {
                         revert TransferUnsafeUntilTokenIsEmancipated(tokenId);
                     }
                     uint256 nonOwnerRoles =
@@ -676,7 +676,7 @@ contract PermissionedRegistry is
         roleBitmap = _getRoles(resource, account);
         if (resource != ROOT_RESOURCE) {
             address owner = getOwner(resource);
-            if (owner == address(0) || !_isEmancipated(_getRoles(resource, owner))) {
+            if (owner == address(0) || !_isTokenEmancipated(_getRoles(resource, owner))) {
                 roleBitmap |= _getRoles(ROOT_RESOURCE, account);
             }
         }
@@ -752,7 +752,7 @@ contract PermissionedRegistry is
     }
 
     /// @dev Internal logic for token emancipation.
-    function _isEmancipated(uint256 roleBitmap) internal pure returns (bool) {
+    function _isTokenEmancipated(uint256 roleBitmap) internal pure returns (bool) {
         return (roleBitmap & RegistryRolesLib.ROLE_PARENT_CONTROL) == 0;
     }
 }
