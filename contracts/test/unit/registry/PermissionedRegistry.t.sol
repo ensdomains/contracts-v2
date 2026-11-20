@@ -1782,8 +1782,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     function test_transferWithoutRevokingOutstandingGrants(bool self) external {
         uint256 role = RegistryRolesLib.ROLE_SET_RESOLVER;
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | (role << 128);
-        if (self)
+        if (self) {
             testRoles |= role;
+        }
         uint256 tokenId = this._register();
         assertEq(registry.roleCount(tokenId) & (role * 15), (self ? 1 : 0) * role, "1");
         vm.prank(user1);
