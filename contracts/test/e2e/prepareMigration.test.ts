@@ -157,8 +157,8 @@ describe("PrepareMigration", () => {
     // "owner" account is funded but has CAN_NAME for root on ETHRegistry
     const { owner } = env.namedAccounts;
     const privateKey = toHex(owner.getHdKey().privateKey!);
-    expect(await readRoles(owner.address)).toBe(
-      DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
+    expect((await readRoles(owner.address)) & ROLES.REGISTRY.CAN_NAME).toBe(
+      ROLES.REGISTRY.CAN_NAME,
     );
 
     await expect(
