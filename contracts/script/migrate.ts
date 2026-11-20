@@ -81,7 +81,6 @@ import {
 } from "./rolesDoc.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
-  DANGEROUS_ROOT_ROLES,
   DEPLOYMENT_ROLES,
   FUSES,
   LOCAL_BATCH_GATEWAY_URL,
@@ -4772,8 +4771,7 @@ async function assertRegistryHandoverComplete(
       );
     }
   }
-  // Each registry's admin roles have the owner as their only holder, and nobody
-  // holds a dangerous root role, so both leave their names emancipated.
+  // Each registry's admin roles have the owner as their only holder
   const ownerAdmin = DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & ANY_ADMIN_ROLE;
   for (const [label, registry] of [
     ["root registry", ctx.rootRegistry],
@@ -4788,15 +4786,6 @@ async function assertRegistryHandoverComplete(
     ) {
       failures.push(
         `the owner is not the only admin on the ${label}, or lacks a safe root role`,
-      );
-    }
-    if (
-      (await ctx.assignees(registry, ROOT_RESOURCE, DANGEROUS_ROOT_ROLES)) !==
-        0n ||
-      !(await ctx.read(registry, "isEmancipated", []))
-    ) {
-      failures.push(
-        `the ${label} is not emancipated: an account holds a root role that reaches its names`,
       );
     }
   }

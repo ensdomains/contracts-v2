@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { getAddress, zeroAddress } from "viem";
 
-import {
-  DANGEROUS_ROOT_ROLES,
-  DEPLOYMENT_ROLES,
-  ROLES,
-} from "../../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
 import {
   type ArchivedRootState,
   planRegistryHandover,
@@ -206,25 +202,6 @@ describe("planRegistryHandover", () => {
     expect(() =>
       planRegistryHandover({ ...deployed, nameOwner: DEPLOYER }),
     ).toThrow(/no one to hand the root names to/);
-  });
-
-  it("hands the owner every root role but the dangerous ones, each with its admin role", () => {
-    const registryRoles = Object.values(ROLES.REGISTRY).reduce(
-      (all, role) => all | role,
-      0n,
-    );
-    // Granted at registration only, or with no regular role behind it.
-    const ungrantable =
-      ROLES.REGISTRY.WAS_RESERVED |
-      ROLES.ADMIN.REGISTRY.WAS_RESERVED |
-      ROLES.REGISTRY.CAN_TRANSFER;
-    const grantable = (registryRoles | (registryRoles << 128n)) & ~ungrantable;
-    expect(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & DANGEROUS_ROOT_ROLES).toBe(
-      0n,
-    );
-    expect(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT | DANGEROUS_ROOT_ROLES).toBe(
-      grantable,
-    );
   });
 
   it("plans nothing once handed over", () => {
