@@ -21,6 +21,7 @@ import {IOwnedRegistry} from "~src/registry/interfaces/IOwnedRegistry.sol";
 import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
 import {ITemporalRegistry} from "~src/registry/interfaces/ITemporalRegistry.sol";
 import {ITokenizedRegistry} from "~src/registry/interfaces/ITokenizedRegistry.sol";
+import {IEmancipatableRegistry} from "~src/registry/interfaces/IEmancipatableRegistry.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {IRegistryURIRenderer} from "~src/registry/interfaces/IRegistryURIRenderer.sol";
@@ -38,7 +39,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     address testOwner = user1;
     string testLabel = "test";
-    uint256 testRoles = 0;
+    uint256 testRoles = RegistryRolesLib.ROLE_PARENT_CONTROL;
     address testResolver = makeAddr("resolver");
     uint64 testExpiry = uint64(block.timestamp + 1000);
     PermissionedRegistry testRegistry;
@@ -78,6 +79,10 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         assertTrue(
             registry.supportsInterface(type(ITemporalRegistry).interfaceId),
             "ITemporalRegistry"
+        );
+        assertTrue(
+            registry.supportsInterface(type(IEmancipatableRegistry).interfaceId),
+            "IEmancipatableRegistry"
         );
         assertTrue(
             registry.supportsInterface(type(IPermissionedRegistry).interfaceId),
@@ -292,7 +297,14 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
                 address(this)
             )
         );
-        this._reserve();
+        registry.register(
+            testLabel,
+            address(0),
+            IRegistry(address(0)),
+            testResolver,
+            testRoles,
+            testExpiry
+        );
     }
 
     function test_reserve_then_register() external {
@@ -705,7 +717,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_transfer(bool unsafe) external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         StrictERC1155Holder r = new StrictERC1155Holder(false);
@@ -724,7 +735,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_transfer_isStrict(bool unsafe) external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register() + 1; // wrong
         vm.expectRevert();
@@ -737,7 +747,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeTransferFrom_noop() external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         vm.expectEmit();
@@ -803,7 +812,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_transfer_notAuthorized(bool unsafe) external {
-        _makeEmancipated();
+        testRoles = 0;
         uint256 tokenId = this._register();
         vm.expectRevert(
             abi.encodeWithSelector(IPermissionedRegistry.TransferDisallowed.selector, tokenId, user1)
@@ -817,7 +826,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_transfer_notAuthorized_setApprovalForAll(bool unsafe) external {
-        _makeEmancipated();
+        testRoles = 0;
         uint256 tokenId = this._register();
         vm.prank(user1);
         registry.setApprovalForAll(user2, true);
@@ -833,7 +842,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_batchTransfer(bool unsafe) external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
@@ -862,7 +870,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_batchTransfer_noop(bool unsafe) external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register();
@@ -878,7 +885,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_safeBatchTransferFrom_noopAfterTransfer() external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIds[1] = this._register();
@@ -896,7 +902,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_batchTransfer_twiceToSelf(bool unsafe) external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIds[1] = this._register();
@@ -911,7 +916,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_batchTransfer_oneError(bool unsafe) external {
-        _makeEmancipated();
+        testRoles = 0;
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = this._register(); // no transfer role
         testLabel = string.concat(testLabel, testLabel);
@@ -1299,6 +1304,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
         for (uint256 i; i < 32; i++) {
             uint256 regular = 1 << (i << 2);
+            if (regular == RegistryRolesLib.ROLE_PARENT_CONTROL) {
+                continue;
+            }
             uint256 admin = regular << 128;
 
             tokenId = registry.getTokenId(tokenId);
@@ -1365,41 +1373,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         }
     }
 
-    function test_regenerate_isEmancipated_grantAsRoot() external {
-        uint256 tokenId = this._register();
-        _makeEmancipated();
-
-        for (uint256 i; i < 32; i++) {
-            uint256 regular = 1 << (i << 2);
-            uint256 admin = regular << 128;
-
-            if (registry.hasRoles(tokenId, admin, address(this))) {
-                tokenId = registry.getTokenId(tokenId);
-                assertTrue(registry.grantRoles(tokenId, regular, user2));
-                assertFalse(_shouldRegenerate(regular));
-                assertFalse(tokenId != registry.getTokenId(tokenId), vm.toString(i));
-            }
-        }
-    }
-
-    function test_regenerate_isEmancipated_revokeAsRoot() external {
-        testRoles = EACBaseRolesLib.ALL_ROLES;
-        uint256 tokenId = this._register();
-        _makeEmancipated();
-
-        for (uint256 i; i < 32; i++) {
-            uint256 regular = 1 << (i << 2);
-            uint256 admin = regular << 128;
-
-            if (registry.hasRoles(tokenId, admin, address(this))) {
-                tokenId = registry.getTokenId(tokenId);
-                assertTrue(registry.revokeRoles(tokenId, regular, testOwner));
-                assertFalse(_shouldRegenerate(regular));
-                assertFalse(tokenId != registry.getTokenId(tokenId), vm.toString(i));
-            }
-        }
-    }
-
     ////////////////////////////////////////////////////////////////////////
     // EAC Override: grantRoles() and revokeRoles()
     ////////////////////////////////////////////////////////////////////////
@@ -1416,6 +1389,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     function test_grantRoles_asRoot(uint256) external {
         uint256 roleBitmap = _randomRoleBitmap(false, true);
+        vm.assume(roleBitmap != RegistryRolesLib.ROLE_PARENT_CONTROL);
 
         uint256 tokenId = this._register();
 
@@ -1537,7 +1511,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_revokeRoles_asRoot(uint256) external {
-        testRoles = _randomRoleBitmap(true, true);
+        testRoles |= _randomRoleBitmap(true, true);
 
         uint256 tokenId = this._register();
 
@@ -1571,33 +1545,38 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.setApprovalForAll(to, true);
     }
 
-    function test_setApprovalForAll_roles(uint256) external {
-        testRoles = _randomRoleBitmap(true, false);
+    function test_setApprovalForAll_roles() external {
         uint256 tokenId = this._register();
-        testRoles >>= 128; // convert to normal
+        for (uint256 i; i < 32; i++) {
+            uint256 regular = 1 << (i << 2);
 
-        vm.prank(testOwner);
-        registry.setApprovalForAll(user2, true);
+            registry.__reset(tokenId, RegistryRolesLib.ROLE_PARENT_CONTROL | (regular << 128));
 
-        vm.prank(user2);
-        registry.grantRoles(tokenId, testRoles, actor);
-        vm.prank(user2);
-        registry.revokeRoles(tokenId, testRoles, actor);
-        assertEq(registry.roles(tokenId, actor), 0);
+            // unnapproved has no roles
+            assertEq(registry.roles(tokenId, user2), 0, "1");
 
-        vm.prank(testOwner);
-        registry.setApprovalForAll(user2, false);
+            // add approval
+            vm.prank(testOwner);
+            registry.setApprovalForAll(user2, true);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEnhancedAccessControl.EACCannotGrantRoles.selector,
-                tokenId, // same as resource
-                testRoles,
-                user2
-            )
-        );
-        vm.prank(user2);
-        registry.grantRoles(tokenId, testRoles, actor);
+            // approved has roles
+            assertEq(registry.roles(tokenId, user2), registry.roles(tokenId, testOwner), "2");
+
+            // approved can grant
+            vm.prank(user2);
+            assertTrue(registry.grantRoles(tokenId, regular, actor), "granted");
+
+            // approved can revoke
+            vm.prank(user2);
+            assertTrue(registry.revokeRoles(tokenId, regular, actor), "revoked");
+
+            // remove approval
+            vm.prank(testOwner);
+            registry.setApprovalForAll(user2, false);
+
+            // unnapproved has no roles (again)
+            assertEq(registry.roles(tokenId, user2), 0, "3");
+        }
     }
 
     function test_setApprovalForAll_revokeRoles() external {
@@ -1629,7 +1608,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     function test_setApprovalForAll_blendedRoles() external {
-        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
+        testRoles |= RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
 
         // user2 has token roles via approval
@@ -1653,6 +1632,12 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
                 user2
             )
         );
+
+        // emancipate 
+        registry.revokeRoles(tokenId, RegistryRolesLib.ROLE_PARENT_CONTROL, testOwner);
+
+        // no longer blended
+        assertFalse(registry.hasRoles(tokenId, RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN, user2));
     }
 
     function test_setApprovalForAll_setResolver() external {
@@ -1774,67 +1759,36 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     // Safe Transfer Restrictions
     ////////////////////////////////////////////////////////////////////////
 
-    function test_makeEmancipated() external {
-        assertFalse(registry.isEmancipated());
-        _makeEmancipated();
-        assertTrue(registry.isEmancipated());
-    }
-
-    function test_isEmancipated_root() external {
-        for (uint256 i; i < 64; ++i) {
-            uint256 bit = 1 << (i << 2);
-            registry.__grantRoles(registry.ROOT_RESOURCE(), EACBaseRolesLib.ALL_ROLES, address(this));
-            _makeEmancipated();
-            assertTrue(registry.isEmancipated());
-
-            registry.__grantRoles(registry.ROOT_RESOURCE(), bit, address(this));
-            assertEq(
-                registry.isEmancipated(),
-                (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP & bit) == 0,
-                vm.toString(i)
-            );
-        }
-    }
-
-    function test_isEmancipated_token() external {
-        testRoles = EACBaseRolesLib.ALL_ROLES;
+    function test_isEmancipated() external {
         uint256 tokenId = this._register();
-        _makeEmancipated();
-        assertTrue(registry.isEmancipated());
-        for (uint256 i; i < 32; ++i) {
-            uint256 bit = 1 << (i << 2);
-            vm.prank(testOwner);
-            registry.revokeRoles(tokenId, EACBaseRolesLib.ALL_ROLES, address(this));
-            vm.prank(testOwner);
-            registry.grantRoles(tokenId, bit, address(this));
+        assertFalse(registry.isEmancipated(tokenId));
 
-            tokenId = registry.getTokenId(tokenId);
-            if ((RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP & bit) != 0) {
-                vm.expectRevert(
-                    abi.encodeWithSelector(
-                        IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,
-                        tokenId,
-                        testOwner
-                    )
-                );
-            }
-            vm.prank(testOwner);
-            registry.safeTransferFrom(testOwner, testOwner, tokenId, 1, "");
-        }
+        // revoke control
+        registry.revokeRoles(tokenId, testRoles, testOwner);
+        assertTrue(registry.isEmancipated(tokenId));
+
+        // cannot restore control
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                tokenId,
+                testRoles,
+                address(this)
+            )
+        );
+        registry.grantRoles(tokenId, testRoles, testOwner);
     }
 
     function test_transferWithoutOnlyAssignee() external {
-        _makeEmancipated();
         testRoles =
             RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
         uint256 tokenId = this._register();
-        // apply *any* non-owner grant
-        assertTrue(registry.isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, user1));
+        assertTrue(registry.isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, user1), "1");
         vm.prank(user1);
-        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2);
+        registry.grantRoles(tokenId, RegistryRolesLib.ROLE_SET_RESOLVER, user2); // non-owner grant
         tokenId = registry.getTokenId(tokenId); // token has regenerated
-        assertFalse(registry.isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, user1));
-        assertTrue(registry.isEmancipated());
+        assertFalse(registry.isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, user1), "2");
+        assertTrue(registry.isEmancipated(tokenId), "emancipated");
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1850,70 +1804,15 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
         registry.unsafeTransfer(user2, tokenId, "");
     }
 
-    function test_transferWhileNotEmancipated_tokenRegular_rootRegular() external {
-        _makeEmancipated();
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER;
+    function test_transferWhileNotEmancipated() external {
+        testRoles |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
-        // apply *any* overlapping root grant
-        registry.__grantRoles(
-            registry.ROOT_RESOURCE(),
-            RegistryRolesLib.ROLE_SET_RESOLVER,
-            address(this)
-        );
-        assertFalse(registry.isEmancipated());
+        assertFalse(registry.isEmancipated(tokenId), "emancipated");
         // safe transfer is blocked
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector
-            )
-        );
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-        // must use unsafe transfer
-        vm.prank(user1);
-        registry.unsafeTransfer(user2, tokenId, "");
-    }
-
-    function test_transferWhileNotEmancipated_tokenAdmin_rootRegular() external {
-        _makeEmancipated();
-        testRoles =
-            RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
-        uint256 tokenId = this._register();
-        // apply *any* overlapping root grant
-        registry.__grantRoles(
-            registry.ROOT_RESOURCE(),
-            RegistryRolesLib.ROLE_SET_RESOLVER,
-            address(this)
-        );
-        assertFalse(registry.isEmancipated());
-        // safe transfer is blocked
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector
-            )
-        );
-        vm.prank(user1);
-        registry.safeTransferFrom(user1, user2, tokenId, 1, "");
-        // must use unsafe transfer
-        vm.prank(user1);
-        registry.unsafeTransfer(user2, tokenId, "");
-    }
-
-    function test_transferWhileNotEmancipated_tokenRegular_rootAdmin() external {
-        _makeEmancipated();
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN | RegistryRolesLib.ROLE_SET_RESOLVER;
-        uint256 tokenId = this._register();
-        // apply *any* overlapping root grant
-        registry.__grantRoles(
-            registry.ROOT_RESOURCE(),
-            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN,
-            address(this)
-        );
-        assertFalse(registry.isEmancipated());
-        // safe transfer is blocked
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPermissionedRegistry.TransferUnsafeUntilRegistryIsEmancipated.selector
+                IEmancipatableRegistry.TransferUnsafeUntilTokenIsEmancipated.selector,
+                tokenId
             )
         );
         vm.prank(user1);
@@ -1978,7 +1877,7 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     // 1. token has max assignees (15)
     // 2. transfer needs to transferRoles without blowing up
     function test_transferWithMaxAssignees() external {
-        testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
+        testRoles |= RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         // step #1: fill assignees
         for (uint256 i; i <= 14; ++i) {
@@ -1996,7 +1895,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     // 1. token expires, role modification is frozen
     // 2. transfer while expired, hasRoles() still exists
     function test_transferWhileExpired() external {
-        _makeEmancipated();
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
         // step #1: token expires
@@ -2070,36 +1968,46 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     // scenerio: emancipated root grief via unrelated emancipated role grants
     function test_griefWhileEmancipated_grantAsRoot() external {
+        testRoles = 0;
         uint256 tokenId = this._register();
-        _makeEmancipated();
 
-        uint256 roleBitmap = registry.roles(registry.ROOT_RESOURCE(), address(this)); // unrelated roles
-        roleBitmap >>= 128; // can only grant regular of admin bits
-
-        // add unrelated token roles
-        assertTrue(registry.grantRoles(tokenId, roleBitmap, testOwner), "grant");
-        assertTrue(registry.getTokenId(tokenId) == tokenId, "regen");
+        // cannot grant
+        for (uint256 i; i < 32; ++i) {
+            uint256 bit = 1 << (i << 2);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    IEnhancedAccessControl.EACCannotGrantRoles.selector,
+                    tokenId,
+                    bit,
+                    address(this)
+                )
+            );
+            registry.grantRoles(tokenId, bit, testOwner);
+        }
     }
 
     // scenerio: emancipated root grief via unrelated emancipated role revokes
     function test_griefWhileEmancipated_revokeAsRoot() external {
-        testRoles = EACBaseRolesLib.ALL_ROLES;
-
+        testRoles = EACBaseRolesLib.ALL_ROLES ^ RegistryRolesLib.ROLE_PARENT_CONTROL;
         uint256 tokenId = this._register();
-        _makeEmancipated();
 
-        uint256 roleBitmap = registry.roles(registry.ROOT_RESOURCE(), address(this)); // unrelated roles
-        roleBitmap >>= 128; // can only revoke admin bits
-        roleBitmap |= roleBitmap << 128; // can also revoke corresponding regular bits
-
-        // remove unrelated token roles
-        assertTrue(registry.revokeRoles(tokenId, roleBitmap, testOwner), "revoke");
-        assertTrue(registry.getTokenId(tokenId) == tokenId, "regen");
+        // cannot revoke
+        for (uint256 i; i < 64; ++i) {
+            uint256 bit = 1 << (i << 2);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    IEnhancedAccessControl.EACCannotRevokeRoles.selector,
+                    tokenId,
+                    bit,
+                    address(this)
+                )
+            );
+            registry.revokeRoles(tokenId, bit, testOwner);
+        }
     }
 
     // scenerio: register to forwarder
     function test_forwardingReceiver_register(bool unsafe) external {
-        _makeEmancipated();
         ForwardingReceiver r = new ForwardingReceiver(unsafe, user2);
         testOwner = address(r);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
@@ -2109,7 +2017,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     // scenerio: transfer to forwarder
     function test_forwardingReceiver_transfer(bool unsafe) external {
-        _makeEmancipated();
         ForwardingReceiver r = new ForwardingReceiver(unsafe, user2);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
@@ -2121,7 +2028,6 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
 
     // scenerio: transfer to forwarder that reflects back to original owner
     function test_forwardingReceiver_transferReflect(bool unsafe) external {
-        _makeEmancipated();
         ForwardingReceiver r = new ForwardingReceiver(unsafe, testOwner);
         testRoles = RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN;
         uint256 tokenId = this._register();
@@ -2246,6 +2152,22 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
     }
 
     ////////////////////////////////////////////////////////////////////////
+    // Mock Powers
+    ////////////////////////////////////////////////////////////////////////
+
+    function test_mock_reset() external {
+        testRoles = EACBaseRolesLib.ALL_ROLES;
+        uint256 tokenId = this._register();
+        testRoles = RegistryRolesLib.ROLE_SET_RESOLVER;
+        registry.grantRoles(tokenId, testRoles, user2);
+        uint256 resource = registry.getResource(tokenId);
+        registry.__reset(tokenId, testRoles);
+        assertEq(registry.getResource(tokenId), resource + 1, "resource");
+        assertEq(registry.roles(tokenId, testOwner), testRoles, "user1");
+        assertEq(registry.roles(tokenId, user2), 0, "user2");
+    }
+
+    ////////////////////////////////////////////////////////////////////////
     // Helpers
     ////////////////////////////////////////////////////////////////////////
 
@@ -2270,16 +2192,9 @@ contract PermissionedRegistryTest is Test, ERC1155Holder, IRegistryURIRenderer {
                 address(0),
                 IRegistry(address(0)),
                 testResolver,
-                testRoles,
+                0,
                 testExpiry
             );
-    }
-
-    function _makeEmancipated() internal {
-        assertTrue(
-            registry.isEmancipated() ||
-            registry.revokeRootRoles(RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, address(this))
-        );
     }
 
     function _shouldRegenerate(uint256 roleBitmap) internal pure returns (bool) {
@@ -2335,14 +2250,15 @@ contract MockPermissionedRegistry is PermissionedRegistry {
     function getEntry(uint256 anyId) external view returns (PermissionedRegistry.Entry memory) {
         return _entry(anyId);
     }
+    function __reset(uint256 anyId, uint256 roleBitmap) external returns (uint256) {
+        address owner = getOwner(anyId);
+        PermissionedRegistry.Entry storage entry = _entry(anyId);
+        ++entry.eacVersionId;
+        _grantRoles(_constructResource(anyId, entry), roleBitmap, owner, false);
+        return _constructTokenId(anyId, entry);
+    }
     function __roles(uint256 resource, address account) external view returns (uint256) {
         return EnhancedAccessControl.roles(resource, account);
-    }
-    function __grantRoles(uint256 resource, uint256 roleBitmap, address account)
-        external
-        returns (bool)
-    {
-        return _grantRoles(resource, roleBitmap, account, false);
     }
     function __safeTransferFrom(
         address from,

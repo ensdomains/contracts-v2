@@ -455,14 +455,19 @@ abstract contract EnhancedAccessControl is ERC165, IEnhancedAccessControl {
         return _roles[resource][account];
     }
 
+    /// @dev Returns the effective roles bitmap for an account for permission checks.
+    function _effectiveRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        returns (uint256)
+    {
+        return _getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account);
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Private Functions
     ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Returns the effective roles bitmap for an account for permission checks.
-    function _effectiveRoles(uint256 resource, address account) private view returns (uint256) {
-        return _getRoles(ROOT_RESOURCE, account) | _getRoles(resource, account);
-    }
 
     /// @dev Checks if a role bitmap contains only valid role bits.
     /// @param roleBitmap The role bitmap to check.

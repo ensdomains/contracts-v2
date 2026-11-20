@@ -501,6 +501,8 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
             RegistryRolesLib.ROLE_UPGRADE_ADMIN |
             RegistryRolesLib.ROLE_REGISTRAR |
             RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+            RegistryRolesLib.ROLE_UNREGISTER |
+            RegistryRolesLib.ROLE_UNREGISTER_ADMIN |
             RegistryRolesLib.ROLE_RENEW |
             RegistryRolesLib.ROLE_RENEW_ADMIN |
             RegistryRolesLib.ROLE_CAN_NAME |
@@ -732,10 +734,16 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         // owner can grant non-owner roles
         vm.prank(testOwner);
         ethRegistry.grantRoles(LibLabel.id(md.label), RegistryRolesLib.ROLE_SET_RESOLVER, friend);
+        vm.prank(testOwner);
+        ethRegistry.revokeRoles(
+            LibLabel.id(md.label),
+            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN,
+            testOwner
+        );
 
         uint256 tokenId = ethRegistry.findTokenId(md.label);
 
-        // safe transfer rejected because of outstanding grants
+        // safe transfer rejected because of unrevokable outstanding grants
         vm.expectRevert(
             abi.encodeWithSelector(
                 IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,

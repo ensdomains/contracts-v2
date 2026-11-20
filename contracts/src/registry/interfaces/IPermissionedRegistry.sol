@@ -110,6 +110,6 @@ interface IPermissionedRegistry is
     /// @return owner The token owner.
     function getOwner(uint256 anyId) external view returns (address owner);
 
-    /// @notice Return `true` if the tokens cannot be controlled by root.
+    /// @notice Return `true` if the registry is emancipated.
     function isEmancipated() external view returns (bool);
 }
