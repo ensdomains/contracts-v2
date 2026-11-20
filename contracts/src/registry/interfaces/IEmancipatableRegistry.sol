@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import {ITokenizedRegistry} from "./ITokenizedRegistry.sol";
 
-/// @dev Interface selector: `0x75bed975`
+/// @dev Interface selector: `0xdd605011`
 interface IEmancipatableRegistry is ITokenizedRegistry {
     ////////////////////////////////////////////////////////////////////////
     // Errors
