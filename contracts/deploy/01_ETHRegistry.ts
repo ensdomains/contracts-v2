@@ -16,7 +16,7 @@ export default execute(
     execute: write,
     get,
     read,
-    namedAccounts: { deployer, owner },
+    namedAccounts: { deployer },
     tags,
   }) => {
     const rootRegistry =
@@ -96,19 +96,6 @@ export default execute(
         account: deployer,
         functionName: "setURI",
         args: ["", uriRenderer.address],
-      });
-    }
-
-    const ownerIsManager = await read(ethRegistry, {
-      functionName: "hasRootRoles",
-      args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
-    });
-    if (!ownerIsManager) {
-      console.log("  - Granting manager roles");
-      await write(ethRegistry, {
-        account: deployer,
-        functionName: "grantRootRoles",
-        args: [DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER, owner],
       });
     }
   },

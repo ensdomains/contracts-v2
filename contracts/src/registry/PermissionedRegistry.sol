@@ -8,7 +8,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
-import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
@@ -16,8 +15,10 @@ import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 import {IUnsafeTransferable} from "../utils/interfaces/IUnsafeTransferable.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
+import {IEmancipatableRegistry} from "./interfaces/IEmancipatableRegistry.sol";
 import {IOwnedRegistry} from "./interfaces/IOwnedRegistry.sol";
 import {IPermissionedRegistry} from "./interfaces/IPermissionedRegistry.sol";
+import {IPermissionedRegistryExtended} from "./interfaces/IPermissionedRegistryExtended.sol";
 import {IRegistry} from "./interfaces/IRegistry.sol";
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./interfaces/IStandardRegistry.sol";
@@ -60,7 +61,11 @@ import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 ///                     unregister()
 ///                  +ROLE_UNREGISTER
 ///
-contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermissionedRegistry {
+contract PermissionedRegistry is
+    ERC1155Singleton,
+    EnhancedAccessControl,
+    IPermissionedRegistryExtended
+{
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -137,6 +142,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             interfaceId == type(ITokenizedRegistry).interfaceId ||
             interfaceId == type(ITemporalRegistry).interfaceId ||
             interfaceId == type(IOwnedRegistry).interfaceId ||
+            interfaceId == type(IEmancipatableRegistry).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -433,10 +439,18 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
 
     /// @inheritdoc IPermissionedRegistry
     function isEmancipated() public view virtual returns (bool) {
-        return
-            (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP &
-                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
-            0;
+        return true;
+    }
+
+    /// @inheritdoc IEmancipatableRegistry
+    function isChildEmancipated(string calldata label) public view returns (bool) {
+        return isEmancipated() && isTokenEmancipated(LibLabel.id(label));
+    }
+
+    /// @inheritdoc IPermissionedRegistryExtended
+    function isTokenEmancipated(uint256 anyId) public view virtual returns (bool) {
+        address owner = getOwner(anyId);
+        return owner != address(0) && _isTokenEmancipated(_getRoles(getResource(anyId), owner));
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -532,22 +546,34 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
             // only transfers (skip mint and burn)
-            if (safe && !isEmancipated()) {
-                revert TransferUnsafeUntilRegistryIsEmancipated();
-            }
+            bool implFixed;
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
                 uint256 resource = getResource(tokenId);
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
                 // ROLE_CAN_TRANSFER_ADMIN is a property of the token (not grantable, ignored on root)
-                if ((_getRoles(resource, from) & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
+                uint256 ownerRoles = _getRoles(resource, from);
+                if ((ownerRoles & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
                     revert TransferDisallowed(tokenId, from);
-                } else if (
-                    safe &&
-                    !isOnlyAssignee(tokenId, RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP, from)
-                ) {
-                    revert TransferUnsafeWithMultipleAssignees(tokenId, from);
-                } else if (amounts[i] > 0) {
+                }
+                if (safe) {
+                    if (!implFixed) {
+                        implFixed = isEmancipated(); // compute once
+                    }
+                    // same as: isTokenEmancipated()
+                    if (!implFixed || !_isTokenEmancipated(ownerRoles)) {
+                        revert TransferUnsafeUntilTokenIsEmancipated(tokenId);
+                    }
+                    // ensure owner is only assignee of the emancipated roles
+                    if (
+                        ((super.roleCount(resource) ^ ownerRoles) &
+                            RegistryRolesLib.TOKEN_EMANCIPATION_ROLE_BITMAP) !=
+                        0
+                    ) {
+                        revert TransferUnsafeWithMultipleAssignees(tokenId, from);
+                    }
+                }
+                if (amounts[i] > 0) {
                     _transferRoles(resource, from, to, false);
                 }
             }
@@ -630,7 +656,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @dev If caller is approved by token owner, combine the caller's roles with the owner's roles.
+    /// @dev Override: if caller is approved by token owner, combine the caller's roles with the owner's roles.
     function _getRoles(uint256 resource, address account)
         internal
         view
@@ -643,6 +669,24 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
             address owner = getOwner(resource);
             if (owner != address(0) && owner != account && isApprovedForAll(owner, account)) {
                 roleBitmap |= super._getRoles(resource, owner);
+            }
+        }
+    }
+
+    /// @inheritdoc EnhancedAccessControl
+    /// @dev Override: only merge root roles into token if not emancipated
+    function _effectiveRoles(uint256 resource, address account)
+        internal
+        view
+        virtual
+        override
+        returns (uint256 roleBitmap)
+    {
+        roleBitmap = _getRoles(resource, account);
+        if (resource != ROOT_RESOURCE) {
+            address owner = getOwner(resource);
+            if (owner == address(0) || !_isTokenEmancipated(_getRoles(resource, owner))) {
+                roleBitmap |= _getRoles(ROOT_RESOURCE, account);
             }
         }
     }
@@ -679,11 +723,6 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         _checkRoles(_constructResource(anyId, entry), roleBitmap, msg.sender);
     }
 
-    /// @dev Internal logic for expired status.
-    function _isExpired(uint64 expiry) internal view returns (bool) {
-        return block.timestamp >= expiry;
-    }
-
     /// @dev Create `resource` from parts.
     ///      Does nothing if `ROOT_RESOURCE`.
     ///      Returns next resource if expired.
@@ -714,5 +753,15 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         } else {
             return Status.REGISTERED;
         }
+    }
+
+    /// @dev Internal logic for expired status.
+    function _isExpired(uint64 expiry) internal view returns (bool) {
+        return block.timestamp >= expiry;
+    }
+
+    /// @dev Internal logic for token emancipation.
+    function _isTokenEmancipated(uint256 roleBitmap) internal pure returns (bool) {
+        return (roleBitmap & RegistryRolesLib.ROLE_PARENT_CONTROL) == 0;
     }
 }

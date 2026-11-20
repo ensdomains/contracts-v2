@@ -84,12 +84,7 @@ describe("v2 role audit", () => {
           getAddress(finding.holder.account as Address) ===
             getAddress(env.namedAccounts.deployer.address),
       );
-      expect(deployerFinding).toBeDefined();
-      expect(
-        deployerFinding && "extra" in deployerFinding
-          ? deployerFinding.extra
-          : 0n,
-      ).toBe(ROLES.REGISTRY.REGISTRAR);
+      expect(deployerFinding).not.toBeDefined();
     },
     TEST_TIMEOUT_MS,
   );

@@ -7,11 +7,13 @@ import {
     IEACGrantInitializable,
     Grant
 } from "../access-control/interfaces/IEACGrantInitializable.sol";
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {InvalidOwner} from "../CommonErrors.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
 
 import {IRegistryURIRenderer} from "./interfaces/IRegistryURIRenderer.sol";
+import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
 import {UpgradeablePermissionedRegistry} from "./UpgradeablePermissionedRegistry.sol";
 
 /// @notice Upgradeable `PermissionedRegistry` for user-owned subdomain registries.
@@ -63,6 +65,18 @@ contract UserRegistry is UpgradeablePermissionedRegistry, IEACGrantInitializable
         return
             interfaceId == type(IEACGrantInitializable).interfaceId ||
             super.supportsInterface(interfaceId);
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Return `true` if `ROLE_UPGRADE_ANY_ADMIN` ungrantable.
+    function isEmancipated() public view override returns (bool) {
+        return
+            (RegistryRolesLib.ROLE_UPGRADE_ANY_ADMIN &
+                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
+            0;
     }
 
     ////////////////////////////////////////////////////////////////////////

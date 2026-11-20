@@ -19,7 +19,12 @@ import {
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 import { setTimeout as sleep } from "node:timers/promises";
-import { createWalletClient, getAddress, parseEther } from "viem";
+import {
+  createWalletClient,
+  getAddress,
+  parseEther,
+  publicActions,
+} from "viem";
 
 import {
   fetchWithDeadline,
@@ -725,7 +730,7 @@ export function walletClient({
         { retryCount: 0 },
       )(config),
     pollingInterval: pollingIntervalFor(rpcUrl),
-  });
+  }).extend(publicActions);
 }
 
 export async function increaseTime(

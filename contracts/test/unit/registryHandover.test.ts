@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { getAddress, zeroAddress } from "viem";
 
-import {
-  DANGEROUS_ROOT_ROLES,
-  DEPLOYMENT_ROLES,
-  ROLES,
-} from "../../script/deploy-constants.js";
+import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
 import {
   type ArchivedRootState,
   planRegistryHandover,
@@ -60,9 +56,9 @@ const deployed: RegistryHandoverState = {
     { contract: "BatchRegistrar", owner: DEPLOYER },
     { contract: "RootBatchRegistrar", owner: DEPLOYER },
   ],
-  ownerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER,
+  ownerRootRoles: 0n,
   deployerRootRoles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT,
-  ownerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
+  ownerEthRegistryRoles: 0n,
   deployerEthRegistryRoles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT,
   archivedRoots: [],
 };
@@ -102,21 +98,13 @@ describe("planRegistryHandover", () => {
       {
         contract: "RootRegistry",
         functionName: "grantRootRoles",
-        args: [
-          DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT &
-            ~DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER,
-          OWNER,
-        ],
+        args: [DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT, OWNER],
         label: expect.stringContaining("grant the owner"),
       },
       {
         contract: "ETHRegistry",
         functionName: "grantRootRoles",
-        args: [
-          DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT &
-            ~DEPLOYMENT_ROLES.ETH_REGISTRY_MANAGER,
-          OWNER,
-        ],
+        args: [DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT, OWNER],
         label: expect.stringContaining(".eth registry"),
       },
       {
@@ -144,10 +132,6 @@ describe("planRegistryHandover", () => {
         label: expect.any(String),
       },
     ]);
-  });
-
-  it("registers the root names with every role and admin role", () => {
-    expect(DEPLOYMENT_ROLES.ROOT_NAME_TOKEN).toBe(ROLES.ALL);
   });
 
   it("revokes whatever the deployer holds, not only what the deploy granted", () => {
@@ -206,25 +190,6 @@ describe("planRegistryHandover", () => {
     expect(() =>
       planRegistryHandover({ ...deployed, nameOwner: DEPLOYER }),
     ).toThrow(/no one to hand the root names to/);
-  });
-
-  it("hands the owner every root role but the dangerous ones, each with its admin role", () => {
-    const registryRoles = Object.values(ROLES.REGISTRY).reduce(
-      (all, role) => all | role,
-      0n,
-    );
-    // Granted at registration only, or with no regular role behind it.
-    const ungrantable =
-      ROLES.REGISTRY.WAS_RESERVED |
-      ROLES.ADMIN.REGISTRY.WAS_RESERVED |
-      ROLES.REGISTRY.CAN_TRANSFER;
-    const grantable = (registryRoles | (registryRoles << 128n)) & ~ungrantable;
-    expect(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT & DANGEROUS_ROOT_ROLES).toBe(
-      0n,
-    );
-    expect(DEPLOYMENT_ROLES.REGISTRY_OWNER_ROOT | DANGEROUS_ROOT_ROLES).toBe(
-      grantable,
-    );
   });
 
   it("plans nothing once handed over", () => {

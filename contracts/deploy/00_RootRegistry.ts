@@ -11,7 +11,7 @@ export default execute(
     get,
     read,
     execute: write,
-    namedAccounts: { deployer, owner },
+    namedAccounts: { deployer },
   }) => {
     const labelStore = get<Abi_ILabelStore>("LabelStore");
     const uriRenderer = get<Abi_IRegistryURIRenderer>("ENSURIRenderer");
@@ -34,29 +34,20 @@ export default execute(
       { skipIfAlreadyDeployed: true },
     );
 
-    const [[currentURI, currentRenderer], ownerIsManager] = await Promise.all([
-      read(rootRegistry, { functionName: "getURI" }),
-      read(rootRegistry, {
-        functionName: "hasRootRoles",
-        args: [DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER, owner],
-      }),
-    ]);
-
-    if (currentURI || !isAddressEqual(currentRenderer, uriRenderer.address)) {
+    let shouldSetURI = rootRegistry.newlyDeployed;
+    if (!shouldSetURI) {
+      const [currentURI, currentRenderer] = await read(rootRegistry, {
+        functionName: "getURI",
+      });
+      shouldSetURI =
+        !!currentURI || !isAddressEqual(currentRenderer, uriRenderer.address);
+    }
+    if (shouldSetURI) {
       console.log("  - Setting initial URI");
       await write(rootRegistry, {
         account: deployer,
         functionName: "setURI",
         args: ["", uriRenderer.address],
-      });
-    }
-
-    if (!ownerIsManager) {
-      console.log("  - Granting manager roles");
-      await write(rootRegistry, {
-        account: deployer,
-        functionName: "grantRootRoles",
-        args: [DEPLOYMENT_ROLES.ROOT_REGISTRY_MANAGER, owner],
       });
     }
   },

@@ -260,6 +260,9 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
         }
         roleBitmap |=
             RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_SET_RESOLVER |
+            RegistryRolesLib.ROLE_SET_SUBREGISTRY |
+            RegistryRolesLib.ROLE_UNREGISTER |
             RegistryRolesLib.ROLE_UPGRADE |
             RegistryRolesLib.ROLE_CAN_NAME;
         if (LibMigration.notFrozen(fuses)) {

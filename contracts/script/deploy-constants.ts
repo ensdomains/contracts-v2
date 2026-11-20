@@ -74,6 +74,8 @@ const FLAGS = {
     CAN_TRANSFER: 1n << 28n,
     WAS_RESERVED: 1n << 32n,
     SET_URI: 1n << 36n,
+    PARENT_CONTROL: 1n << 40n,
+    UPGRADE_ANY: 1n << 44n,
     CAN_NAME: 1n << 120n,
     UPGRADE: 1n << 124n,
   },
@@ -123,72 +125,27 @@ export function toRequiredGrantRevokeRoles(roleBitmap: bigint) {
   return (roleBitmap | (roleBitmap >> 128n)) << 128n;
 }
 
-// Root roles that reach a registry's names: setting a name's child registry or
-// resolver, unregistering it, and letting its owner transfer it, each with its admin
-// role. A registry where nobody holds any of them at the root leaves its names
-// emancipated. This is RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP.
-export const DANGEROUS_ROOT_ROLES =
-  ROLES.ADMIN.REGISTRY.CAN_TRANSFER |
-  ROLES.REGISTRY.SET_SUBREGISTRY |
-  ROLES.ADMIN.REGISTRY.SET_SUBREGISTRY |
-  ROLES.REGISTRY.SET_RESOLVER |
-  ROLES.ADMIN.REGISTRY.SET_RESOLVER |
-  ROLES.REGISTRY.UNREGISTER |
-  ROLES.ADMIN.REGISTRY.UNREGISTER;
-
-// Every root role outside the dangerous set, each with its admin role: registering
-// names and reserved names, setting the parent, renewing, setting the metadata URI,
-// contract naming, and upgrading the registry. An emancipated registry only accepts
-// an upgrade to an approved implementation, so the upgrade role reaches no name.
-const SAFE_ROOT_ROLES =
-  ROLES.REGISTRY.REGISTRAR |
-  ROLES.ADMIN.REGISTRY.REGISTRAR |
-  ROLES.REGISTRY.REGISTER_RESERVED |
-  ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
-  ROLES.REGISTRY.SET_PARENT |
-  ROLES.ADMIN.REGISTRY.SET_PARENT |
-  ROLES.REGISTRY.RENEW |
-  ROLES.ADMIN.REGISTRY.RENEW |
-  ROLES.REGISTRY.CAN_NAME |
-  ROLES.ADMIN.REGISTRY.CAN_NAME |
-  ROLES.REGISTRY.SET_URI |
-  ROLES.ADMIN.REGISTRY.SET_URI |
-  ROLES.REGISTRY.UPGRADE |
-  ROLES.ADMIN.REGISTRY.UPGRADE;
-
 // Role bitmaps for static deployment per README Static Deployment Permissions.
 export const DEPLOYMENT_ROLES = {
   // RootRegistry root at deploy: every safe root role with its admin role.
-  ROOT_REGISTRY_ROOT: SAFE_ROOT_ROLES,
+  ROOT_REGISTRY_ROOT: ROLES.ALL,
   // RootRegistry and ETHRegistry root, held by the owner after the handover: every
   // safe root role with its admin role. None of them reaches a name, so both
   // registries leave their names emancipated.
-  REGISTRY_OWNER_ROOT: SAFE_ROOT_ROLES,
+  REGISTRY_OWNER_ROOT: ROLES.ALL,
   // The root registry's `eth` and `reverse` tokens: every role and admin role,
   // registered to the deployer and moved with the token to the name owner at the
   // handover.
-  ROOT_NAME_TOKEN: FLAGS.ALL,
+  ROOT_NAME_TOKEN:
+    ROLES.ALL &
+    ~(ROLES.REGISTRY.PARENT_CONTROL | ROLES.ADMIN.REGISTRY.PARENT_CONTROL),
   // A `.eth` name registered straight to its owner outside pre-migration, such as
   // on.eth for the name owner: every role and admin role.
-  DIRECT_REGISTRATION: FLAGS.ALL,
+  DIRECT_REGISTRATION: ROLES.ALL,
   // ETHRegistry root at deploy: REGISTRAR✓, REGISTER_RESERVED✓, SET_PARENT✓✓,
   // RENEW✓, CAN_NAME✓✓, SET_URI✓✓, UPGRADE✓✓. None of these reaches a name, so a
   // holder leaves .eth names emancipated.
-  ETH_REGISTRY_ROOT:
-    ROLES.ADMIN.REGISTRY.REGISTRAR |
-    ROLES.ADMIN.REGISTRY.REGISTER_RESERVED |
-    ROLES.REGISTRY.SET_PARENT |
-    ROLES.ADMIN.REGISTRY.SET_PARENT |
-    ROLES.ADMIN.REGISTRY.RENEW |
-    ROLES.REGISTRY.CAN_NAME |
-    ROLES.ADMIN.REGISTRY.CAN_NAME |
-    ROLES.REGISTRY.SET_URI |
-    ROLES.ADMIN.REGISTRY.SET_URI |
-    ROLES.REGISTRY.UPGRADE |
-    ROLES.ADMIN.REGISTRY.UPGRADE,
-  // Restricted roles granted to manager of core registries:
-  ROOT_REGISTRY_MANAGER: ROLES.REGISTRY.CAN_NAME | ROLES.REGISTRY.SET_URI,
-  ETH_REGISTRY_MANAGER: ROLES.REGISTRY.CAN_NAME | ROLES.REGISTRY.SET_URI,
+  ETH_REGISTRY_ROOT: ROLES.ALL,
   // ETHRegistrar and BatchRegistrar are granted REGISTRAR and RENEW on ETHRegistry root at static deploy.
   ETH_REGISTRAR_ROOT: ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW,
   ETH_RENEWER_V1_ROOT: ROLES.REGISTRY.RENEW,

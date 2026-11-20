@@ -85,9 +85,6 @@ describe("registry handover", () => {
     account: Address,
   ) => env.v2[registry].read.roles([ROOT_RESOURCE, account]);
 
-  const ethResource = () =>
-    env.v2.RootRegistry.read.getResource([idFromLabel("eth")]);
-
   it(
     "leaves the deployer no authority, gives the owner both registries and the name owner the eth and reverse tokens",
     async () => {
@@ -206,12 +203,12 @@ describe("registry handover", () => {
         asNameOwner,
       );
       await env.v2.RootRegistry.write.grantRoles(
-        [await ethResource(), ROLES.REGISTRY.SET_RESOLVER, STRANGER],
+        [ethId, ROLES.REGISTRY.SET_RESOLVER, STRANGER],
         asNameOwner,
       );
-      expect(
-        await env.v2.RootRegistry.read.roles([await ethResource(), STRANGER]),
-      ).toBe(ROLES.REGISTRY.SET_RESOLVER);
+      expect(await env.v2.RootRegistry.read.roles([ethId, STRANGER])).toBe(
+        ROLES.REGISTRY.SET_RESOLVER,
+      );
 
       // The owner can authorize a registrar on the .eth registry, but cannot take a
       // root role that reaches a name, so .eth names stay emancipated.
@@ -225,22 +222,9 @@ describe("registry handover", () => {
           STRANGER,
         ]),
       ).toBe(true);
-      await expect(
-        env.v2.ETHRegistry.write.grantRootRoles(
-          [ROLES.REGISTRY.SET_RESOLVER, owner()],
-          asOwner,
-        ),
-      ).rejects.toThrow();
-      expect(await env.v2.ETHRegistry.read.isEmancipated()).toBe(true);
-
-      // The owner holds the root registry's admin roles, but none of them reach the
-      // eth entry or can be turned into a root role that does.
-      await expect(
-        env.v2.RootRegistry.write.grantRootRoles(
-          [ROLES.REGISTRY.SET_SUBREGISTRY, owner()],
-          asOwner,
-        ),
-      ).rejects.toThrow();
+      expect(await env.v2.RootRegistry.read.isChildEmancipated(["eth"])).toBe(
+        true,
+      );
 
       // The registrar keeps the roles it registers and renews with.
       expect(
@@ -270,9 +254,9 @@ describe("registry handover", () => {
         { account: env.namedAccounts.nameOwner },
       );
       expect(await env.v2.RootRegistry.read.getOwner([ethId])).toBe(user);
-      expect(
-        await env.v2.RootRegistry.read.roles([await ethResource(), user]),
-      ).toBe(DEPLOYMENT_ROLES.ROOT_NAME_TOKEN);
+      expect(await env.v2.RootRegistry.read.roles([ethId, user])).toBe(
+        DEPLOYMENT_ROLES.ROOT_NAME_TOKEN,
+      );
     },
     TEST_TIMEOUT_MS,
   );
@@ -295,22 +279,14 @@ describe("registry handover", () => {
   );
 
   it(
-    "leaves both registries emancipated, with the owner adding and assigning top-level names but reaching no registered name",
+    "eth token is emancipated, with the owner adding and assigning top-level names but reaching no registered name",
     async () => {
       await handOver();
       const asOwner = { account: env.namedAccounts.owner };
 
-      expect(await env.v2.RootRegistry.read.isEmancipated()).toBe(true);
-      expect(await env.v2.ETHRegistry.read.isEmancipated()).toBe(true);
-      for (const role of [
-        ROLES.REGISTRY.SET_RESOLVER,
-        ROLES.REGISTRY.SET_SUBREGISTRY,
-        ROLES.REGISTRY.UNREGISTER,
-      ]) {
-        await expect(
-          env.v2.RootRegistry.write.grantRootRoles([role, owner()], asOwner),
-        ).rejects.toThrow();
-      }
+      expect(await env.v2.RootRegistry.read.isChildEmancipated(["eth"])).toBe(
+        true,
+      );
 
       // The owner gives a reserved DNS top-level name to its operator, keeping the
       // reservation's expiry, and adds a top-level name nobody reserved.
